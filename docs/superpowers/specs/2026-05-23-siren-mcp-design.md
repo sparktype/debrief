@@ -129,7 +129,7 @@ siren-mcp/
 {
   "hooks": {
     "Stop": [{
-      "command": "node ~/.siren/index.js hook",
+      "command": "npx siren-mcp hook",
       "timeout": 10
     }]
   }
