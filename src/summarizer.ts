@@ -32,7 +32,7 @@ function fallback(text: string, sentenceCount = 3): string {
 // 발음할 수 없는 문자 제거 — 한글·영문·숫자·기본 구두점만 허용
 function sanitizeForSpeech(text: string): string {
   return text
-    .replace(/[^\p{L}\p{N}\s,.。:]/gu, " ")
+    .replace(/[^\p{L}\p{N}\s,.!?。:]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

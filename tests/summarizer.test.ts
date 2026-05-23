@@ -90,3 +90,16 @@ describe("extractSummary — 폴백 경로", () => {
     expect(result).not.toContain("const x");
   });
 });
+
+describe("sanitizeForSpeech — 문장 부호 보존", () => {
+  it("? ! 가 보존되어야 한다", async () => {
+    // extractSummary 먼저 호출해서 mock 인스턴스 생성
+    await extractSummary("초기화");
+    // 빈 응답 → fallback → sanitizeForSpeech 경로
+    getMockCreate().mockResolvedValue({
+      choices: [{ message: { content: "" } }],
+    } as any);
+    const result = await extractSummary("테스트입니다! 정말인가요?");
+    expect(result).toMatch(/[!?]/);
+  });
+});
