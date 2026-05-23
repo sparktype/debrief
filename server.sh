@@ -67,6 +67,13 @@ _stop_player() {
   echo "[TTS Player] 종료"
 }
 
+_check_health() {
+  local port="${1:-$TTS_PORT}"
+  local path="${2:-/health}"
+  curl -s -o /dev/null -w "%{http_code}" \
+    --connect-timeout 1 "http://127.0.0.1:${port}${path}" 2>/dev/null
+}
+
 _is_launchd_managed() {
   [[ -f "$LAUNCHD_PLIST" ]] && launchctl list "$LAUNCHD_LABEL" &>/dev/null
 }
@@ -121,10 +128,7 @@ do_start() {
   # 최대 10초 대기하여 /health 응답 확인
   local i=0
   while (( i < 10 )); do
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" \
-      --connect-timeout 1 "http://127.0.0.1:${TTS_PORT}/health" 2>/dev/null)
-    if [[ "$code" == "200" ]]; then
+    if [[ "$(_check_health "$TTS_PORT")" == "200" ]]; then
       echo "✓ TTS 서버 기동 완료 (HTTP 200)"
       return 0
     fi
@@ -167,10 +171,7 @@ do_status() {
     local pid
     pid=$(lsof -iTCP:${TTS_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
     echo "  TTS 서버:  ✓ 실행 중 (PID: $pid, 포트 ${TTS_PORT})"
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" \
-      --connect-timeout 2 "http://127.0.0.1:${TTS_PORT}/health" 2>/dev/null)
-    if [[ "$code" == "200" ]]; then
+    if [[ "$(_check_health "$TTS_PORT")" == "200" ]]; then
       echo "  HTTP:      ✓ /health 응답 정상"
     else
       echo "  HTTP:      ✗ /health 미응답 (모델 로딩 중이거나 오류)"
@@ -195,10 +196,7 @@ do_status() {
     local st_pid
     st_pid=$(lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
     echo "  Supertonic: ✓ 실행 중 (PID: $st_pid, 포트 ${SUPERTONIC_PORT})"
-    local st_code
-    st_code=$(curl -s -o /dev/null -w "%{http_code}" \
-      --connect-timeout 2 "http://127.0.0.1:${SUPERTONIC_PORT}/v1/health" 2>/dev/null)
-    if [[ "$st_code" == "200" ]]; then
+    if [[ "$(_check_health "$SUPERTONIC_PORT" "/v1/health")" == "200" ]]; then
       echo "  ST HTTP:    ✓ /v1/health 응답 정상"
     else
       echo "  ST HTTP:    △ /v1/health 미응답 (모델 로딩 중이거나 오류)"
@@ -387,10 +385,7 @@ PLIST_EOF
   # 기동 대기 (최대 10초)
   local i=0
   while (( i < 10 )); do
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" \
-      --connect-timeout 1 "http://127.0.0.1:${TTS_PORT}/health" 2>/dev/null)
-    if [[ "$code" == "200" ]]; then
+    if [[ "$(_check_health "$TTS_PORT")" == "200" ]]; then
       break
     fi
     sleep 1
