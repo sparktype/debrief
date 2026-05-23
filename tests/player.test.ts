@@ -15,6 +15,8 @@ vi.mock("fs", async (importOriginal) => {
     existsSync: vi.fn(() => true),
     unlinkSync: vi.fn(),
     writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    renameSync: vi.fn(),
     // withTTSLock 잠금 관련 — 항상 즉시 취득 성공으로 처리
     openSync: vi.fn(() => 3),
     writeSync: vi.fn(),
@@ -28,7 +30,7 @@ vi.mock("../src/last-message-store.js", () => ({
 }));
 import * as store from "../src/last-message-store.js";
 
-import { speak, speakAgent, splitByLanguage, mergeWavBuffers } from "../src/player.js";
+import { speak, speakAgent, speakHook, splitByLanguage, mergeWavBuffers } from "../src/player.js";
 const { existsSync, unlinkSync, writeFileSync } = fs;
 
 // proc.on("close") 등록 시점에 lazily 이벤트를 발생 — 타이밍 경합 방지
@@ -243,8 +245,9 @@ describe("speakAgent", () => {
 
     await speakAgent("안녕하세요", "M2", 7788, 1.2);
 
+    // WAV 임시 파일 생성 후 스풀 디렉토리로 rename (unlinkSync 대신 renameSync)
     expect(writeFileSync).toHaveBeenCalled();
-    expect(unlinkSync).toHaveBeenCalled();
+    expect(vi.mocked(fs.renameSync)).toHaveBeenCalled();
   });
 
   it("Supertonic 서버가 없으면(ECONNREFUSED) 기존 speak()로 폴백한다", async () => {
@@ -462,5 +465,47 @@ describe("mergeWavBuffers", () => {
     const dataIdx = merged.indexOf(Buffer.from("data"));
     const dataSize = merged.readUInt32LE(dataIdx + 4);
     expect(dataSize).toBe(4); // 2 + 2 바이트
+  });
+});
+
+describe("speakHook — EdgeTTS 성공 시 speakInner 경로 미진입", () => {
+  beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.SIREN_OFFLINE;
+  });
+
+  it("EdgeTTS spawn 성공 시 HTTP fetch 미호출", async () => {
+    // spawn: EdgeTTS 성공(0), afplay 성공(0)
+    mockSpawnSequence(0, 0);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    delete process.env.SIREN_OFFLINE;
+
+    await speakHook("테스트 텍스트", "Sohee", 1.2);
+
+    // EdgeTTS 성공 → 스풀 enqueue → 바로 반환 → HTTP fetch 호출 없음
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("EdgeTTS 실패 시 HTTP 시도 (Edge 재시도 없음)", async () => {
+    // spawn: EdgeTTS 실패(1), afplay(없음, HTTP 경로로 전환)
+    mockSpawnSequence(1);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, status: 200 })  // health
+        .mockResolvedValueOnce({ ok: true, status: 200 })  // speak
+    );
+    delete process.env.SIREN_OFFLINE;
+
+    await speakHook("테스트 텍스트", "Sohee", 1.2);
+
+    // EdgeTTS 실패 후 Edge 재시도 없이 HTTP로 바로 전환
+    // fetch: health 1회 + speak 1회 = 2회 (Edge 재시도하면 추가 spawn이 생김)
+    expect(cp.spawn).toHaveBeenCalledTimes(1); // EdgeTTS spawn 1회만
   });
 });

@@ -307,10 +307,10 @@ export async function speakHook(text: string, voice = "Sohee", speed = 1.2): Pro
       saveLastMessage(text);
       return;
     } catch {
-      // EdgeTTS 실패 시 직접 재생 폴백
+      // EdgeTTS 실패 — HTTP→Subprocess 폴백 (EdgeTTS 재시도 없음)
     }
   }
-  await speakInner(text, voice, speed, "");
+  await speakWithoutEdge(text, voice, speed, "");
 }
 
 // ── 에이전트(subagent-stop) 발화: Supertonic WAV → 스풀 → 즉시 반환 ──
@@ -343,15 +343,8 @@ export async function speak(text: string, voice = "", speed = 1.2, instruct = ""
   await withTTSLock(() => speakInner(text, voice, speed, instruct));
 }
 
-async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
-  const skipEdge = process.env.SIREN_OFFLINE === "1";
-  if (!skipEdge && existsSync(MLX_PYTHON)) {
-    try {
-      await speakEdge(text, voice, speed);
-      saveLastMessage(text);
-      return;
-    } catch { /* 폴백 */ }
-  }
+// HTTP → Subprocess 폴백 경로 (Edge 없음)
+async function speakWithoutEdge(text: string, voice: string, speed: number, instruct: string): Promise<void> {
   if (await isTTSServerAlive()) {
     try {
       await speakHTTP(text, voice, speed, instruct);
@@ -361,4 +354,16 @@ async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""):
   }
   await speakSubprocess(text, voice, speed, instruct);
   saveLastMessage(text);
+}
+
+async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
+  const skipEdge = process.env.SIREN_OFFLINE === "1";
+  if (!skipEdge && existsSync(MLX_PYTHON)) {
+    try {
+      await speakEdge(text, voice, speed);
+      saveLastMessage(text);
+      return;
+    } catch { /* 폴백 */ }
+  }
+  await speakWithoutEdge(text, voice, speed, instruct);
 }
