@@ -7,13 +7,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_VOICE_MAP_PATH = join(__dirname, "..", "voice-map.json");
 
 export interface VoiceMap {
-  supertonic: { port: number; lang: string };
+  supertonic: { lang: string };
   voices: Record<string, string>;
   categories: Record<string, string[]>;
 }
 
 const FALLBACK_MAP: VoiceMap = {
-  supertonic: { port: 7788, lang: "ko" },
+  supertonic: { lang: "ko" },
   voices: { default: "F1" },
   categories: {},
 };
@@ -22,7 +22,6 @@ function isValidVoiceMap(obj: unknown): obj is VoiceMap {
   return (
     typeof obj === "object" && obj !== null &&
     "supertonic" in obj &&
-    typeof (obj as any).supertonic?.port === "number" &&
     "voices" in obj && "categories" in obj
   );
 }

@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { writeFileSync, unlinkSync } from "fs";
 import { resolveVoice, loadVoiceMap, type VoiceMap } from "../src/voice-router.js";
 
 const FIXTURE: VoiceMap = {
-  supertonic: { port: 7788, lang: "ko" },
+  supertonic: { lang: "ko" },
   voices: {
     reviewer: "M2",
     planner: "M1",
@@ -52,6 +53,24 @@ describe("loadVoiceMap", () => {
   it("존재하지 않는 경로에서도 기본값을 반환한다", () => {
     const map = loadVoiceMap("/nonexistent/voice-map.json");
     expect(map.voices.default).toBe("F1");
-    expect(map.supertonic.port).toBe(7788);
+  });
+});
+
+describe("loadVoiceMap — port 필드 없는 voice-map 허용", () => {
+  it("supertonic에 port 없어도 loadVoiceMap이 정상 반환", () => {
+    // voice-map.json에서 port를 제거한 구조
+    const noPortJson = JSON.stringify({
+      supertonic: { lang: "ko" },
+      voices: { default: "F1" },
+      categories: {},
+    });
+    const tmp = `/tmp/test-voice-map-${Date.now()}.json`;
+    writeFileSync(tmp, noPortJson, "utf-8");
+    const map = loadVoiceMap(tmp);
+    expect(map.supertonic.lang).toBe("ko");
+    // port 필드가 타입에 없으므로 접근 자체가 TS 컴파일 오류여야 함
+    // (런타임 테스트: map.supertonic에 port 키가 없음)
+    expect((map.supertonic as any).port).toBeUndefined();
+    unlinkSync(tmp);
   });
 });

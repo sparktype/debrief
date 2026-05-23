@@ -51,7 +51,7 @@ if (process.argv[2] === "subagent-stop") {
     const label = getAgentLabel(agentType, voiceMap);
     const oneLiner = await extractOneLiner(text, config.summaryModel);
     const announcement = `${label}입니다. ${oneLiner}`;
-    await speakAgent(announcement, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => {});
+    await speakAgent(announcement, voice, config.supertonicPort, config.ttsSpeed).catch(() => {});
   }
   process.exit(0);
 }
