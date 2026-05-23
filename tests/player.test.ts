@@ -10,7 +10,17 @@ vi.mock("child_process", async (importOriginal) => {
 
 vi.mock("fs", async (importOriginal) => {
   const orig = await importOriginal<typeof fs>();
-  return { ...orig, existsSync: vi.fn(() => true), unlinkSync: vi.fn(), writeFileSync: vi.fn() };
+  return {
+    ...orig,
+    existsSync: vi.fn(() => true),
+    unlinkSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    // withTTSLock 잠금 관련 — 항상 즉시 취득 성공으로 처리
+    openSync: vi.fn(() => 3),
+    writeSync: vi.fn(),
+    closeSync: vi.fn(),
+    readFileSync: vi.fn(() => "0"),
+  };
 });
 
 vi.mock("../src/last-message-store.js", () => ({

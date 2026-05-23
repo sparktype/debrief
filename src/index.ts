@@ -6,7 +6,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig, SirenConfig } from "./config.js";
-import { extractSummary } from "./summarizer.js";
+import { extractSummary, extractOneLiner } from "./summarizer.js";
 import { speak, speakAgent } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
@@ -44,11 +44,13 @@ if (process.argv[2] === "subagent-stop") {
   const text = await readStdin();
   const agentType = process.argv[3] ?? "";
   if (text.length >= config.minChars) {
-    const { loadVoiceMap, resolveVoice } = await import("./voice-router.js");
+    const { loadVoiceMap, resolveVoice, getAgentLabel } = await import("./voice-router.js");
     const voiceMap = loadVoiceMap();
     const voice = resolveVoice(agentType, voiceMap);
-    const summary = await extractSummary(text, config.summaryModel);
-    await speakAgent(summary, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => {});
+    const label = getAgentLabel(agentType, voiceMap);
+    const oneLiner = await extractOneLiner(text, config.summaryModel);
+    const announcement = `${label}입니다. ${oneLiner}`;
+    await speakAgent(announcement, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => {});
   }
   process.exit(0);
 }

@@ -1,9 +1,43 @@
 // EdgeTTS(온라인 우선) → HTTP TTS 서버 → MLX subprocess → macOS say 순서로 음성 재생
 import { spawn, SpawnOptions } from "child_process";
-import { existsSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, unlinkSync, writeFileSync, openSync, writeSync, closeSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { saveLastMessage } from "./last-message-store.js";
+
+// 동시 발화 방지 — 프로세스 간 파일 기반 배타 잠금
+const TTS_LOCK_FILE = "/tmp/siren-tts.lock";
+const LOCK_STALE_MS = 30_000;
+const LOCK_WAIT_MS  = 25_000;
+
+async function withTTSLock<T>(fn: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  let acquired = false;
+  while (!acquired) {
+    try {
+      // O_CREAT|O_EXCL — 원자적 배타 생성
+      const fd = openSync(TTS_LOCK_FILE, "wx");
+      writeSync(fd, String(Date.now()));
+      closeSync(fd);
+      acquired = true;
+    } catch {
+      try {
+        const t = parseInt(readFileSync(TTS_LOCK_FILE, "utf-8"), 10);
+        if (isNaN(t) || Date.now() - t > LOCK_STALE_MS) {
+          unlinkSync(TTS_LOCK_FILE);
+          continue;
+        }
+      } catch { break; }
+      if (Date.now() > deadline) break;
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    if (acquired) try { unlinkSync(TTS_LOCK_FILE); } catch { /* 무시 */ }
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MLX_PYTHON = join(__dirname, "..", "tts-venv", "bin", "python3");
@@ -201,19 +235,25 @@ export async function speakAgent(
   port: number,
   speed: number,
 ): Promise<void> {
-  if (await isSupertonicAlive(port)) {
-    try {
-      await speakSupertonic(text, supertonicVoice, port, speed);
-      saveLastMessage(text);
-      return;
-    } catch {
-      // Supertonic 실패 시 기존 체인으로 폴백
+  return withTTSLock(async () => {
+    if (await isSupertonicAlive(port)) {
+      try {
+        await speakSupertonic(text, supertonicVoice, port, speed);
+        saveLastMessage(text);
+        return;
+      } catch {
+        // Supertonic 실패 시 기존 체인으로 폴백
+      }
     }
-  }
-  await speak(text, "", speed, "");
+    await speakInner(text, "", speed, "");
+  });
 }
 
 export async function speak(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
+  return withTTSLock(() => speakInner(text, voice, speed, instruct));
+}
+
+async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
   // 1. EdgeTTS (온라인 우선, tts-venv에 edge-tts 설치 필요, SIREN_OFFLINE=1이면 건너뜀)
   const skipEdge = process.env.SIREN_OFFLINE === "1";
   if (!skipEdge && existsSync(MLX_PYTHON)) {

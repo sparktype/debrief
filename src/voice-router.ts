@@ -39,6 +39,23 @@ export function loadVoiceMap(path?: string): VoiceMap {
   }
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  reviewer: "리뷰어",
+  planner:  "플래너",
+  builder:  "빌더",
+  explorer: "탐색기",
+};
+
+export function getAgentLabel(agentType: string, map?: VoiceMap): string {
+  const m = map ?? loadVoiceMap();
+  for (const [cat, agents] of Object.entries(m.categories)) {
+    if (agents.includes(agentType)) {
+      return CATEGORY_LABELS[cat] ?? "에이전트";
+    }
+  }
+  return "에이전트";
+}
+
 export function resolveVoice(agentType: string, map: VoiceMap): string {
   for (const [category, agents] of Object.entries(map.categories)) {
     if (agents.includes(agentType)) {

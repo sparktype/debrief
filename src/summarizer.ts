@@ -29,6 +29,28 @@ function fallback(text: string, sentenceCount = 3): string {
   return sentences.slice(-sentenceCount).join(" ");
 }
 
+const ONE_LINER_PROMPT =
+  "작업 결과를 한 문장(25자 이내)으로 요약하세요. 마침표 없이, 간결하게.";
+
+export async function extractOneLiner(text: string, model = "gpt-5.4"): Promise<string> {
+  if (!text.trim()) return "";
+  try {
+    const client = makeHubClient();
+    const resp = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: ONE_LINER_PROMPT },
+        { role: "user", content: stripMarkdown(text).slice(0, 2000) },
+      ],
+      max_completion_tokens: 60,
+      temperature: 0.3,
+    });
+    return resp.choices[0]?.message?.content?.trim() || fallback(text, 1);
+  } catch {
+    return fallback(text, 1);
+  }
+}
+
 export async function extractSummary(text: string, model = "gpt-5.4"): Promise<string> {
   if (!text.trim()) return "";
   try {
