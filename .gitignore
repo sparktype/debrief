@@ -4,3 +4,7 @@ dist/
 .siren.json
 tts-venv/
 *.wav
+.tts_server.pid
+tts_server/__pycache__/
+.claude/
+.superpowers/
