@@ -10,6 +10,7 @@ export interface SirenConfig {
   language: string;
   ttsSpeed: number;
   ttsInstruct: string;
+  skillCooldownMinutes: number;
 }
 
 const DEFAULTS: SirenConfig = {
@@ -21,6 +22,7 @@ const DEFAULTS: SirenConfig = {
   language: "ko",
   ttsSpeed: 1.2,
   ttsInstruct: "밝고 활기차게 말해주세요",
+  skillCooldownMinutes: 30,
 };
 
 export function loadConfig(path?: string): SirenConfig {

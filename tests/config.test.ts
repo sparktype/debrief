@@ -28,4 +28,9 @@ describe("loadConfig", () => {
     const c = loadConfig(TMP);
     expect(c.minChars).toBe(200);
   });
+
+  it("skillCooldownMinutes 기본값 30", () => {
+    const c = loadConfig("/nonexistent/path.json");
+    expect(c.skillCooldownMinutes).toBe(30);
+  });
 });
