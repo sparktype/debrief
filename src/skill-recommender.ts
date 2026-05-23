@@ -9,6 +9,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const CATALOG_FILE = join(__dirname, "..", "skills-catalog.json");
 
+// Transcript 인메모리 캐시 (TTL 60초)
+const _transcriptCache = new Map<string, { data: string; ts: number }>();
+const _CACHE_TTL_MS = 60_000;
+
+/** 테스트 전용 캐시 초기화 함수 */
+export function _resetTranscriptCache(): void {
+  _transcriptCache.clear();
+}
+
 function getDataDir(): string {
   return process.env.SIREN_DATA_DIR ?? join(homedir(), ".local", "share", "summary-voice-mcp");
 }
@@ -61,6 +70,12 @@ export function readRecentTranscripts(
   maxFiles = 3,
   maxLinesPerFile = 50
 ): string {
+  // TTL 캐시 확인
+  const cached = _transcriptCache.get(transcriptsDir);
+  if (cached && Date.now() - cached.ts < _CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   try {
     if (!existsSync(transcriptsDir)) return "";
     const files = readdirSync(transcriptsDir)
@@ -70,7 +85,7 @@ export function readRecentTranscripts(
       .slice(0, maxFiles)
       .map((f) => f.name);
 
-    return files
+    const result = files
       .map((file) => {
         const lines = readFileSync(join(transcriptsDir, file), "utf-8")
           .split("\n")
@@ -92,6 +107,9 @@ export function readRecentTranscripts(
           .join("\n");
       })
       .join("\n---\n");
+
+    _transcriptCache.set(transcriptsDir, { data: result, ts: Date.now() });
+    return result;
   } catch {
     return "";
   }
