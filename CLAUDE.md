@@ -11,6 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 작업 진행 시 Supertonic 서버(`./tts_server/supertonic_start.sh`)를 켜두면 에이전트별 다성 TTS가 활성화됩니다.  
 에이전트 타입 → 목소리 매핑은 `voice-map.json`에서 편집하며, 코드 변경 없이 JSON만 수정하면 됩니다.
 
+**팀 구성 시 모델**: 반드시 `claude-sonnet-4-6`(Sonnet 4.6)만 사용합니다.  
+HMG 사내 AI에서 Opus 모델은 지원되지 않으며, Agent 파라미터 `model: "sonnet"`으로 지정합니다.
+
 ## 프로젝트 개요
 
 Claude Code의 응답을 자동으로 음성으로 읽어주는 MCP 서버. 두 개의 독립적인 프로세스로 구성된다.
@@ -65,7 +68,10 @@ Claude 응답 완료
     → transcript.jsonl 역방향 파싱 → subagent_type 추출
     → node dist/index.js subagent-stop  # stdin + agentType 인수
       → resolveVoice(agentType) (voice-router.ts)  # voice-map.json → voice ID
-      → extractSummary() → speakAgent() (player.ts)
+      → getAgentLabel(agentType) → "리뷰어" / "플래너" / "빌더" / "탐색기"
+      → extractOneLiner() (summarizer.ts)  # 25자 이내 한 줄 요약 + 특수문자 제거
+      → "${label}입니다. ${oneLiner}" → speakAgent() (player.ts)
+          ├─ withTTSLock 획득 (/tmp/siren-tts.lock — 리더와 동시 발화 방지)
           ├─ Supertonic: localhost:7788 → WAV → afplay (에이전트별 다성)
           └─ 실패 시 speak() 폴백 체인
 
@@ -96,6 +102,8 @@ Claude 응답 완료
 - `/speak` 요청은 즉시 202 반환, 큐 크기 1 (현재 재생 중이면 429)
 - `afplay -r <speed>` 로 재생 속도 후처리 — Qwen3-TTS는 `speed!=1.0` 시 최적화 경로가 비활성화됨
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
+- `speak()` · `speakAgent()` 모두 `/tmp/siren-tts.lock` 파일 잠금으로 직렬화 — 리더·팀원 동시 발화 방지
+- 서브에이전트 발화: `"${role}입니다. ${oneLiner}"` 형식, `sanitizeForSpeech()`로 특수문자·유니코드 기호 제거
 
 ### 설정 (`src/config.ts` 기본값)
 
@@ -157,3 +165,4 @@ Claude 응답 완료
 - HTTP 서버 경로 / MLX subprocess 경로 / macOS say 경로를 `fetch`·`spawn`·`existsSync` mock으로 분리 테스트
 - `openai` 모듈 전체를 mock — 실제 LLM 호출 없음
 - `config.test.ts`: 파일 존재/파싱 실패/병합 케이스를 임시 파일(`/tmp/test-siren.json`)로 테스트
+- `player.test.ts`: `fs` mock에 `openSync`·`writeSync`·`closeSync`·`readFileSync` 포함 필수 — 미포함 시 `withTTSLock`이 실제 파일을 생성해 테스트 간 데드락 발생
