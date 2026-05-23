@@ -263,6 +263,7 @@ export function mergeWavBuffers(buffers: Buffer[]): Buffer {
 // Supertonic WAV 생성 (재생 없음) — 에이전트 스풀 경로용
 async function generateSupertonic(text: string, voice: string, port: number): Promise<Buffer> {
   const segments = splitByLanguage(text);
+  if (segments.length === 0) throw new Error("생성할 텍스트 세그먼트 없음");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), _supertonicTimeoutMs);
   try {
@@ -320,6 +321,8 @@ export async function speakAgent(
   port: number,
   speed: number,
 ): Promise<void> {
+  if (!text.trim()) return; // 빈 텍스트 방어
+
   if (await isSupertonicAlive(port)) {
     try {
       const wav = await generateSupertonic(text, supertonicVoice, port);

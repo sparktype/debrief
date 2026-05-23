@@ -361,6 +361,15 @@ describe("speakAgent", () => {
   });
 });
 
+describe("speakAgent — 빈 텍스트 방어", () => {
+  it("공백 문자열 입력 시 fetch 미호출", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    await speakAgent("   ", "F1", 7788, 1.2);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("splitByLanguage", () => {
   it("순수 한국어 → 구간 1개 (ko)", () => {
     const segs = splitByLanguage("리뷰어입니다.");
