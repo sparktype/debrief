@@ -1,6 +1,7 @@
 # TTS 상주 서버 — 모델 로딩과 추론을 동일한 워커 스레드에서 실행 (MLX GPU 스트림 요건)
 import os
 import glob
+import re
 import subprocess
 import tempfile
 
@@ -22,6 +23,101 @@ _work_queue: queue.Queue = queue.Queue(maxsize=1)
 _model_ready = threading.Event()
 _worker_thread: Optional[threading.Thread] = None
 
+# 한국어 TTS에서 발음이 부자연스러운 영문 기술 용어 → 한국어 발음 치환 사전
+_TECH_PHONETICS: dict[str, str] = {
+    # 프로토콜 / 통신
+    "HTTP": "에이치티티피",
+    "HTTPS": "에이치티티피에스",
+    "gRPC": "지알피씨",
+    "GRPC": "지알피씨",
+    "RPC": "알피씨",
+    "REST": "레스트",
+    "WebSocket": "웹소켓",
+    "WebSockets": "웹소켓",
+    "TCP": "티씨피",
+    "UDP": "유디피",
+    "TLS": "티엘에스",
+    "SSL": "에스에스엘",
+    "DNS": "디엔에스",
+    "IP": "아이피",
+    "IPv4": "아이피브이사",
+    "IPv6": "아이피브이육",
+    # 인증 / 보안
+    "API": "에이피아이",
+    "SDK": "에스디케이",
+    "JWT": "제이더블유티",
+    "OAuth": "오오스",
+    "SSO": "에스에스오",
+    "RBAC": "알백",
+    "MFA": "엠에프에이",
+    # 클라우드 / 인프라
+    "AWS": "에이더블유에스",
+    "GCP": "지씨피",
+    "K8s": "케이에이츠",
+    "CI": "씨아이",
+    "CD": "씨디",
+    "DevOps": "데브옵스",
+    "Docker": "도커",
+    "Kubernetes": "쿠버네티스",
+    "Helm": "헬름",
+    "OTel": "오텔",
+    "OTLP": "오티엘피",
+    "Prometheus": "프로메테우스",
+    "Grafana": "그라파나",
+    "Kafka": "카프카",
+    "Redis": "레디스",
+    "Nginx": "엔진엑스",
+    # AI / ML
+    "LLM": "엘엘엠",
+    "MLX": "엠엘엑스",
+    "TTS": "티티에스",
+    "STT": "에스티티",
+    "AI": "에이아이",
+    "ML": "엠엘",
+    "MCP": "엠씨피",
+    "RAG": "래그",
+    "GPU": "지피유",
+    "CPU": "씨피유",
+    "TPU": "티피유",
+    "OpenAI": "오픈에이아이",
+    "ChatGPT": "챗지피티",
+    "GPT": "지피티",
+    "Claude": "클로드",
+    # 데이터 형식
+    "JSON": "제이슨",
+    "YAML": "야믈",
+    "CSV": "씨에스브이",
+    "SQL": "에스큐엘",
+    "NoSQL": "노에스큐엘",
+    "XML": "엑스엠엘",
+    "gzip": "지집",
+    "Parquet": "파케이",
+    # 서비스 / 플랫폼
+    "GitHub": "깃허브",
+    "GitLab": "깃랩",
+    "Slack": "슬랙",
+    "Linux": "리눅스",
+    "macOS": "맥오에스",
+    "iOS": "아이오에스",
+    "Android": "안드로이드",
+}
+
+
+def _preprocess_for_tts(text: str) -> str:
+    """영문 기술 용어를 한국어 발음으로 치환 — lang_code=korean 시 발음 개선."""
+    def _replace(m: re.Match) -> str:
+        word = m.group(0)
+        if word in _TECH_PHONETICS:
+            return _TECH_PHONETICS[word]
+        # 대소문자 무관 매핑 (DOCKER → 도커)
+        for key, val in _TECH_PHONETICS.items():
+            if key.upper() == word.upper():
+                return val
+        return word
+
+    # 단어 경계 기준으로 치환 (한국어 조사 바로 앞 영문도 처리됨)
+    return re.sub(r"[A-Za-z][A-Za-z0-9\-/\.]*", _replace, text)
+
 
 def _tts_worker() -> None:
     """모델 로딩 + TTS 생성을 같은 스레드에서 처리 — MLX Metal 스트림 유지."""
@@ -38,6 +134,14 @@ def _tts_worker() -> None:
         if item is None:  # 종료 신호
             break
         text, voice, lang_code, speed = item
+
+        # 한국어 모드에서 영문 기술 용어 발음 보정
+        if lang_code == "korean":
+            processed = _preprocess_for_tts(text)
+            if processed != text:
+                print(f"[TTS Server] 발음 보정: {text[:60]!r} → {processed[:60]!r}", flush=True)
+            text = processed
+
         tmpdir = tempfile.mkdtemp(prefix="siren_tts_")
         try:
             print(f"[TTS Server] 재생 시작: {text[:40]!r} (speed={speed}x)", flush=True)
