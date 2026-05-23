@@ -80,7 +80,7 @@ fi
 # ── 5. supertonic 설치 (Supertonic 온디바이스 TTS) ─────────────────────────
 step "supertonic 설치"
 
-if "${PYTHON}" -c "import supertonic" &>/dev/null 2>&1; then
+if [ -f "${VENV_DIR}/bin/supertonic" ]; then
   ok "supertonic이 이미 설치되어 있습니다 — 스킵"
 else
   "${PIP}" install -q 'supertonic[serve]'

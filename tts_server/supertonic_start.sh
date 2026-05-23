@@ -20,5 +20,12 @@ fi
 
 nohup "$VENV_BIN/supertonic" serve --host 127.0.0.1 --port "$PORT" \
     > "$LOG_FILE" 2>&1 &
-echo $! > "$PID_FILE"
-echo "[Supertonic] 서버 시작 (PID $!, 포트 $PORT, 로그 $LOG_FILE)"
+BGPID=$!
+echo "$BGPID" > "$PID_FILE"
+sleep 1
+if ! kill -0 "$BGPID" 2>/dev/null; then
+    rm -f "$PID_FILE"
+    echo "[Supertonic] 서버 시작 실패. 로그를 확인하세요: $LOG_FILE" >&2
+    exit 1
+fi
+echo "[Supertonic] 서버 시작 (PID $BGPID, 포트 $PORT, 로그 $LOG_FILE)"
