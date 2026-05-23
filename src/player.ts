@@ -19,10 +19,12 @@ function ensureSpoolDir(): void {
 
 function enqueueSpool(tmpFile: string, speed: number): void {
   const ts = Date.now();
+  const rand = Math.random().toString(36).slice(2, 7);
+  const uid = `${ts}_${rand}`;
   const ext = tmpFile.split(".").pop() ?? "wav";
   ensureSpoolDir();
-  renameSync(tmpFile, `${SPOOL_DIR}/${ts}.${ext}`);
-  writeFileSync(`${SPOOL_DIR}/${ts}.meta`, String(speed));
+  renameSync(tmpFile, `${SPOOL_DIR}/${uid}.${ext}`);
+  writeFileSync(`${SPOOL_DIR}/${uid}.meta`, String(speed));
 }
 
 // ── 동시 발화 방지 (speak() 직접 재생 경로 전용) ────────────
@@ -33,6 +35,7 @@ const LOCK_WAIT_MS  = 25_000;
 async function withTTSLock<T>(fn: () => Promise<T>): Promise<T | undefined> {
   const deadline = Date.now() + LOCK_WAIT_MS;
   let acquired = false;
+  let delay = 100;
   while (!acquired) {
     try {
       const fd = openSync(TTS_LOCK_FILE, "wx");
@@ -47,7 +50,8 @@ async function withTTSLock<T>(fn: () => Promise<T>): Promise<T | undefined> {
         }
       } catch { /* ENOENT: 다음 루프에서 openSync 재시도 */ }
       if (Date.now() > deadline) return undefined; // 타임아웃 — 스킵
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, delay));
+      delay = Math.min(Math.floor(delay * 1.5), 1000);
     }
   }
   try {
