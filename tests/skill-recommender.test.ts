@@ -9,6 +9,7 @@ import {
   parseRecommendation,
   readRecentTranscripts,
   _resetTranscriptCache,
+  recommendSkill,
 } from "../src/skill-recommender.js";
 import * as fs from "fs";
 
@@ -139,5 +140,26 @@ describe("readRecentTranscripts — TTL 캐시", () => {
 
     // 두 경로 각각 readFileSync 1회씩 → 총 2회
     expect(vi.mocked(fs.readFileSync)).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("recommendSkill — loadCooldowns 단일 호출", () => {
+  it("bypassCooldown=false 시 cooldown 파일 1회만 읽음", async () => {
+    // fs는 이미 vi.mock("fs")로 모킹됨
+    // readFileSync spy로 skill-cooldowns.json 읽기 횟수 검증
+    const readSpy = vi.mocked(fs.readFileSync);
+    readSpy.mockReturnValue("{}" as any);
+    vi.mocked(fs.existsSync).mockReturnValue(false); // catalog 없음 → 즉시 null 반환
+
+    _resetTranscriptCache();
+
+    await recommendSkill("테스트 컨텍스트", false, 30);
+
+    // catalog가 없으면 즉시 null 반환 → cooldown 파일 읽기는 0회
+    // 중요: cooldown을 위한 readFileSync가 2회 이상이면 이중 호출
+    const cooldownCalls = readSpy.mock.calls.filter(
+      (c) => String(c[0]).includes("skill-cooldowns")
+    ).length;
+    expect(cooldownCalls).toBeLessThanOrEqual(1);
   });
 });

@@ -155,6 +155,9 @@ export async function recommendSkill(
   const catalog = loadCatalog();
   if (catalog.length === 0 || !context.trim()) return null;
 
+  // cooldown을 한 번만 읽는다 — bypassCooldown이면 빈 객체 사용
+  const cooldowns = bypassCooldown ? {} : loadCooldowns();
+
   const skillsText = catalog.map((s) => `- ${s.skill}: ${s.description}`).join("\n");
   const prompt =
     `다음은 Claude Code 대화 히스토리 일부입니다:\n<transcript>\n${context}\n</transcript>\n\n` +
@@ -176,7 +179,7 @@ export async function recommendSkill(
     const rec = parseRecommendation(raw, catalog);
     if (!rec) return null;
 
-    if (!bypassCooldown && isInCooldown(rec.skill, loadCooldowns(), cooldownMinutes)) return null;
+    if (!bypassCooldown && isInCooldown(rec.skill, cooldowns, cooldownMinutes)) return null;
 
     return rec;
   } catch {
