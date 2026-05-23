@@ -50,7 +50,7 @@ _supertonic_running() {
 }
 
 _player_running() {
-  [ -f "$PLAYER_PID_FILE" ] && kill -0 "$(cat "$PLAYER_PID_FILE")" 2>/dev/null
+  pgrep -f "tts_player.sh" > /dev/null 2>&1
 }
 
 _start_player() {

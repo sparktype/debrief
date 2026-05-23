@@ -11,6 +11,13 @@ mkdir -p "$SPOOL"
 echo $$ > "$PID_FILE"
 trap 'rm -f "$PID_FILE"' EXIT
 
+# 자신($$)을 제외한 동일 스크립트 실행 중이면 즉시 종료
+EXISTING=$(pgrep -f "tts_player.sh" 2>/dev/null | grep -v "^$$\$" || true)
+if [[ -n "$EXISTING" ]]; then
+  echo "[TTS Player] 이미 실행 중 (PID $EXISTING) — 중복 실행 방지"
+  exit 0
+fi
+
 echo "[TTS Player] 시작 (PID $$, 스풀: $SPOOL)"
 
 MAX_AGE_SECS=300   # 5분
