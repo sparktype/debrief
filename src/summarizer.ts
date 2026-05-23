@@ -29,8 +29,16 @@ function fallback(text: string, sentenceCount = 3): string {
   return sentences.slice(-sentenceCount).join(" ");
 }
 
+// 발음할 수 없는 문자 제거 — 한글·영문·숫자·기본 구두점만 허용
+function sanitizeForSpeech(text: string): string {
+  return text
+    .replace(/[^\p{L}\p{N}\s,.。:]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const ONE_LINER_PROMPT =
-  "작업 결과를 한 문장(25자 이내)으로 요약하세요. 마침표 없이, 간결하게.";
+  "작업 결과를 한 문장(25자 이내)으로 요약하세요. 마침표·특수기호 없이, 간결하게.";
 
 export async function extractOneLiner(text: string, model = "gpt-5.4"): Promise<string> {
   if (!text.trim()) return "";
@@ -45,9 +53,10 @@ export async function extractOneLiner(text: string, model = "gpt-5.4"): Promise<
       max_completion_tokens: 60,
       temperature: 0.3,
     });
-    return resp.choices[0]?.message?.content?.trim() || fallback(text, 1);
+    const raw = resp.choices[0]?.message?.content?.trim() || fallback(text, 1);
+    return sanitizeForSpeech(raw);
   } catch {
-    return fallback(text, 1);
+    return sanitizeForSpeech(fallback(text, 1));
   }
 }
 
