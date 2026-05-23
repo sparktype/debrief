@@ -1,5 +1,5 @@
 // LLM 기반 텍스트 요약기 — 사내 HUB OpenAI endpoint 사용, 실패 시 규칙 기반 폴백
-import { makeHubClient } from "./llm-client.js";
+import { makeHubClient, getDefaultModel } from "./llm-client.js";
 
 const SYSTEM_PROMPT =
   "주어진 텍스트의 핵심 결론이나 중요한 내용을 1~3문장으로 요약하세요. " +
@@ -40,7 +40,7 @@ function sanitizeForSpeech(text: string): string {
 const ONE_LINER_PROMPT =
   "작업 결과를 한 문장(25자 이내)으로 요약하세요. 마침표·특수기호 없이, 간결하게.";
 
-export async function extractOneLiner(text: string, model = "gpt-5.4"): Promise<string> {
+export async function extractOneLiner(text: string, model = getDefaultModel()): Promise<string> {
   if (!text.trim()) return "";
   try {
     const client = makeHubClient();
@@ -60,7 +60,7 @@ export async function extractOneLiner(text: string, model = "gpt-5.4"): Promise<
   }
 }
 
-export async function extractSummary(text: string, model = "gpt-5.4"): Promise<string> {
+export async function extractSummary(text: string, model = getDefaultModel()): Promise<string> {
   if (!text.trim()) return "";
   try {
     const client = makeHubClient();
