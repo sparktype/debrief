@@ -16,11 +16,12 @@ export interface SirenConfig {
   ttsSpeed: number;
   ttsInstruct: string;
   skillCooldownMinutes: number;
+  supertonicPort: number;
 }
 
 const DEFAULTS: SirenConfig = {
   autoSpeak: true,
-  minChars: 50,
+  minChars: 200,
   voice: "Sohee",
   summaryModel: "gpt-5.4",
   ttsModel: "tts-1",
@@ -28,6 +29,7 @@ const DEFAULTS: SirenConfig = {
   ttsSpeed: 1.2,
   ttsInstruct: "밝고 활기차게 말해주세요",
   skillCooldownMinutes: 30,
+  supertonicPort: 7788,
 };
 
 export function loadConfig(path?: string): SirenConfig {
