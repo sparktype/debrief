@@ -16,6 +16,8 @@ LAUNCHD_LABEL="com.summary-voice-mcp.tts-server"
 
 # ── TTS 서버 설정 ──────────────────────────────────────────
 TTS_PORT=7777
+SUPERTONIC_PORT=7788
+SUPERTONIC_PID_FILE="$SCRIPT_DIR/.supertonic.pid"
 
 # ── 환경변수 ───────────────────────────────────────────────
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
@@ -40,6 +42,10 @@ fi
 
 _tts_running() {
   lsof -iTCP:${TTS_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
+}
+
+_supertonic_running() {
+  [ -f "$SUPERTONIC_PID_FILE" ] && kill -0 "$(cat "$SUPERTONIC_PID_FILE")" 2>/dev/null
 }
 
 _is_launchd_managed() {
@@ -153,6 +159,23 @@ do_status() {
     echo "  TTS 서버:  ✗ 중지됨"
   fi
 
+  # Supertonic 서버 확인
+  if _supertonic_running; then
+    local st_pid
+    st_pid=$(cat "$SUPERTONIC_PID_FILE")
+    echo "  Supertonic: ✓ 실행 중 (PID: $st_pid, 포트 ${SUPERTONIC_PORT})"
+    local st_code
+    st_code=$(curl -s -o /dev/null -w "%{http_code}" \
+      --connect-timeout 2 "http://127.0.0.1:${SUPERTONIC_PORT}/health" 2>/dev/null)
+    if [[ "$st_code" == "200" ]]; then
+      echo "  ST HTTP:    ✓ /health 응답 정상"
+    else
+      echo "  ST HTTP:    △ /health 미응답 (모델 로딩 중이거나 오류)"
+    fi
+  else
+    echo "  Supertonic: ✗ 중지됨"
+  fi
+
   # Stop hook 등록 확인
   local hook_registered=false
   if [[ -f "$SETTINGS_JSON" ]]; then
@@ -237,7 +260,33 @@ else:
     print("  ✓ Stop hook 등록 완료")
 PYEOF
 
-  # 2. TTS LaunchAgent 등록 (수동 실행 서버 종료 후)
+  # 2. SubagentStop hook 등록
+  echo "SubagentStop hook 등록 중..."
+  SUBAGENT_HOOK_CMD="$SCRIPT_DIR/hooks/subagent-stop.sh"
+  python3 - "$SETTINGS_JSON" "$SUBAGENT_HOOK_CMD" << 'PYEOF'
+import json, sys
+settings_path, hook_cmd = sys.argv[1], sys.argv[2]
+with open(settings_path) as f:
+    d = json.load(f)
+hooks = d.setdefault("hooks", {})
+stop_list = hooks.setdefault("SubagentStop", [])
+if any(hook_cmd in str(h) for h in stop_list):
+    print("  SubagentStop hook 이미 등록됨 — 스킵")
+else:
+    stop_list.append({
+        "matcher": "",
+        "hooks": [{"type": "command", "command": hook_cmd, "timeout": 15}]
+    })
+    with open(settings_path, "w") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+    print("  ✓ SubagentStop hook 등록 완료")
+PYEOF
+
+  # 3. Supertonic 서버 시작
+  echo "Supertonic 서버 시작 중..."
+  bash "$SCRIPT_DIR/tts_server/supertonic_start.sh"
+
+  # 4. TTS LaunchAgent 등록 (수동 실행 서버 종료 후)
   if _tts_running && ! _is_launchd_managed; then
     echo "수동 실행 TTS 서버 종료 중..."
     do_stop
@@ -345,6 +394,33 @@ if len(d["hooks"]["Stop"]) < before:
 else:
     print("  Stop hook이 등록되지 않았습니다.")
 PYEOF
+  fi
+
+  # SubagentStop hook 제거
+  echo "SubagentStop hook 제거 중..."
+  SUBAGENT_HOOK_CMD="$SCRIPT_DIR/hooks/subagent-stop.sh"
+  if [[ -f "$SETTINGS_JSON" ]]; then
+    python3 - "$SETTINGS_JSON" "$SUBAGENT_HOOK_CMD" << 'PYEOF'
+import json, sys
+settings_path, hook_cmd = sys.argv[1], sys.argv[2]
+with open(settings_path) as f:
+    d = json.load(f)
+sub = d.get("hooks", {}).get("SubagentStop", [])
+before = len(sub)
+d["hooks"]["SubagentStop"] = [h for h in sub if hook_cmd not in str(h)]
+if len(d["hooks"]["SubagentStop"]) < before:
+    with open(settings_path, "w") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+    print("  ✓ SubagentStop hook 제거 완료")
+else:
+    print("  SubagentStop hook이 등록되지 않았습니다.")
+PYEOF
+  fi
+
+  # Supertonic 서버 종료
+  if _supertonic_running; then
+    echo "Supertonic 서버 종료 중..."
+    bash "$SCRIPT_DIR/tts_server/supertonic_stop.sh"
   fi
 
   # TTS 서버 종료 + LaunchAgent 제거
