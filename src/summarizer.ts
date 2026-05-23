@@ -1,23 +1,9 @@
 // LLM 기반 텍스트 요약기 — 사내 HUB OpenAI endpoint 사용, 실패 시 규칙 기반 폴백
-import OpenAI from "openai";
-
-const HUB_BASE_URL = process.env.HUB_BASE_URL ?? "https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3";
-const HUB_API_KEY  = process.env.HUB_API_KEY  ?? "";
-const HUB_PROJECT_ID = process.env.HUB_PROJECT_ID ?? "";
+import { makeHubClient } from "./llm-client.js";
 
 const SYSTEM_PROMPT =
   "주어진 텍스트의 핵심 결론이나 중요한 내용을 1~3문장으로 요약하세요. " +
   "코드·마크다운 기호 없이 자연스러운 한국어 평문으로 작성합니다.";
-
-function makeClient(model: string): OpenAI {
-  const extraHeaders: Record<string, string> = {};
-  if (HUB_PROJECT_ID) extraHeaders["X-Project-Id"] = HUB_PROJECT_ID;
-  return new OpenAI({
-    apiKey: HUB_API_KEY,
-    baseURL: `${HUB_BASE_URL}/openai/deployments/${model}`,
-    defaultHeaders: extraHeaders,
-  });
-}
 
 function stripMarkdown(text: string): string {
   return text
@@ -46,7 +32,7 @@ function fallback(text: string, sentenceCount = 3): string {
 export async function extractSummary(text: string, model = "gpt-5.4"): Promise<string> {
   if (!text.trim()) return "";
   try {
-    const client = makeClient(model);
+    const client = makeHubClient();
     const resp = await client.chat.completions.create({
       model,
       messages: [

@@ -18,11 +18,22 @@ const FALLBACK_MAP: VoiceMap = {
   categories: {},
 };
 
+function isValidVoiceMap(obj: unknown): obj is VoiceMap {
+  return (
+    typeof obj === "object" && obj !== null &&
+    "supertonic" in obj &&
+    typeof (obj as any).supertonic?.port === "number" &&
+    "voices" in obj && "categories" in obj
+  );
+}
+
 export function loadVoiceMap(path?: string): VoiceMap {
   const target = path ?? DEFAULT_VOICE_MAP_PATH;
   if (!existsSync(target)) return { ...FALLBACK_MAP };
   try {
-    return JSON.parse(readFileSync(target, "utf-8")) as VoiceMap;
+    const parsed = JSON.parse(readFileSync(target, "utf-8"));
+    if (!isValidVoiceMap(parsed)) return { ...FALLBACK_MAP };
+    return parsed;
   } catch {
     return { ...FALLBACK_MAP };
   }

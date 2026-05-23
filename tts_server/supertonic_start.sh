@@ -39,4 +39,6 @@ for i in $(seq 1 30); do
     fi
     sleep 1
 done
-echo "[Supertonic] 경고: 30초 내 /health 응답 없음 (모델 로딩 중이거나 오류). 계속 진행합니다." >&2
+echo "[Supertonic] 서버 시작 실패 — PID 파일 제거" >&2
+rm -f "$PID_FILE"
+exit 1

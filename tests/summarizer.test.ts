@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("openai", () => {
   const mockCreate = vi.fn().mockResolvedValue({
@@ -15,11 +15,15 @@ vi.mock("openai", () => {
 import { extractSummary } from "../src/summarizer.js";
 import OpenAI from "openai";
 
-afterEach(() => vi.clearAllMocks());
+// 각 테스트 시작 전 mock 호출 이력 초기화
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function getMockCreate() {
   const instance = vi.mocked(OpenAI).mock.results[0]?.value;
-  return instance?.chat.completions.create as ReturnType<typeof vi.fn>;
+  if (!instance) throw new Error("OpenAI mock 인스턴스 생성 실패 — extractSummary 호출 후 사용해야 합니다");
+  return instance.chat.completions.create as ReturnType<typeof vi.fn>;
 }
 
 describe("extractSummary — LLM 경로", () => {

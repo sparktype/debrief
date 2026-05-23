@@ -237,7 +237,7 @@ describe("speakAgent", () => {
     expect(unlinkSync).toHaveBeenCalled();
   });
 
-  it("Supertonic 서버가 없으면 기존 speak()로 폴백한다", async () => {
+  it("Supertonic 서버가 없으면(ECONNREFUSED) 기존 speak()로 폴백한다", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
     const spawnMock = vi.fn().mockImplementation((_cmd: string, args: string[]) => {
@@ -251,5 +251,42 @@ describe("speakAgent", () => {
 
     await speakAgent("테스트", "M2", 7788, 1.2);
     expect(spawnMock).toHaveBeenCalled();
+  });
+
+  it("Supertonic 서버 응답 없음(500ms 타임아웃) → speak()로 폴백한다", async () => {
+    vi.useFakeTimers();
+    // EdgeTTS·MLX 건너뜀 → say 폴백까지 즉시 진행
+    (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    // Supertonic health(7788): AbortSignal을 존중하는 hanging fetch
+    // 그 외 fetch(HTTP TTS 서버 7777 등): 즉시 거부
+    global.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if ((url as string).includes("7788")) {
+        return new Promise<Response>((_, reject) => {
+          opts?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("The operation was aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.reject(new Error("ECONNREFUSED"));
+    });
+
+    const spawnMock = vi.fn().mockImplementation(() => {
+      const proc = { on: vi.fn() } as any;
+      proc.on.mockImplementation((event: string, cb: Function) => {
+        if (event === "close") cb(0);
+      });
+      return proc;
+    });
+    vi.mocked(cp.spawn).mockImplementation(spawnMock);
+
+    const promise = speakAgent("타임아웃 테스트", "M2", 7788, 1.2);
+    // 500ms 타임아웃 + 여유 100ms 전진 → AbortController 발동
+    await vi.advanceTimersByTimeAsync(600);
+    await promise;
+
+    vi.useRealTimers();
+    // say 폴백이 실제로 호출됐는지 검증
+    expect(spawnMock).toHaveBeenCalledWith("say", ["타임아웃 테스트"]);
   });
 });

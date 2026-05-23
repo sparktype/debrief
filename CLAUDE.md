@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 팀 정보
+
+**팀**: 개발생산성본부  
+**오너**: 박상선 책임매니저  
+**리포**: github.com/sparktype/summary-voice-mcp
+
+작업 진행 시 Supertonic 서버(`./tts_server/supertonic_start.sh`)를 켜두면 에이전트별 다성 TTS가 활성화됩니다.  
+에이전트 타입 → 목소리 매핑은 `voice-map.json`에서 편집하며, 코드 변경 없이 JSON만 수정하면 됩니다.
+
 ## 프로젝트 개요
 
 Claude Code의 응답을 자동으로 음성으로 읽어주는 MCP 서버. 두 개의 독립적인 프로세스로 구성된다.
@@ -43,22 +52,42 @@ npx vitest run tests/player.test.ts  # 파일 단위 실행
 ```
 Claude 응답 완료
   → Stop hook (hooks/stop.sh)
-    → node dist/index.js hook "<텍스트>"  # hook CLI 모드
+    → node dist/index.js hook  # stdin으로 텍스트 전달
       → extractSummary() (summarizer.ts)  # HMG LLM API → 규칙 기반 폴백
       → speak() (player.ts)
-          ├─ HTTP: http://localhost:7777/speak  ← TTS 상주 서버 (우선)
+          ├─ Edge TTS: edge-tts Python → /tmp/siren_edge_*.mp3 (온라인, 10초 타임아웃)
+          ├─ HTTP: http://localhost:7777/speak  ← TTS 상주 서버
           ├─ MLX subprocess: tts-venv/bin/python3 -m mlx_audio.tts.generate
           └─ macOS say: 최후 폴백
+
+서브에이전트 응답 완료
+  → SubagentStop hook (hooks/subagent-stop.sh)
+    → transcript.jsonl 역방향 파싱 → subagent_type 추출
+    → node dist/index.js subagent-stop  # stdin + agentType 인수
+      → resolveVoice(agentType) (voice-router.ts)  # voice-map.json → voice ID
+      → extractSummary() → speakAgent() (player.ts)
+          ├─ Supertonic: localhost:7788 → WAV → afplay (에이전트별 다성)
+          └─ 실패 시 speak() 폴백 체인
+
+세션 시작 / 프롬프트 입력
+  → SessionStart / UserPromptSubmit hook
+    → node dist/index.js hook-suggest
+      → readRecentTranscripts() → recommendSkill() (skill-recommender.ts)
+      → speak() 로 스킬 음성 추천
 ```
 
 ### 파일별 역할
 
 | 파일 | 역할 |
 |------|------|
-| `src/index.ts` | MCP 서버 진입점 + hook CLI 분기 |
+| `src/index.ts` | MCP 서버 진입점 + hook / subagent-stop / hook-suggest CLI 분기 |
 | `src/config.ts` | `.siren.json` 로더, 기본값 관리 |
-| `src/player.ts` | 3단계 폴백 TTS 재생 (HTTP → MLX → say) |
+| `src/player.ts` | 4단계 폴백 TTS 재생 (Edge TTS → HTTP → MLX → say) |
 | `src/summarizer.ts` | LLM 요약 (HMG Hub API) + 규칙 기반 폴백 |
+| `src/voice-router.ts` | agentType → 카테고리 → Supertonic voice ID 변환 |
+| `src/skill-recommender.ts` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
+| `src/last-message-store.ts` | 마지막 TTS 텍스트 파일 영속화 (`speak_last` 지원) |
+| `src/llm-client.ts` | HMG Hub LLM 클라이언트 공통 모듈 |
 | `tts_server/server.py` | FastAPI TTS 서버 — 단일 워커 스레드로 MLX 모델 실행 |
 
 ### TTS 서버 설계 포인트
@@ -89,6 +118,8 @@ Claude 응답 완료
 | `HUB_API_KEY` | HMG Hub API 키 |
 | `HUB_PROJECT_ID` | Hub 프로젝트 ID (X-Project-Id 헤더) |
 | `HF_HUB_OFFLINE` | `1` 고정 — 런타임 HuggingFace 다운로드 차단 |
+| `SIREN_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: `~/.local/share/summary-voice-mcp`) |
+| `SIREN_OFFLINE` | `1` 설정 시 Edge TTS 건너뛰고 MLX 서버부터 시도 |
 
 ### MLX 내장 스피커
 
@@ -102,7 +133,9 @@ Claude 응답 완료
 |------|------|
 | `speak_text` | 텍스트를 그대로 음성 재생 |
 | `summarize_and_speak` | LLM 요약 후 음성 재생 |
+| `speak_last` | 마지막으로 재생한 텍스트 다시 재생 |
 | `set_config` | 런타임 설정 변경 (`autoSpeak`, `minChars`, `ttsInstruct`) |
+| `suggest_skill` | 대화 맥락 분석 후 적합한 스킬 음성 추천 (쿨다운 무시) |
 
 ## Claude Code 연동 (`.claude/settings.json`)
 

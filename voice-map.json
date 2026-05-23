@@ -27,7 +27,7 @@
       "build-error-resolver", "dart-build-resolver", "rust-build-resolver",
       "go-build-resolver", "kotlin-build-resolver", "swift-build-resolver",
       "cpp-build-resolver", "java-build-resolver", "tdd-guide",
-      "gan-generator", "multi-execute"
+      "gan-generator", "multi-execute", "doc-updater", "refactor-cleaner"
     ],
     "explorer": [
       "Explore", "code-explorer", "general-purpose",

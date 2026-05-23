@@ -2,6 +2,7 @@
 import os
 import glob
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -165,9 +166,7 @@ def _tts_worker() -> None:
         except Exception as e:
             print(f"[TTS Server] 재생 오류: {e}", flush=True)
         finally:
-            for f in glob.glob(f"{tmpdir}/*"):
-                os.unlink(f)
-            os.rmdir(tmpdir)
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @asynccontextmanager

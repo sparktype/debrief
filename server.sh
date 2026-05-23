@@ -31,9 +31,9 @@ export LLM_MODEL="${LLM_MODEL:-gpt-5.4}"
 if [[ -z "${HUB_API_KEY:-}" ]]; then
   for _rc in "$HOME/.zshenv.local" "$HOME/.zshrc.local" "$HOME/.zshenv"; do
     if [[ -f "$_rc" ]]; then
-      _val=$(grep -E "^export HUB_API_KEY=" "$_rc" 2>/dev/null \
-        | sed "s/^export HUB_API_KEY=[\"']*//" | sed "s/[\"']*$//" || true)
-      [[ -n "$_val" ]] && export HUB_API_KEY="$_val" && break
+      # shellcheck disable=SC1090
+      set -a; source "$_rc" 2>/dev/null || true; set +a
+      [[ -n "${HUB_API_KEY:-}" ]] && break
     fi
   done
 fi
@@ -125,7 +125,6 @@ do_stop() {
 
 do_restart() {
   do_stop
-  sleep 1
   _do_build
   do_start
 }

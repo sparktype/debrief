@@ -3,13 +3,10 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { homedir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import OpenAI from "openai";
+import { makeHubClient, getDefaultModel } from "./llm-client.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const HUB_BASE_URL = process.env.HUB_BASE_URL ?? "https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3";
-const HUB_API_KEY  = process.env.HUB_API_KEY  ?? "";
-const HUB_PROJECT_ID = process.env.HUB_PROJECT_ID ?? "";
 const CATALOG_FILE = join(__dirname, "..", "skills-catalog.json");
 
 function getDataDir(): string {
@@ -133,8 +130,10 @@ export function isInCooldown(
 export async function recommendSkill(
   context: string,
   bypassCooldown = false,
-  cooldownMinutes = 30
+  cooldownMinutes = 30,
+  model?: string
 ): Promise<Recommendation | null> {
+  const resolvedModel = model ?? getDefaultModel();
   const catalog = loadCatalog();
   if (catalog.length === 0 || !context.trim()) return null;
 
@@ -147,16 +146,9 @@ export async function recommendSkill(
     `{"skill": "<스킬명>", "reason": "<한 문장 이유>"}`;
 
   try {
-    const extraHeaders: Record<string, string> = {};
-    if (HUB_PROJECT_ID) extraHeaders["X-Project-Id"] = HUB_PROJECT_ID;
-    const client = new OpenAI({
-      apiKey: HUB_API_KEY,
-      baseURL: `${HUB_BASE_URL}/openai/deployments/gpt-5.4`,
-      defaultHeaders: extraHeaders,
-    });
-
+    const client = makeHubClient();
     const resp = await client.chat.completions.create({
-      model: "gpt-5.4",
+      model: resolvedModel,
       messages: [{ role: "user", content: prompt }],
       max_completion_tokens: 100,
       temperature: 0.2,

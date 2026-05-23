@@ -1,5 +1,5 @@
 // EdgeTTS(온라인 우선) → HTTP TTS 서버 → MLX subprocess → macOS say 순서로 음성 재생
-import { spawn } from "child_process";
+import { spawn, SpawnOptions } from "child_process";
 import { existsSync, unlinkSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -65,6 +65,9 @@ async function speakHTTP(text: string, voice: string, speed: number, instruct: s
       body: JSON.stringify({ text, voice, lang_code: "korean", speed, instruct }),
       signal: ctrl.signal,
     });
+    if (res.status === 429) {
+      return; // 이미 재생 중 — 스킵
+    }
     if (!res.ok) throw new Error(`TTS 서버 응답 오류: ${res.status}`);
   } finally {
     clearTimeout(timer);
@@ -105,9 +108,9 @@ function speakSay(text: string, voice: string): Promise<void> {
   });
 }
 
-function spawnPromise(cmd: string, args: string[], opts?: object): Promise<void> {
+function spawnPromise(cmd: string, args: string[], opts?: SpawnOptions): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = opts ? spawn(cmd, args, opts as any) : spawn(cmd, args);
+    const proc = spawn(cmd, args, opts ?? {});
     proc.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`${cmd} 실패: exit ${code}`));
@@ -119,15 +122,32 @@ function spawnPromise(cmd: string, args: string[], opts?: object): Promise<void>
 async function speakEdge(text: string, voice: string, speed: number): Promise<void> {
   const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-HyunsuMultilingualNeural";
   const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
-  // 타임아웃은 네트워크 생성 단계에만 — 재생은 완료까지 기다림
-  await Promise.race([
-    spawnPromise(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)
-    ),
-  ]);
-  await spawnPromise("afplay", ["-r", String(speed), outFile]);
-  try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
+  // proc을 outer scope에 선언해 타임아웃 시 kill 가능하도록
+  let proc: ReturnType<typeof spawn> | undefined;
+  const edgePromise = new Promise<void>((resolve, reject) => {
+    proc = spawn(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
+    proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
+    proc.on("error", reject);
+  });
+  try {
+    await Promise.race([
+      edgePromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (e) {
+    // 타임아웃 또는 오류 시 orphan 프로세스 종료 + 임시 파일 삭제
+    proc?.kill();
+    try { unlinkSync(outFile); } catch { /* 무시 */ }
+    throw e;
+  }
+  // 재생은 완료까지 기다림
+  try {
+    await spawnPromise("afplay", ["-r", String(speed), outFile]);
+  } finally {
+    try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
+  }
 }
 
 function speakSubprocess(text: string, voice: string, speed: number, instruct: string): Promise<void> {
@@ -149,7 +169,7 @@ async function isSupertonicAlive(port: number): Promise<boolean> {
   }
 }
 
-async function speakSupertonic(text: string, voice: string, port: number): Promise<void> {
+async function speakSupertonic(text: string, voice: string, port: number, speed: number): Promise<void> {
   const outFile = `/tmp/siren_supertonic_${Date.now()}.wav`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
@@ -168,7 +188,7 @@ async function speakSupertonic(text: string, voice: string, port: number): Promi
     if (!res.ok) throw new Error(`Supertonic 응답 오류: ${res.status}`);
     const buf = await res.arrayBuffer();
     writeFileSync(outFile, Buffer.from(buf));
-    await spawnPromise("afplay", [outFile]);
+    await spawnPromise("afplay", ["-r", String(speed), outFile]);
   } finally {
     clearTimeout(timer);
     try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
@@ -183,7 +203,7 @@ export async function speakAgent(
 ): Promise<void> {
   if (await isSupertonicAlive(port)) {
     try {
-      await speakSupertonic(text, supertonicVoice, port);
+      await speakSupertonic(text, supertonicVoice, port, speed);
       saveLastMessage(text);
       return;
     } catch {
@@ -194,8 +214,9 @@ export async function speakAgent(
 }
 
 export async function speak(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
-  // 1. EdgeTTS (온라인 우선, tts-venv에 edge-tts 설치 필요)
-  if (existsSync(MLX_PYTHON)) {
+  // 1. EdgeTTS (온라인 우선, tts-venv에 edge-tts 설치 필요, SIREN_OFFLINE=1이면 건너뜀)
+  const skipEdge = process.env.SIREN_OFFLINE === "1";
+  if (!skipEdge && existsSync(MLX_PYTHON)) {
     try {
       await speakEdge(text, voice, speed);
       saveLastMessage(text);
