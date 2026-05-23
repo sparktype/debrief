@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 import { existsSync, unlinkSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { saveLastMessage } from "./last-message-store.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MLX_PYTHON = join(__dirname, "..", "tts-venv", "bin", "python3");
 const MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit";
@@ -113,18 +114,16 @@ function spawnPromise(cmd, args, opts) {
 async function speakEdge(text, voice, speed) {
     const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-SunHiNeural";
     const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
-    const edgePromise = (async () => {
-        await spawnPromise(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
-        await spawnPromise("afplay", ["-r", String(speed), outFile]);
-        try {
-            unlinkSync(outFile);
-        }
-        catch { /* 임시 파일 정리 실패 무시 */ }
-    })();
+    // 타임아웃은 네트워크 생성 단계에만 — 재생은 완료까지 기다림
     await Promise.race([
-        edgePromise,
+        spawnPromise(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]),
         new Promise((_, reject) => setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)),
     ]);
+    await spawnPromise("afplay", ["-r", String(speed), outFile]);
+    try {
+        unlinkSync(outFile);
+    }
+    catch { /* 임시 파일 정리 실패 무시 */ }
 }
 function speakSubprocess(text, voice, speed, instruct) {
     if (MLX_SPEAKERS.has(voice) && existsSync(MLX_PYTHON)) {
@@ -137,6 +136,7 @@ export async function speak(text, voice = "", speed = 1.2, instruct = "") {
     if (existsSync(MLX_PYTHON)) {
         try {
             await speakEdge(text, voice, speed);
+            saveLastMessage(text);
             return;
         }
         catch {
@@ -147,6 +147,7 @@ export async function speak(text, voice = "", speed = 1.2, instruct = "") {
     if (await isTTSServerAlive()) {
         try {
             await speakHTTP(text, voice, speed, instruct);
+            saveLastMessage(text);
             return;
         }
         catch {
@@ -154,5 +155,6 @@ export async function speak(text, voice = "", speed = 1.2, instruct = "") {
         }
     }
     // 3. MLX subprocess → 4. macOS say
-    return speakSubprocess(text, voice, speed, instruct);
+    await speakSubprocess(text, voice, speed, instruct);
+    saveLastMessage(text);
 }
