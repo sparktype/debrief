@@ -7,7 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig, SirenConfig } from "./config.js";
 import { extractSummary } from "./summarizer.js";
-import { speak } from "./player.js";
+import { speak, speakAgent } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
 
@@ -20,6 +20,19 @@ if (process.argv[2] === "hook") {
   if (text.length >= config.minChars) {
     const summary = await extractSummary(text, config.summaryModel);
     await speak(summary, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {}); // silent fail
+  }
+  process.exit(0);
+}
+
+if (process.argv[2] === "subagent-stop") {
+  const text = process.argv[3] ?? "";
+  const agentType = process.argv[4] ?? "";
+  if (text.length >= config.minChars) {
+    const { loadVoiceMap, resolveVoice } = await import("./voice-router.js");
+    const voiceMap = loadVoiceMap();
+    const voice = resolveVoice(agentType, voiceMap);
+    const summary = await extractSummary(text, config.summaryModel);
+    await speakAgent(summary, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => {});
   }
   process.exit(0);
 }
