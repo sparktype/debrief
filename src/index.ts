@@ -10,6 +10,9 @@ import { extractSummary, extractOneLiner } from "./summarizer.js";
 import { speak, speakAgent, speakHook } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 
 let config: SirenConfig = loadConfig();
 
@@ -69,7 +72,7 @@ if (process.argv[2] === "hook-suggest") {
 
 // ── MCP 서버 모드 ──────────────────────────────────────────
 const server = new Server(
-  { name: "summary-voice-mcp", version: "0.1.0" },
+  { name: "summary-voice-mcp", version },
   { capabilities: { tools: {} } }
 );
 
