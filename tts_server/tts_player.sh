@@ -13,6 +13,31 @@ trap 'rm -f "$PID_FILE"' EXIT
 
 echo "[TTS Player] 시작 (PID $$, 스풀: $SPOOL)"
 
+MAX_AGE_SECS=300   # 5분
+MAX_FILES=10
+
+_cleanup_stale() {
+  # 5분 초과 오디오 파일 삭제
+  find "$SPOOL" \( -name "*.wav" -o -name "*.mp3" \) -mmin +$(( MAX_AGE_SECS / 60 )) -delete 2>/dev/null || true
+  # meta 파일도 정리 (대응 오디오 없는 고아)
+  find "$SPOOL" -name "*.meta" -mmin +$(( MAX_AGE_SECS / 60 )) -delete 2>/dev/null || true
+
+  # 파일 수 제한
+  local files
+  files=($(ls -1 "$SPOOL"/*.wav "$SPOOL"/*.mp3 2>/dev/null | sort || true))
+  local count=${#files[@]}
+  if (( count > MAX_FILES )); then
+    local excess=$(( count - MAX_FILES ))
+    for f in "${files[@]:0:$excess}"; do
+      rm -f "$f" "${f%.*}.meta"
+    done
+  fi
+}
+
+# 데몬 시작 시 한 번 실행
+_cleanup_stale
+echo "[TTS Player] 스풀 정리 완료"
+
 idle_count=0
 
 while true; do

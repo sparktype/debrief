@@ -52,3 +52,67 @@ class TestStructuredLog:
         captured = capsys.readouterr()
         import re
         assert re.search(r"\d{4}-\d{2}-\d{2}", captured.out)
+
+
+import os
+import time
+import tempfile
+import subprocess
+
+
+class TestSpoolCleanup:
+    def test_old_files_removed_on_start(self, tmp_path):
+        """데몬 시작 시 5분 초과 파일이 삭제되어야 한다."""
+        spool = tmp_path / "tts-spool"
+        spool.mkdir()
+
+        # 6분 전 파일 생성
+        old_file = spool / "1000000.wav"
+        old_file.write_bytes(b"old")
+        old_time = time.time() - 360  # 6분 전
+        os.utime(str(old_file), (old_time, old_time))
+
+        # 최신 파일 생성
+        new_file = spool / "9999999.wav"
+        new_file.write_bytes(b"new")
+
+        # bash 스크립트 내 _cleanup_stale 로직을 직접 실행
+        result = subprocess.run(
+            ["bash", "-c", f"""
+SPOOL="{spool}"
+MAX_AGE=300
+find "$SPOOL" \\( -name "*.wav" -o -name "*.mp3" \\) -mmin +$((MAX_AGE/60)) -delete 2>/dev/null || true
+"""],
+            capture_output=True
+        )
+        assert result.returncode == 0
+        assert not old_file.exists(), "6분 전 파일이 삭제되어야 함"
+        assert new_file.exists(), "최신 파일은 유지되어야 함"
+
+    def test_max_10_files_enforced(self, tmp_path):
+        """스풀에 파일이 10개 초과 시 오래된 것이 제거되어야 한다."""
+        spool = tmp_path / "tts-spool"
+        spool.mkdir()
+
+        # 12개 파일 생성 (epoch_ms 기준 오름차순)
+        for i in range(12):
+            (spool / f"{1000 + i}.wav").write_bytes(b"x")
+
+        result = subprocess.run(
+            ["bash", "-c", f"""
+SPOOL="{spool}"
+MAX_FILES=10
+files=($(ls -1 "$SPOOL"/*.wav "$SPOOL"/*.mp3 2>/dev/null | sort))
+count=${{#files[@]}}
+if (( count > MAX_FILES )); then
+  excess=$(( count - MAX_FILES ))
+  for f in "${{files[@]:0:$excess}}"; do
+    rm -f "$f" "${{f%.*}}.meta"
+  done
+fi
+"""],
+            capture_output=True
+        )
+        assert result.returncode == 0
+        remaining = list(spool.glob("*.wav"))
+        assert len(remaining) == 10, f"10개만 남아야 하는데 {len(remaining)}개"
