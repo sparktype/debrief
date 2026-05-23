@@ -1,0 +1,13 @@
+{
+  "_comment": "이 파일을 .siren.json으로 복사 후 값을 수정하세요. .siren.json은 .gitignore로 추적하지 않습니다.",
+  "autoSpeak": true,
+  "minChars": 50,
+  "voice": "Sohee",
+  "summaryModel": "gpt-5.4",
+  "ttsModel": "tts-1",
+  "language": "ko",
+  "ttsSpeed": 1.2,
+  "ttsInstruct": "밝고 활기차게 말해주세요",
+  "skillCooldownMinutes": 30,
+  "supertonicPort": 7788
+}
