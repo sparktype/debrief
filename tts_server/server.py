@@ -30,6 +30,8 @@ _MODEL_ID = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 # 단일 워커 스레드 상태
 _work_queue: queue.Queue = queue.Queue(maxsize=1)
 _model_ready = threading.Event()
+_model_error = threading.Event()
+_model_error_message = ""
 _worker_thread: Optional[threading.Thread] = None
 
 # 한국어 TTS에서 발음이 부자연스러운 영문 기술 용어 → 한국어 발음 치환 사전
@@ -130,13 +132,20 @@ def _preprocess_for_tts(text: str) -> str:
 
 def _tts_worker() -> None:
     """모델 로딩 + TTS 생성을 같은 스레드에서 처리 — MLX Metal 스트림 유지."""
-    from mlx_audio.tts.generate import generate_audio
-    from mlx_audio.tts.utils import load_model
+    global _model_error_message
+    try:
+        from mlx_audio.tts.generate import generate_audio
+        from mlx_audio.tts.utils import load_model
 
-    _log("INFO", f"모델 로딩 중: {_MODEL_ID}")
-    model = load_model(_MODEL_ID)
-    _log("INFO", "모델 로딩 완료. 서버 준비.")
-    _model_ready.set()
+        _log("INFO", f"모델 로딩 중: {_MODEL_ID}")
+        model = load_model(_MODEL_ID)
+        _log("INFO", "모델 로딩 완료. 서버 준비.")
+        _model_ready.set()
+    except Exception as e:
+        _model_error_message = str(e)
+        _model_error.set()
+        _log("ERROR", f"모델 로딩 실패: {e}")
+        return
 
     while True:
         item = _work_queue.get()
@@ -214,7 +223,12 @@ async def speak(req: SpeakRequest):
 
 @app.get("/health")
 async def health():
-    """서버 상태 확인 — 모델 로딩 전이면 503."""
+    """서버 상태 확인 — 모델 로딩 실패면 503+error, 로딩 중이면 503+loading."""
+    if _model_error.is_set():
+        return JSONResponse(
+            {"status": "error", "detail": _model_error_message},
+            status_code=503,
+        )
     if not _model_ready.is_set():
         return JSONResponse({"status": "loading"}, status_code=503)
     return {"status": "ok"}

@@ -116,3 +116,27 @@ fi
         assert result.returncode == 0
         remaining = list(spool.glob("*.wav"))
         assert len(remaining) == 10, f"10개만 남아야 하는데 {len(remaining)}개"
+
+
+from fastapi.testclient import TestClient
+
+
+class TestModelLoadingFailure:
+    def test_health_returns_error_detail_when_load_fails(self):
+        """모델 로딩 실패 시 /health가 503 + error detail 반환해야 한다."""
+        import tts_server.server as srv
+        # _model_error를 직접 세팅해서 시뮬레이션
+        srv._model_error.set()
+        srv._model_error_message = "테스트 오류: 모델 파일 없음"
+        srv._model_ready.clear()
+
+        client = TestClient(srv.app, raise_server_exceptions=False)
+        resp = client.get("/health")
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["status"] == "error"
+        assert "테스트 오류" in data.get("detail", "")
+
+        # 정리
+        srv._model_error.clear()
+        srv._model_error_message = ""
