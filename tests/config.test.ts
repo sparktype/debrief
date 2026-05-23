@@ -11,7 +11,7 @@ describe("loadConfig", () => {
     const c = loadConfig("/nonexistent/path.json");
     expect(c.autoSpeak).toBe(true);
     expect(c.minChars).toBe(500);
-    expect(c.voice).toBe("");
+    expect(c.voice).toBe("Sohee");
     expect(c.language).toBe("ko");
   });
 

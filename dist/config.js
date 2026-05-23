@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "fs";
 const DEFAULTS = {
     autoSpeak: true,
     minChars: 500,
-    voice: "",
+    voice: "Sohee",
     summaryModel: "gpt-4o-mini",
     ttsModel: "tts-1",
     language: "ko",

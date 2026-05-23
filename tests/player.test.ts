@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as cp from "child_process";
+import * as fs from "fs";
 import { EventEmitter } from "events";
 
 vi.mock("child_process", async (importOriginal) => {
   const orig = await importOriginal<typeof cp>();
   return { ...orig, spawn: vi.fn() };
+});
+
+vi.mock("fs", async (importOriginal) => {
+  const orig = await importOriginal<typeof fs>();
+  return { ...orig, existsSync: vi.fn(() => true) };
 });
 
 import { speak } from "../src/player.js";
@@ -19,14 +25,14 @@ function mockProc(exitCode: number) {
   return proc;
 }
 
-describe("speak", () => {
+describe("speak — say 경로 (MLX 스피커 아닌 경우)", () => {
   it("기본 목소리(시스템) — -v 없이 say 호출", async () => {
     mockProc(0);
     await expect(speak("안녕")).resolves.toBeUndefined();
     expect(cp.spawn).toHaveBeenCalledWith("say", ["안녕"]);
   });
 
-  it("목소리 지정 시 -v 옵션 포함", async () => {
+  it("macOS 목소리 지정 시 -v 옵션 포함", async () => {
     mockProc(0);
     await speak("안녕", "Yuna");
     expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Yuna", "안녕"]);
@@ -43,5 +49,35 @@ describe("speak", () => {
     vi.mocked(cp.spawn).mockReturnValue(proc as any);
     setImmediate(() => proc.emit("error", new Error("ENOENT")));
     await expect(speak("안녕")).rejects.toThrow("ENOENT");
+  });
+});
+
+describe("speak — MLX TTS 경로 (Sohee 등)", () => {
+  it("Sohee — python3 mlx_audio.tts.generate 호출", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    mockProc(0);
+    await speak("안녕", "Sohee");
+    expect(cp.spawn).toHaveBeenCalledWith(
+      expect.stringContaining("python3"),
+      expect.arrayContaining([
+        "-m", "mlx_audio.tts.generate",
+        "--voice", "Sohee",
+        "--play",
+      ]),
+      expect.any(Object),
+    );
+  });
+
+  it("MLX TTS 실패 시 reject", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    mockProc(1);
+    await expect(speak("안녕", "Sohee")).rejects.toThrow("MLX TTS 실패");
+  });
+
+  it("tts-venv 없으면 say 폴백", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockProc(0);
+    await speak("안녕", "Sohee");
+    expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Sohee", "안녕"]);
   });
 });
