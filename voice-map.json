@@ -1,0 +1,37 @@
+{
+  "supertonic": {
+    "port": 7788,
+    "lang": "ko"
+  },
+  "voices": {
+    "reviewer": "M2",
+    "planner": "M1",
+    "builder": "M4",
+    "explorer": "F3",
+    "default": "F1"
+  },
+  "categories": {
+    "reviewer": [
+      "code-reviewer", "python-reviewer", "security-reviewer",
+      "typescript-reviewer", "rust-reviewer", "go-reviewer",
+      "kotlin-reviewer", "swift-reviewer", "cpp-reviewer",
+      "java-reviewer", "csharp-reviewer", "flutter-reviewer",
+      "fastapi-reviewer", "database-reviewer", "mle-reviewer",
+      "pr-test-analyzer", "code-simplifier"
+    ],
+    "planner": [
+      "planner", "architect", "code-architect", "a11y-architect",
+      "plan", "feature-dev"
+    ],
+    "builder": [
+      "build-error-resolver", "dart-build-resolver", "rust-build-resolver",
+      "go-build-resolver", "kotlin-build-resolver", "swift-build-resolver",
+      "cpp-build-resolver", "java-build-resolver", "tdd-guide",
+      "gan-generator", "multi-execute"
+    ],
+    "explorer": [
+      "Explore", "code-explorer", "general-purpose",
+      "gitnexus-exploring", "claude-code-guide"
+    ]
+  }
+}
