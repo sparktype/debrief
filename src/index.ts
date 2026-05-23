@@ -8,6 +8,8 @@ import {
 import { loadConfig, SirenConfig } from "./config.js";
 import { extractSummary } from "./summarizer.js";
 import { speak } from "./player.js";
+import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
+import { loadLastMessage } from "./last-message-store.js";
 
 let config: SirenConfig = loadConfig();
 
@@ -18,6 +20,17 @@ if (process.argv[2] === "hook") {
   if (text.length >= config.minChars) {
     const summary = await extractSummary(text, config.summaryModel);
     await speak(summary, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {}); // silent fail
+  }
+  process.exit(0);
+}
+
+if (process.argv[2] === "hook-suggest") {
+  const context = process.argv[3] ?? readRecentTranscripts();
+  const rec = await recommendSkill(context, false, config.skillCooldownMinutes);
+  if (rec) {
+    const msg = `지금 상황엔 ${rec.skill} 스킬이 유용할 것 같아요`;
+    await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {});
+    saveCooldown(rec.skill);
   }
   process.exit(0);
 }
@@ -64,6 +77,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "suggest_skill",
+      description: "현재 transcript를 분석해 유용한 스킬 1개를 음성으로 추천합니다. 쿨다운을 무시하고 강제 추천합니다.",
+      inputSchema: { type: "object" as const, properties: {} },
+    },
+    {
+      name: "speak_last",
+      description: "마지막으로 재생한 TTS 텍스트를 다시 읽어줍니다.",
+      inputSchema: { type: "object" as const, properties: {} },
+    },
   ],
 }));
 
@@ -83,6 +106,27 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (name === "set_config") {
       config = { ...config, ...(args as Partial<SirenConfig>) };
       return { content: [{ type: "text" as const, text: "설정 변경 완료" }] };
+    }
+    if (name === "suggest_skill") {
+      const context = readRecentTranscripts();
+      const rec = await recommendSkill(context, true, config.skillCooldownMinutes);
+      if (rec) {
+        const msg = `지금 상황엔 ${rec.skill} 스킬이 유용할 것 같아요`;
+        await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {});
+        saveCooldown(rec.skill);
+        return { content: [{ type: "text" as const, text: `추천: ${rec.skill}` }] };
+      }
+      return { content: [{ type: "text" as const, text: "추천할 스킬을 찾지 못했습니다" }] };
+    }
+    if (name === "speak_last") {
+      const last = loadLastMessage();
+      if (!last) {
+        const msg = "재생할 내용이 없어요";
+        await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {});
+        return { content: [{ type: "text" as const, text: msg }] };
+      }
+      await speak(last, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {});
+      return { content: [{ type: "text" as const, text: "재생 완료" }] };
     }
     throw new Error(`알 수 없는 tool: ${name}`);
   } catch (err) {
