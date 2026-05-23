@@ -125,6 +125,12 @@ do_start() {
   bash "$SCRIPT_DIR/tts_server/start.sh"
   _start_player
 
+  # Supertonic 서버 자동 시작 (미실행 시에만)
+  if ! _supertonic_running; then
+    echo "Supertonic 서버 시작 중..."
+    bash "$SCRIPT_DIR/tts_server/supertonic_start.sh"
+  fi
+
   # 최대 10초 대기하여 /health 응답 확인
   local i=0
   while (( i < 10 )); do
@@ -141,6 +147,11 @@ do_start() {
 
 do_stop() {
   _stop_player
+  # Supertonic 서버 종료
+  if _supertonic_running; then
+    echo "Supertonic 서버 종료 중..."
+    bash "$SCRIPT_DIR/tts_server/supertonic_stop.sh"
+  fi
   if ! _tts_running; then
     echo "TTS 서버가 실행 중이지 않습니다."
     return 0
