@@ -58,7 +58,11 @@ async function withTTSLock<T>(fn: () => Promise<T>): Promise<T | undefined> {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MLX_PYTHON = join(__dirname, "..", "tts-venv", "bin", "python3");
+
+function resolveMLXPython(): string {
+  if (process.env.SIREN_VENV_PYTHON) return process.env.SIREN_VENV_PYTHON;
+  return join(__dirname, "..", "tts-venv", "bin", "python3");
+}
 const MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit";
 
 const TTS_SERVER_BASE = "http://localhost:7777";
@@ -131,7 +135,7 @@ function speakMLX(text: string, voice: string, speed: number, instruct: string):
       "--play",
     ];
     if (instruct) args.push("--instruct", instruct);
-    const proc = spawn(MLX_PYTHON, args, { env: { ...process.env, HF_HUB_OFFLINE: "1" } });
+    const proc = spawn(resolveMLXPython(), args, { env: { ...process.env, HF_HUB_OFFLINE: "1" } });
     proc.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`MLX TTS 실패: exit ${code}`));
@@ -169,7 +173,7 @@ async function generateEdge(text: string, voice: string): Promise<string> {
   const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
   let proc: ReturnType<typeof spawn> | undefined;
   const edgePromise = new Promise<void>((resolve, reject) => {
-    proc = spawn(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
+    proc = spawn(resolveMLXPython(), ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
     proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
     proc.on("error", reject);
   });
@@ -199,7 +203,7 @@ async function speakEdge(text: string, voice: string, speed: number): Promise<vo
 }
 
 function speakSubprocess(text: string, voice: string, speed: number, instruct: string): Promise<void> {
-  if (MLX_SPEAKERS.has(voice) && existsSync(MLX_PYTHON)) {
+  if (MLX_SPEAKERS.has(voice) && existsSync(resolveMLXPython())) {
     return speakMLX(text, voice, speed, instruct);
   }
   return speakSay(text, voice);
@@ -300,7 +304,7 @@ async function generateSupertonic(text: string, voice: string, port: number): Pr
 // voice: config.voice 값 — EdgeTTS는 항상 EDGE_VOICE(HyunsuMultilingualNeural) 사용
 export async function speakHook(text: string, voice = "Sohee", speed = 1.2): Promise<void> {
   const skipEdge = process.env.SIREN_OFFLINE === "1";
-  if (!skipEdge && existsSync(MLX_PYTHON)) {
+  if (!skipEdge && existsSync(resolveMLXPython())) {
     try {
       const mp3 = await generateEdge(text, voice);
       enqueueSpool(mp3, speed);
@@ -358,7 +362,7 @@ async function speakWithoutEdge(text: string, voice: string, speed: number, inst
 
 async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
   const skipEdge = process.env.SIREN_OFFLINE === "1";
-  if (!skipEdge && existsSync(MLX_PYTHON)) {
+  if (!skipEdge && existsSync(resolveMLXPython())) {
     try {
       await speakEdge(text, voice, speed);
       saveLastMessage(text);

@@ -509,3 +509,24 @@ describe("speakHook — EdgeTTS 성공 시 speakInner 경로 미진입", () => {
     expect(cp.spawn).toHaveBeenCalledTimes(1); // EdgeTTS spawn 1회만
   });
 });
+
+describe("MLX_PYTHON — 환경변수 우선 사용", () => {
+  afterEach(() => {
+    delete process.env.SIREN_VENV_PYTHON;
+    vi.unstubAllGlobals();
+  });
+
+  it("SIREN_VENV_PYTHON 설정 시 해당 경로 사용", async () => {
+    process.env.SIREN_VENV_PYTHON = "/custom/path/python3";
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p) => String(p) === "/custom/path/python3"
+    );
+    mockSpawnSequence(0, 0); // EdgeTTS 생성(0), afplay(0)
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("dead")));
+
+    await speak("테스트", "Sohee", 1.2, "");
+
+    const firstCall = vi.mocked(cp.spawn).mock.calls[0];
+    expect(firstCall?.[0]).toBe("/custom/path/python3");
+  });
+});
