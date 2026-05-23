@@ -61,7 +61,11 @@ if (process.argv[2] === "subagent-stop") {
 }
 
 if (process.argv[2] === "hook-suggest") {
-  const context = process.argv[3] ?? readRecentTranscripts();
+  const transcripts = readRecentTranscripts();
+  const promptHint = process.argv[3]
+    ? `\n[현재 입력]: ${String(process.argv[3]).slice(0, 200)}`
+    : "";
+  const context = transcripts + promptHint;
   const rec = await recommendSkill(context, false, config.skillCooldownMinutes, config.summaryModel);
   if (rec) {
     const msg = `지금 상황엔 ${rec.skill} 스킬이 유용할 것 같아요`;
