@@ -2,11 +2,13 @@
 import { readFileSync, existsSync } from "fs";
 const DEFAULTS = {
     autoSpeak: true,
-    minChars: 500,
+    minChars: 200,
     voice: "Sohee",
-    summaryModel: "gpt-4o-mini",
+    summaryModel: "gpt-5.4",
     ttsModel: "tts-1",
     language: "ko",
+    ttsSpeed: 1.2,
+    ttsInstruct: "밝고 활기차게 말해주세요",
 };
 export function loadConfig(path) {
     const target = path ?? new URL(".siren.json", import.meta.url).pathname;

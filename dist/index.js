@@ -11,8 +11,8 @@ let config = loadConfig();
 if (process.argv[2] === "hook") {
     const text = process.argv.slice(3).join(" ");
     if (text.length >= config.minChars) {
-        const summary = extractSummary(text);
-        await speak(summary, config.voice).catch(() => { }); // silent fail
+        const summary = await extractSummary(text, config.summaryModel);
+        await speak(summary, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => { }); // silent fail
     }
     process.exit(0);
 }
@@ -50,6 +50,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 properties: {
                     autoSpeak: { type: "boolean" },
                     minChars: { type: "number" },
+                    ttsInstruct: { type: "string" },
                 },
             },
         },
@@ -59,13 +60,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;
     try {
         if (name === "speak_text") {
-            await speak(String(args?.text ?? ""), config.voice);
+            await speak(String(args?.text ?? ""), config.voice, config.ttsSpeed, config.ttsInstruct);
             return { content: [{ type: "text", text: "재생 완료" }] };
         }
         if (name === "summarize_and_speak") {
             const text = String(args?.text ?? "");
-            const summary = extractSummary(text);
-            await speak(summary, config.voice);
+            const summary = await extractSummary(text, config.summaryModel);
+            await speak(summary, config.voice, config.ttsSpeed, config.ttsInstruct);
             return { content: [{ type: "text", text: `요약 재생: ${summary}` }] };
         }
         if (name === "set_config") {

@@ -1,34 +1,36 @@
-// 텍스트에서 요약·결론 문장을 추출 (Phase 1: 규칙 기반)
-const CONCLUSION_PATTERNS = [
-    /요약(?:하면|:)\s*.+/,
-    /결론(?:적으로|은|:)\s*.+/,
-    /정리하면\s*.+/,
-    /한마디로\s*.+/,
-    /핵심(?:은|:)\s*.+/,
-    /즉,\s*.+/,
-    /in summary[,:]?\s*.+/i,
-    /to summarize[,:]?\s*.+/i,
-    /in conclusion[,:]?\s*.+/i,
-];
-export function extractSummary(text, sentenceCount = 3) {
-    if (!text.trim())
-        return "";
-    const cleaned = text
-        .replace(/```[\s\S]*?```/g, "") // 코드 블록
-        .replace(/`[^`]+`/g, "") // 인라인 코드
-        .replace(/^\|.+$/gm, "") // 테이블 행
-        .replace(/#{1,6} .+/gm, "") // 마크다운 헤더
-        .replace(/^[-*]{3,}$/gm, "") // 수평선
-        .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, "$1") // 볼드·이탤릭
-        .replace(/_([^_\n]+)_/g, "$1") // 언더스코어 이탤릭
+// LLM 기반 텍스트 요약기 — 사내 HUB OpenAI endpoint 사용, 실패 시 규칙 기반 폴백
+import OpenAI from "openai";
+const HUB_BASE_URL = process.env.HUB_BASE_URL ?? "https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3";
+const HUB_API_KEY = process.env.HUB_API_KEY ?? "";
+const HUB_PROJECT_ID = process.env.HUB_PROJECT_ID ?? "";
+const SYSTEM_PROMPT = "주어진 텍스트의 핵심 결론이나 중요한 내용을 1~3문장으로 요약하세요. " +
+    "코드·마크다운 기호 없이 자연스러운 한국어 평문으로 작성합니다.";
+function makeClient(model) {
+    const extraHeaders = {};
+    if (HUB_PROJECT_ID)
+        extraHeaders["X-Project-Id"] = HUB_PROJECT_ID;
+    return new OpenAI({
+        apiKey: HUB_API_KEY,
+        baseURL: `${HUB_BASE_URL}/openai/deployments/${model}`,
+        defaultHeaders: extraHeaders,
+    });
+}
+function stripMarkdown(text) {
+    return text
+        .replace(/```[\s\S]*?```/g, "[코드 생략]")
+        .replace(/`[^`]+`/g, "")
+        .replace(/^\|.+$/gm, "")
+        .replace(/#{1,6} (.+)/gm, "$1")
+        .replace(/^[-*]{3,}$/gm, "")
+        .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, "$1")
+        .replace(/_([^_\n]+)_/g, "$1")
         .replace(/\n+/g, " ")
         .trim();
-    for (const pattern of CONCLUSION_PATTERNS) {
-        const match = cleaned.match(pattern);
-        if (match) {
-            return match[0].trim();
-        }
-    }
+}
+function fallback(text, sentenceCount = 3) {
+    const cleaned = stripMarkdown(text);
+    if (!cleaned)
+        return "";
     const sentences = cleaned
         .split(/(?<=[.!?。])\s*/)
         .map((s) => s.trim())
@@ -36,4 +38,24 @@ export function extractSummary(text, sentenceCount = 3) {
     if (sentences.length === 0)
         return cleaned;
     return sentences.slice(-sentenceCount).join(" ");
+}
+export async function extractSummary(text, model = "gpt-5.4") {
+    if (!text.trim())
+        return "";
+    try {
+        const client = makeClient(model);
+        const resp = await client.chat.completions.create({
+            model,
+            messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: stripMarkdown(text) },
+            ],
+            max_completion_tokens: 200,
+            temperature: 0.3,
+        });
+        return resp.choices[0]?.message?.content?.trim() || fallback(text);
+    }
+    catch {
+        return fallback(text);
+    }
 }
