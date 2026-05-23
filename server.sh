@@ -396,6 +396,14 @@ PYEOF
     <string>1</string>
     <key>PATH</key>
     <string>${SCRIPT_DIR}/tts-venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HUB_BASE_URL</key>
+    <string>${HUB_BASE_URL:-}</string>
+    <key>HUB_API_KEY</key>
+    <string>${HUB_API_KEY:-}</string>
+    <key>HUB_PROJECT_ID</key>
+    <string>${HUB_PROJECT_ID:-}</string>
+    <key>SIREN_VENV_PYTHON</key>
+    <string>${SIREN_VENV_PYTHON:-}</string>
   </dict>
 </dict>
 </plist>
