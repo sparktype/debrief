@@ -13,11 +13,13 @@ vi.mock("openai", () => {
 });
 
 import { extractSummary } from "../src/summarizer.js";
+import { _resetHubClient } from "../src/llm-client.js";
 import OpenAI from "openai";
 
-// 각 테스트 시작 전 mock 호출 이력 초기화
+// 각 테스트 시작 전 mock 호출 이력 + 싱글톤 캐시 초기화
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetHubClient();
 });
 
 function getMockCreate() {
