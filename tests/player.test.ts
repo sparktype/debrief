@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import * as cp from "child_process";
 import * as fs from "fs";
 import { EventEmitter } from "events";
@@ -25,7 +25,57 @@ function mockProc(exitCode: number) {
   return proc;
 }
 
-describe("speak — say 경로 (MLX 스피커 아닌 경우)", () => {
+// fetch mock 헬퍼: health OK + speak OK
+function mockFetchOk() {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+}
+
+// fetch mock 헬퍼: health 실패(연결 거부)
+function mockFetchDead() {
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+}
+
+// fetch mock 헬퍼: health OK + speak non-2xx
+function mockFetchHealthOkSpeakFail() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200 })   // health
+      .mockResolvedValueOnce({ ok: false, status: 500 }), // speak
+  );
+}
+
+describe("speak — HTTP 서버 경로", () => {
+  it("서버 응답 200 → fetch만 호출, spawn 없음", async () => {
+    mockFetchOk();
+    await speak("안녕", "Sohee");
+    expect(fetch).toHaveBeenCalledTimes(2); // health + speak
+    expect(cp.spawn).not.toHaveBeenCalled();
+  });
+
+  it("서버 speak 500 응답 → subprocess 폴백", async () => {
+    mockFetchHealthOkSpeakFail();
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    mockProc(0);
+    await speak("안녕", "Sohee");
+    expect(cp.spawn).toHaveBeenCalled();
+  });
+
+  it("서버 연결 거부(fetch throw) → subprocess 폴백", async () => {
+    mockFetchDead();
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockProc(0);
+    await speak("안녕");
+    expect(cp.spawn).toHaveBeenCalledWith("say", ["안녕"]);
+  });
+});
+
+describe("speak — say 경로 (서버 없음, MLX 스피커 아닌 경우)", () => {
+  beforeEach(() => {
+    // health check 실패 → subprocess 경로
+    mockFetchDead();
+  });
+
   it("기본 목소리(시스템) — -v 없이 say 호출", async () => {
     mockProc(0);
     await expect(speak("안녕")).resolves.toBeUndefined();
@@ -52,7 +102,11 @@ describe("speak — say 경로 (MLX 스피커 아닌 경우)", () => {
   });
 });
 
-describe("speak — MLX TTS 경로 (Sohee 등)", () => {
+describe("speak — MLX TTS 경로 (서버 없음, Sohee 등)", () => {
+  beforeEach(() => {
+    mockFetchDead();
+  });
+
   it("Sohee — python3 mlx_audio.tts.generate 호출", async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     mockProc(0);

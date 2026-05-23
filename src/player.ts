@@ -1,4 +1,4 @@
-// macOS say 및 MLX TTS(Sohee 등)로 텍스트를 음성 재생
+// macOS say, MLX TTS(Sohee 등), 또는 HTTP TTS 서버로 텍스트를 음성 재생
 import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
@@ -8,11 +8,43 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const MLX_PYTHON = join(__dirname, "..", "tts-venv", "bin", "python3");
 const MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit";
 
+const TTS_SERVER_BASE = "http://localhost:7777";
+const HEALTH_TIMEOUT_MS = 500;
+const SPEAK_TIMEOUT_MS = 10000;
+
 // CustomVoice 모델에 내장된 스피커 목록
 const MLX_SPEAKERS = new Set([
   "Sohee", "Vivian", "Serena", "Uncle_Fu",
   "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna",
 ]);
+
+async function isTTSServerAlive(): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), HEALTH_TIMEOUT_MS);
+    const res = await fetch(`${TTS_SERVER_BASE}/health`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function speakHTTP(text: string, voice: string): Promise<void> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), SPEAK_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${TTS_SERVER_BASE}/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice, lang_code: "Auto" }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`TTS 서버 응답 오류: ${res.status}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function speakMLX(text: string, voice: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -45,9 +77,21 @@ function speakSay(text: string, voice: string): Promise<void> {
   });
 }
 
-export function speak(text: string, voice = ""): Promise<void> {
+function speakSubprocess(text: string, voice: string): Promise<void> {
   if (MLX_SPEAKERS.has(voice) && existsSync(MLX_PYTHON)) {
     return speakMLX(text, voice);
   }
   return speakSay(text, voice);
+}
+
+export async function speak(text: string, voice = ""): Promise<void> {
+  if (await isTTSServerAlive()) {
+    try {
+      await speakHTTP(text, voice);
+      return;
+    } catch {
+      // 서버 응답 실패 시 subprocess 폴백
+    }
+  }
+  return speakSubprocess(text, voice);
 }
