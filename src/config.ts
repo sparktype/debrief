@@ -14,7 +14,7 @@ const DEFAULTS: SirenConfig = {
   autoSpeak: true,
   minChars: 500,
   voice: "Sohee",
-  summaryModel: "gpt-4o-mini",
+  summaryModel: "gpt-5.4",
   ttsModel: "tts-1",
   language: "ko",
 };

@@ -16,7 +16,7 @@ let config: SirenConfig = loadConfig();
 if (process.argv[2] === "hook") {
   const text = process.argv.slice(3).join(" ");
   if (text.length >= config.minChars) {
-    const summary = extractSummary(text);
+    const summary = await extractSummary(text, config.summaryModel);
     await speak(summary, config.voice).catch(() => {}); // silent fail
   }
   process.exit(0);
@@ -75,7 +75,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     }
     if (name === "summarize_and_speak") {
       const text = String(args?.text ?? "");
-      const summary = extractSummary(text);
+      const summary = await extractSummary(text, config.summaryModel);
       await speak(summary, config.voice);
       return { content: [{ type: "text" as const, text: `요약 재생: ${summary}` }] };
     }

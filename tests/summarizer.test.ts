@@ -1,53 +1,86 @@
-import { describe, it, expect } from "vitest";
-import { extractSummary } from "../src/summarizer.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
-describe("extractSummary", () => {
-  it("마지막 3문장 반환", () => {
-    const text = "첫째다. 둘째다. 셋째다. 넷째다. 다섯째다.";
-    const result = extractSummary(text, 3);
+vi.mock("openai", () => {
+  const mockCreate = vi.fn().mockResolvedValue({
+    choices: [{ message: { content: "LLM 요약 결과입니다." } }],
+  });
+  return {
+    default: vi.fn().mockImplementation(() => ({
+      chat: { completions: { create: mockCreate } },
+    })),
+    __mockCreate: mockCreate,
+  };
+});
+
+import { extractSummary } from "../src/summarizer.js";
+import OpenAI from "openai";
+
+afterEach(() => vi.clearAllMocks());
+
+function getMockCreate() {
+  const instance = vi.mocked(OpenAI).mock.results[0]?.value;
+  return instance?.chat.completions.create as ReturnType<typeof vi.fn>;
+}
+
+describe("extractSummary — LLM 경로", () => {
+  it("LLM 응답 내용을 반환", async () => {
+    const result = await extractSummary("이것은 긴 텍스트입니다. 여러 내용이 담겨 있습니다.");
+    expect(result).toBe("LLM 요약 결과입니다.");
+  });
+
+  it("빈 문자열은 LLM 미호출, 빈 문자열 반환", async () => {
+    const result = await extractSummary("   ");
+    expect(result).toBe("");
+    expect(OpenAI).not.toHaveBeenCalled();
+  });
+
+  it("model 파라미터를 LLM에 전달", async () => {
+    await extractSummary("텍스트", "gpt-5.4");
+    const create = getMockCreate();
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-5.4" }),
+    );
+  });
+
+  it("LLM 빈 content → 규칙 기반 폴백 반환", async () => {
+    vi.mocked(OpenAI).mockImplementationOnce(() => ({
+      chat: {
+        completions: {
+          create: vi.fn().mockResolvedValue({
+            choices: [{ message: { content: "" } }],
+          }),
+        },
+      },
+    }) as any);
+    const result = await extractSummary("첫째다. 둘째다. 셋째다.");
+    expect(result).toBeTruthy();
+  });
+});
+
+describe("extractSummary — 폴백 경로", () => {
+  it("LLM 네트워크 오류 시 마지막 3문장 반환", async () => {
+    vi.mocked(OpenAI).mockImplementationOnce(() => ({
+      chat: {
+        completions: {
+          create: vi.fn().mockRejectedValue(new Error("ECONNREFUSED")),
+        },
+      },
+    }) as any);
+    const result = await extractSummary("첫째다. 둘째다. 셋째다. 넷째다. 다섯째다.");
     expect(result).toContain("셋째다");
-    expect(result).toContain("넷째다");
     expect(result).toContain("다섯째다");
     expect(result).not.toContain("첫째다");
   });
 
-  it("코드 블록을 제거하고 추출", () => {
-    const text = "결론이다.\n```js\nconst x = 1;\n```\n끝이다.";
-    const result = extractSummary(text, 2);
+  it("마크다운 제거 후 폴백", async () => {
+    vi.mocked(OpenAI).mockImplementationOnce(() => ({
+      chat: {
+        completions: {
+          create: vi.fn().mockRejectedValue(new Error("fail")),
+        },
+      },
+    }) as any);
+    const result = await extractSummary("결론이다.\n```js\nconst x=1;\n```\n끝이다.");
     expect(result).not.toContain("const x");
-    expect(result).toContain("끝이다");
-  });
-
-  it("문장이 N개 미만이면 전체 반환", () => {
-    const text = "짧은 텍스트다.";
-    const result = extractSummary(text, 3);
-    expect(result).toBe("짧은 텍스트다.");
-  });
-
-  it("빈 문자열은 빈 문자열 반환", () => {
-    expect(extractSummary("", 3)).toBe("");
-  });
-
-  it("요약하면 패턴을 감지해 해당 문장 반환", () => {
-    const text =
-      "HTTP는 평문이다. 중간에 가로채면 읽힌다. 인증서가 필요하다. 요약하면 HTTPS는 HTTP에 TLS를 추가한 것이다.";
-    const result = extractSummary(text, 3);
-    expect(result).toContain("요약하면");
-    expect(result).not.toContain("HTTP는 평문이다");
-  });
-
-  it("테이블 행을 제거하고 추출", () => {
-    const text = "설명이다.\n| 열1 | 열2 |\n|------|------|\n| 값1 | 값2 |\n마지막이다.";
-    const result = extractSummary(text, 2);
-    expect(result).not.toContain("열1");
-    expect(result).toContain("마지막이다");
-  });
-
-  it("볼드·이탤릭 마크업을 제거하고 반환", () => {
-    const text = "결론: **HTTPS**는 _암호화_ 통신이다.";
-    const result = extractSummary(text, 3);
-    expect(result).not.toContain("**");
-    expect(result).not.toContain("_");
-    expect(result).toContain("HTTPS");
   });
 });

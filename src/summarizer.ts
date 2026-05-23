@@ -1,43 +1,59 @@
-// 텍스트에서 요약·결론 문장을 추출 (Phase 1: 규칙 기반)
+// LLM 기반 텍스트 요약기 — 사내 OpenAI endpoint 사용, 실패 시 규칙 기반 폴백
+import OpenAI from "openai";
 
-const CONCLUSION_PATTERNS = [
-  /요약(?:하면|:)\s*.+/,
-  /결론(?:적으로|은|:)\s*.+/,
-  /정리하면\s*.+/,
-  /한마디로\s*.+/,
-  /핵심(?:은|:)\s*.+/,
-  /즉,\s*.+/,
-  /in summary[,:]?\s*.+/i,
-  /to summarize[,:]?\s*.+/i,
-  /in conclusion[,:]?\s*.+/i,
-];
+const OPENAI_BASE_URL =
+  process.env.OPENAI_BASE_URL ?? "https://h-chat-api.autoever.com/openai/v1";
 
-export function extractSummary(text: string, sentenceCount = 3): string {
-  if (!text.trim()) return "";
+const SYSTEM_PROMPT =
+  "주어진 텍스트의 핵심 결론이나 중요한 내용을 1~3문장으로 요약하세요. " +
+  "코드·마크다운 기호 없이 자연스러운 한국어 평문으로 작성합니다.";
 
-  const cleaned = text
-    .replace(/```[\s\S]*?```/g, "")           // 코드 블록
-    .replace(/`[^`]+`/g, "")                    // 인라인 코드
-    .replace(/^\|.+$/gm, "")                   // 테이블 행
-    .replace(/#{1,6} .+/gm, "")                 // 마크다운 헤더
-    .replace(/^[-*]{3,}$/gm, "")                // 수평선
-    .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, "$1") // 볼드·이탤릭
-    .replace(/_([^_\n]+)_/g, "$1")             // 언더스코어 이탤릭
+function makeClient(): OpenAI {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY ?? "",
+    baseURL: OPENAI_BASE_URL,
+  });
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, "[코드 생략]")
+    .replace(/`[^`]+`/g, "")
+    .replace(/^\|.+$/gm, "")
+    .replace(/#{1,6} (.+)/gm, "$1")
+    .replace(/^[-*]{3,}$/gm, "")
+    .replace(/\*{1,3}([^*\n]+)\*{1,3}/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1")
     .replace(/\n+/g, " ")
     .trim();
+}
 
-  for (const pattern of CONCLUSION_PATTERNS) {
-    const match = cleaned.match(pattern);
-    if (match) {
-      return match[0].trim();
-    }
-  }
-
+function fallback(text: string, sentenceCount = 3): string {
+  const cleaned = stripMarkdown(text);
+  if (!cleaned) return "";
   const sentences = cleaned
     .split(/(?<=[.!?。])\s*/)
     .map((s) => s.trim())
     .filter((s) => s.length > 1);
-
   if (sentences.length === 0) return cleaned;
   return sentences.slice(-sentenceCount).join(" ");
+}
+
+export async function extractSummary(text: string, model = "gpt-5.4"): Promise<string> {
+  if (!text.trim()) return "";
+  try {
+    const client = makeClient();
+    const resp = await client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: stripMarkdown(text) },
+      ],
+      max_tokens: 200,
+      temperature: 0.3,
+    });
+    return resp.choices[0]?.message?.content?.trim() || fallback(text);
+  } catch {
+    return fallback(text);
+  }
 }
