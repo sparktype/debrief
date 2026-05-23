@@ -8,6 +8,8 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 - **자동 요약 → 음성 재생** — Claude 응답 완료 시 LLM 요약 후 TTS 자동 실행
 - **4단계 폴백 TTS** — Edge TTS → MLX TTS 서버 → MLX subprocess → macOS say
 - **에이전트별 다성(多聲)** — 코드 리뷰어·플래너·빌더·탐색기 역할마다 다른 목소리
+- **자기 소개 + 한 줄 보고** — 팀원 완료 시 `"리뷰어입니다. [25자 요약]"` 형식으로 발화
+- **동시 발화 방지** — 리더·팀원 발화가 겹치지 않도록 파일 잠금으로 자동 직렬화
 - **스킬 추천** — 대화 맥락 분석 → 적합한 Claude Code 스킬 자동 음성 안내
 - **Apple Silicon 최적화** — MLX 프레임워크로 Metal GPU 활용
 
@@ -30,7 +32,8 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 │ Node.js MCP 서버 (src/)                                 │
 │                                                         │
 │  hook 모드      ──→ extractSummary() → speak()          │
-│  subagent-stop  ──→ resolveVoice() → speakAgent()       │
+│  subagent-stop  ──→ getAgentLabel() → extractOneLiner() │
+│                     → withTTSLock → speakAgent()        │
 │  hook-suggest   ──→ recommendSkill() → speak()          │
 │  MCP 도구 모드  ──→ stdio transport (Claude Code 직접)   │
 └──────────┬──────────────────────────┬───────────────────┘
@@ -59,9 +62,16 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 ### 서브에이전트 TTS (`speakAgent()`)
 
 ```
+agentType → getAgentLabel() → "리뷰어" / "플래너" / "빌더" / "탐색기"
+agentType → voice-map.json → Supertonic voice ID
+extractOneLiner() → 25자 이내 한 줄 요약 → sanitizeForSpeech() 특수문자 제거
+발화 텍스트: "${label}입니다. ${oneLiner}"
+
+withTTSLock 획득 (/tmp/siren-tts.lock — 리더와 동시 발화 방지)
+  ↓
 Supertonic 서버 생존 확인 (localhost:7788)
   ↓ 살아있음
-agentType → voice-map.json → Supertonic voice ID → WAV → afplay
+WAV 생성 → afplay (에이전트별 다성)
   ↓ 실패 또는 서버 없음
 speak() 폴백 체인으로 전환
 ```
@@ -272,6 +282,7 @@ npx vitest run tests/player.test.ts           # 파일 단위
 - `fetch`·`spawn`·`existsSync`를 mock해서 TTS 경로별로 분리 테스트
 - `openai` 모듈 전체 mock — 실제 LLM 호출 없음
 - `SIREN_DATA_DIR` 환경변수로 영속화 경로 격리
+- `fs` mock에 `openSync`·`writeSync`·`closeSync`·`readFileSync` 포함 필수 — 누락 시 `withTTSLock`이 실제 잠금 파일을 생성해 테스트 간 데드락 발생
 
 ### 파일 구조
 
@@ -279,9 +290,10 @@ npx vitest run tests/player.test.ts           # 파일 단위
 src/
   index.ts              # MCP 서버 진입점, CLI 분기
   config.ts             # .siren.json 로더, 기본값 관리
-  player.ts             # TTS 폴백 체인 (Edge → HTTP → MLX → say)
-  summarizer.ts         # LLM 요약 + 규칙 기반 폴백
-  voice-router.ts       # agentType → Supertonic voice ID 변환
+  player.ts             # TTS 폴백 체인 (Edge → HTTP → MLX → say) + withTTSLock
+  summarizer.ts         # LLM 요약·한 줄 요약 + sanitizeForSpeech
+  voice-router.ts       # agentType → Supertonic voice ID + 한국어 역할명
+  llm-client.ts         # HMG Hub LLM 클라이언트 공통 모듈
   skill-recommender.ts  # transcript 분석 → 스킬 추천
   last-message-store.ts # 마지막 TTS 텍스트 영속화
 
@@ -311,6 +323,30 @@ skills-catalog.json     # 스킬 추천 후보 15개 목록
     "reviewer": ["code-reviewer", "my-new-reviewer"]
   }
 }
+```
+
+새 카테고리를 추가할 경우 `src/voice-router.ts`의 `CATEGORY_LABELS`에 한국어명도 추가하세요.
+
+```typescript
+const CATEGORY_LABELS: Record<string, string> = {
+  reviewer: "리뷰어",
+  planner:  "플래너",
+  builder:  "빌더",
+  explorer: "탐색기",
+  my_role:  "내역할명",  // 추가
+};
+```
+
+### 팀 구성 시 모델 지정
+
+HMG 사내 AI는 Opus 모델을 지원하지 않습니다. Agent 파라미터에 반드시 Sonnet을 지정하세요.
+
+```typescript
+Agent({
+  subagent_type: "code-reviewer",
+  model: "sonnet",   // claude-sonnet-4-6 — Opus 미지원
+  ...
+})
 ```
 
 ### 새 스킬 추천 후보 추가
@@ -356,6 +392,14 @@ curl http://localhost:7788/health
 
 # Supertonic 시작
 ./tts_server/supertonic_start.sh
+```
+
+### 리더와 팀원 목소리가 겹침
+
+`/tmp/siren-tts.lock` 파일이 남아 있으면 잠금이 해제되지 않은 것입니다.
+
+```bash
+rm -f /tmp/siren-tts.lock
 ```
 
 ### Hook이 동작하지 않음
