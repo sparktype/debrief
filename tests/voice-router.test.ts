@@ -53,6 +53,7 @@ describe("loadVoiceMap", () => {
   it("존재하지 않는 경로에서도 기본값을 반환한다", () => {
     const map = loadVoiceMap("/nonexistent/voice-map.json");
     expect(map.voices.default).toBe("F1");
+    expect(map.supertonic.lang).toBe("ko");
   });
 });
 
