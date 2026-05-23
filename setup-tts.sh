@@ -80,24 +80,29 @@ fi
 # ── 5. 모델 사전 다운로드 ───────────────────────────────────────────────────
 step "HuggingFace 모델 다운로드 (${MODEL_ID})"
 
-HF_CLI="${VENV_DIR}/bin/huggingface-cli"
+# 실제 HF 캐시 경로를 Python에서 직접 조회 (환경변수 오버라이드 포함)
+HF_CACHE_DIR="$("${PYTHON}" -c "from huggingface_hub import constants; print(constants.HF_HUB_CACHE)" 2>/dev/null || echo "${HOME}/.cache/huggingface/hub")"
+MODEL_CACHE_NAME="models--$(echo "${MODEL_ID}" | tr '/' '--')"
 
-if [[ ! -f "${HF_CLI}" ]]; then
-  warn "huggingface-cli를 찾을 수 없어 huggingface_hub를 설치합니다."
-  "${PIP}" install -q huggingface_hub
-fi
-
-# HF_HUB_OFFLINE 전역 설정을 재정의하여 다운로드 허용
-if HF_HUB_OFFLINE=0 "${HF_CLI}" download "${MODEL_ID}" 2>&1; then
-  ok "모델 다운로드/캐시 확인 완료"
+# 캐시 존재 여부 먼저 확인 — 있으면 네트워크 불필요
+if [[ -d "${HF_CACHE_DIR}/${MODEL_CACHE_NAME}" ]]; then
+  ok "모델 캐시 확인됨 — 다운로드 스킵"
 else
-  # 다운로드 실패 시 캐시 존재 여부 확인
-  HF_CACHE_DIR="${HF_HUB_CACHE:-${HOME}/.cache/huggingface/hub}"
-  MODEL_CACHE_NAME="models--$(echo "${MODEL_ID}" | tr '/' '--')"
-  if [[ -d "${HF_CACHE_DIR}/${MODEL_CACHE_NAME}" ]]; then
-    warn "네트워크 오류 — 기존 캐시를 사용합니다."
+  # venv 내 hf 우선 (pyenv 간섭 방지), 없으면 설치
+  if [[ -f "${VENV_DIR}/bin/hf" ]]; then
+    HF_BIN="${VENV_DIR}/bin/hf"
+  elif [[ -f "${VENV_DIR}/bin/huggingface-cli" ]]; then
+    HF_BIN="${VENV_DIR}/bin/huggingface-cli"
   else
-    warn "모델 다운로드 실패, 캐시도 없습니다. TTS 서버가 시작 시 다운로드를 시도합니다."
+    warn "hf를 찾을 수 없어 huggingface_hub를 설치합니다."
+    "${PIP}" install -q huggingface_hub
+    HF_BIN="${VENV_DIR}/bin/hf"
+  fi
+
+  if HF_HUB_OFFLINE=0 "${HF_BIN}" download "${MODEL_ID}" 2>&1; then
+    ok "모델 다운로드 완료"
+  else
+    warn "모델 다운로드 실패. TTS 서버가 시작 시 재시도합니다."
   fi
 fi
 
