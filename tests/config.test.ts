@@ -13,6 +13,9 @@ describe("loadConfig", () => {
     expect(c.minChars).toBe(200);
     expect(c.voice).toBe("Sohee");
     expect(c.language).toBe("ko");
+    expect(c.ttsSpeed).toBe(1.2);
+    expect(c.ttsInstruct).toBe("밝고 활기차게 말해주세요");
+    expect(c.summaryModel).toBe("gpt-5.4");
   });
 
   it("파일 있으면 기본값에 병합", () => {

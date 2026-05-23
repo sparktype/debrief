@@ -20,7 +20,11 @@ if [ -z "$TEXT" ]; then
 fi
 
 # hook timeout과 무관하게 TTS가 끝까지 재생되도록 프로세스 분리
+# TEXT를 임시 파일 경유 stdin으로 전달 — 인수 주입(Command Injection) 방지
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-nohup node "$SCRIPT_DIR/../dist/index.js" hook "$TEXT" > /dev/null 2>&1 &
+_tmpf=$(mktemp)
+printf '%s' "$TEXT" > "$_tmpf"
+nohup sh -c 'node "$1" hook < "$2"; rm -f "$2"' -- \
+  "$SCRIPT_DIR/../dist/index.js" "$_tmpf" > /dev/null 2>&1 &
 disown $!
 exit 0

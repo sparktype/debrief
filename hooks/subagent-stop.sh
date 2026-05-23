@@ -60,7 +60,11 @@ print(agent_type, end='')
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-nohup node "$SCRIPT_DIR/../dist/index.js" subagent-stop "$TEXT" "$AGENT_TYPE" \
-  > /dev/null 2>&1 &
+# TEXT를 임시 파일 경유 stdin으로 전달 — Command Injection 방지
+# AGENT_TYPE은 에이전트 타입명(특수문자 없음)이므로 인수로 유지
+_tmpf=$(mktemp)
+printf '%s' "$TEXT" > "$_tmpf"
+nohup sh -c 'node "$1" subagent-stop "$2" < "$3"; rm -f "$3"' -- \
+  "$SCRIPT_DIR/../dist/index.js" "$AGENT_TYPE" "$_tmpf" > /dev/null 2>&1 &
 disown $!
 exit 0

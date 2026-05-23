@@ -1,18 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
 const DATA_DIR = join(homedir(), ".local", "share", "summary-voice-mcp-test");
-process.env.SIREN_DATA_DIR = DATA_DIR;
 
 import { saveLastMessage, loadLastMessage } from "../src/last-message-store.js";
 
 beforeEach(() => {
+  // 테스트 간 환경변수 격리 — afterEach에서 vi.unstubAllEnvs()로 복원
+  vi.stubEnv("SIREN_DATA_DIR", DATA_DIR);
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true });
 });
 
