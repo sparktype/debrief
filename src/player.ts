@@ -66,6 +66,15 @@ const HEALTH_TIMEOUT_MS = 500;
 const SPEAK_TIMEOUT_MS = 10000;
 const EDGE_TIMEOUT_MS = 10000;
 
+// config에서 주입 가능한 타임아웃 — configureTimes()로 갱신
+let _edgeTimeoutMs = EDGE_TIMEOUT_MS;
+let _supertonicTimeoutMs = 20000;
+
+export function configureTimes(edgeMs: number, supertonicMs: number): void {
+  _edgeTimeoutMs = edgeMs;
+  _supertonicTimeoutMs = supertonicMs;
+}
+
 const MLX_SPEAKERS = new Set([
   "Sohee", "Vivian", "Serena", "Uncle_Fu",
   "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna",
@@ -178,7 +187,7 @@ async function generateEdge(text: string, voice: string): Promise<string> {
     await Promise.race([
       edgePromise,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)
+        setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), _edgeTimeoutMs)
       ),
     ]);
   } catch (e) {
@@ -265,7 +274,7 @@ export function mergeWavBuffers(buffers: Buffer[]): Buffer {
 async function generateSupertonic(text: string, voice: string, port: number): Promise<Buffer> {
   const segments = splitByLanguage(text);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const timer = setTimeout(() => ctrl.abort(), _supertonicTimeoutMs);
   try {
     if (segments.length <= 1) {
       const lang = segments[0]?.lang ?? "ko";

@@ -36,4 +36,14 @@ describe("loadConfig", () => {
     const c = loadConfig("/nonexistent/path.json");
     expect(c.skillCooldownMinutes).toBe(30);
   });
+
+  it("edgeTimeoutMs 기본값 10000", () => {
+    const cfg = loadConfig("/nonexistent.json");
+    expect(cfg.edgeTimeoutMs).toBe(10000);
+  });
+
+  it("supertonicTimeoutMs 기본값 20000", () => {
+    const cfg = loadConfig("/nonexistent.json");
+    expect(cfg.supertonicTimeoutMs).toBe(20000);
+  });
 });

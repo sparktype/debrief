@@ -17,6 +17,8 @@ export interface SirenConfig {
   ttsInstruct: string;
   skillCooldownMinutes: number;
   supertonicPort: number;
+  edgeTimeoutMs: number;
+  supertonicTimeoutMs: number;
 }
 
 const DEFAULTS: SirenConfig = {
@@ -30,6 +32,8 @@ const DEFAULTS: SirenConfig = {
   ttsInstruct: "밝고 활기차게 말해주세요",
   skillCooldownMinutes: 30,
   supertonicPort: 7788,
+  edgeTimeoutMs: 10000,
+  supertonicTimeoutMs: 20000,
 };
 
 export function loadConfig(path?: string): SirenConfig {

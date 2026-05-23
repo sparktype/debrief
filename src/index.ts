@@ -7,7 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig, SirenConfig } from "./config.js";
 import { extractSummary, extractOneLiner } from "./summarizer.js";
-import { speak, speakAgent, speakHook } from "./player.js";
+import { speak, speakAgent, speakHook, configureTimes } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
 import { createRequire } from "module";
@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
 
 let config: SirenConfig = loadConfig();
+configureTimes(config.edgeTimeoutMs, config.supertonicTimeoutMs);
 
 // stdin 전체를 읽어 문자열로 반환 — Command Injection 방지용 텍스트 수신 헬퍼
 async function readStdin(): Promise<string> {
