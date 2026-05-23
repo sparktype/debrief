@@ -11,8 +11,6 @@ export interface SirenConfig {
   minChars: number;
   voice: string;
   summaryModel: string;
-  ttsModel: string;
-  language: string;
   ttsSpeed: number;
   ttsInstruct: string;
   skillCooldownMinutes: number;
@@ -26,8 +24,6 @@ const DEFAULTS: SirenConfig = {
   minChars: 50,
   voice: "Sohee",
   summaryModel: "gpt-5.4",
-  ttsModel: "tts-1",
-  language: "ko",
   ttsSpeed: 1.2,
   ttsInstruct: "밝고 활기차게 말해주세요",
   skillCooldownMinutes: 30,

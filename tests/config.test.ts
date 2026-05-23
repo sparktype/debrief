@@ -12,7 +12,6 @@ describe("loadConfig", () => {
     expect(c.autoSpeak).toBe(true);
     expect(c.minChars).toBe(50);
     expect(c.voice).toBe("Sohee");
-    expect(c.language).toBe("ko");
     expect(c.ttsSpeed).toBe(1.2);
     expect(c.ttsInstruct).toBe("밝고 활기차게 말해주세요");
     expect(c.summaryModel).toBe("gpt-5.4");
@@ -45,5 +44,17 @@ describe("loadConfig", () => {
   it("supertonicTimeoutMs 기본값 20000", () => {
     const cfg = loadConfig("/nonexistent.json");
     expect(cfg.supertonicTimeoutMs).toBe(20000);
+  });
+});
+
+describe("SirenConfig — 미사용 필드 제거", () => {
+  it("기본 설정에 ttsModel 없음", () => {
+    const c = loadConfig("/nonexistent/should-not-exist.json");
+    expect((c as Record<string, unknown>).ttsModel).toBeUndefined();
+  });
+
+  it("기본 설정에 language 없음", () => {
+    const c = loadConfig("/nonexistent/should-not-exist.json");
+    expect((c as Record<string, unknown>).language).toBeUndefined();
   });
 });
