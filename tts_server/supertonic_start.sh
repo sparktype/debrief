@@ -29,3 +29,14 @@ if ! kill -0 "$BGPID" 2>/dev/null; then
     exit 1
 fi
 echo "[Supertonic] 서버 시작 (PID $BGPID, 포트 $PORT, 로그 $LOG_FILE)"
+echo "[Supertonic] /health 응답 대기 중 (최대 30초)..."
+for i in $(seq 1 30); do
+    code=$(curl -sf -o /dev/null -w "%{http_code}" \
+        "http://127.0.0.1:$PORT/health" 2>/dev/null || echo "000")
+    if [[ "$code" == "200" ]]; then
+        echo "[Supertonic] 서버 준비 완료 (${i}초)"
+        exit 0
+    fi
+    sleep 1
+done
+echo "[Supertonic] 경고: 30초 내 /health 응답 없음 (모델 로딩 중이거나 오류). 계속 진행합니다." >&2
