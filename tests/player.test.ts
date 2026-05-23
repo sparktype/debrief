@@ -10,7 +10,7 @@ vi.mock("child_process", async (importOriginal) => {
 
 vi.mock("fs", async (importOriginal) => {
   const orig = await importOriginal<typeof fs>();
-  return { ...orig, existsSync: vi.fn(() => true), unlinkSync: vi.fn() };
+  return { ...orig, existsSync: vi.fn(() => true), unlinkSync: vi.fn(), writeFileSync: vi.fn() };
 });
 
 vi.mock("../src/last-message-store.js", () => ({
@@ -18,7 +18,8 @@ vi.mock("../src/last-message-store.js", () => ({
 }));
 import * as store from "../src/last-message-store.js";
 
-import { speak } from "../src/player.js";
+import { speak, speakAgent } from "../src/player.js";
+const { existsSync, unlinkSync, writeFileSync } = fs;
 
 // proc.on("close") 등록 시점에 lazily 이벤트를 발생 — 타이밍 경합 방지
 function makeOnceProc(exitCode: number): any {
@@ -77,13 +78,13 @@ describe("speak — EdgeTTS 경로 (온라인 우선)", () => {
     expect(cp.spawn).toHaveBeenCalledTimes(2);
   });
 
-  it("Sohee voice → ko-KR-SunHiNeural 로 python3 호출", async () => {
+  it("Sohee voice → ko-KR-HyunsuMultilingualNeural 로 python3 호출", async () => {
     mockSpawnSequence(0, 0);
     await speak("안녕", "Sohee");
     expect(cp.spawn).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining("python3"),
-      expect.arrayContaining(["ko-KR-SunHiNeural"]),
+      expect.arrayContaining(["ko-KR-HyunsuMultilingualNeural"]),
     );
   });
 
@@ -203,5 +204,52 @@ describe("speak — MLX TTS 폴백 경로 (EdgeTTS 실패, HTTP 없음)", () => 
     vi.mocked(cp.spawn).mockReturnValue(proc);
     await speak("테스트", "Sohee", 1.0, "");
     expect(vi.mocked(store.saveLastMessage)).toHaveBeenCalledWith("테스트");
+  });
+});
+
+describe("speakAgent", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
+  });
+
+  it("Supertonic 서버가 응답하면 WAV를 재생하고 임시 파일을 삭제한다", async () => {
+    const fakeWav = Buffer.from("RIFF");
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => fakeWav.buffer,
+      } as unknown as Response);
+
+    const spawnMock = vi.fn().mockImplementation((_cmd: string, _args: string[]) => {
+      const proc = { on: vi.fn() } as any;
+      proc.on.mockImplementation((event: string, cb: Function) => {
+        if (event === "close") cb(0);
+      });
+      return proc;
+    });
+    vi.mocked(cp.spawn).mockImplementation(spawnMock);
+
+    await speakAgent("안녕하세요", "M2", 7788, 1.2);
+
+    expect(writeFileSync).toHaveBeenCalled();
+    expect(unlinkSync).toHaveBeenCalled();
+  });
+
+  it("Supertonic 서버가 없으면 기존 speak()로 폴백한다", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const spawnMock = vi.fn().mockImplementation((_cmd: string, args: string[]) => {
+      const proc = { on: vi.fn() } as any;
+      proc.on.mockImplementation((event: string, cb: Function) => {
+        if (event === "close") cb(0);
+      });
+      return proc;
+    });
+    vi.mocked(cp.spawn).mockImplementation(spawnMock);
+
+    await speakAgent("테스트", "M2", 7788, 1.2);
+    expect(spawnMock).toHaveBeenCalled();
   });
 });

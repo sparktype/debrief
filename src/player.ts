@@ -1,6 +1,6 @@
 // EdgeTTS(온라인 우선) → HTTP TTS 서버 → MLX subprocess → macOS say 순서로 음성 재생
 import { spawn } from "child_process";
-import { existsSync, unlinkSync } from "fs";
+import { existsSync, unlinkSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { saveLastMessage } from "./last-message-store.js";
@@ -20,21 +20,24 @@ const MLX_SPEAKERS = new Set([
   "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna",
 ]);
 
-// MLX 스피커 이름 → EdgeTTS 한국어 Neural 음성 매핑
+// 한영 혼합 발음을 위해 전체 HyunsuMultilingualNeural 통일
+// <lang xml:lang="en-US"> 태그는 Multilingual 음성에서만 동작
 const EDGE_VOICE_MAP: Record<string, string> = {
-  Sohee:    "ko-KR-SunHiNeural",
-  Vivian:   "ko-KR-SunHiNeural",
-  Serena:   "ko-KR-SunHiNeural",
-  Uncle_Fu: "ko-KR-SunHiNeural",
-  Ono_Anna: "ko-KR-SunHiNeural",
-  Ryan:     "ko-KR-InJoonNeural",
-  Eric:     "ko-KR-InJoonNeural",
-  Dylan:    "ko-KR-InJoonNeural",
+  Sohee:    "ko-KR-HyunsuMultilingualNeural",
+  Vivian:   "ko-KR-HyunsuMultilingualNeural",
+  Serena:   "ko-KR-HyunsuMultilingualNeural",
+  Uncle_Fu: "ko-KR-HyunsuMultilingualNeural",
+  Ono_Anna: "ko-KR-HyunsuMultilingualNeural",
+  Ryan:     "ko-KR-HyunsuMultilingualNeural",
+  Eric:     "ko-KR-HyunsuMultilingualNeural",
+  Dylan:    "ko-KR-HyunsuMultilingualNeural",
   Aiden:    "ko-KR-HyunsuMultilingualNeural",
 };
 
 // edge-tts Python API를 argv로 호출 — 쉘 이스케이프 없이 텍스트 전달
 // SSL 검증 비활성화: HMG 사내 프록시가 자체 CA로 TLS를 인터셉트하기 때문에 certifi 번들 검증 실패
+// 한영 혼합 발음: Microsoft 무료 TTS 엔드포인트는 prosody body 내 SSML 태그를 지원하지 않으므로
+// HyunsuMultilingualNeural 음성의 자동 언어 감지 기능에 의존
 const EDGE_SCRIPT =
   "import asyncio, edge_tts, edge_tts.communicate as ec, ssl, sys; " +
   "ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; ec._SSL_CTX=ctx; " +
@@ -114,7 +117,7 @@ function spawnPromise(cmd: string, args: string[], opts?: object): Promise<void>
 }
 
 async function speakEdge(text: string, voice: string, speed: number): Promise<void> {
-  const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-SunHiNeural";
+  const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-HyunsuMultilingualNeural";
   const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
   // 타임아웃은 네트워크 생성 단계에만 — 재생은 완료까지 기다림
   await Promise.race([
@@ -132,6 +135,62 @@ function speakSubprocess(text: string, voice: string, speed: number, instruct: s
     return speakMLX(text, voice, speed, instruct);
   }
   return speakSay(text, voice);
+}
+
+async function isSupertonicAlive(port: number): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 500);
+    const res = await fetch(`http://localhost:${port}/health`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function speakSupertonic(text: string, voice: string, port: number): Promise<void> {
+  const outFile = `/tmp/siren_supertonic_${Date.now()}.wav`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`http://localhost:${port}/v1/audio/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "supertonic-3",
+        input: text,
+        voice,
+        response_format: "wav",
+      }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`Supertonic 응답 오류: ${res.status}`);
+    const buf = await res.arrayBuffer();
+    writeFileSync(outFile, Buffer.from(buf));
+    await spawnPromise("afplay", [outFile]);
+  } finally {
+    clearTimeout(timer);
+    try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
+  }
+}
+
+export async function speakAgent(
+  text: string,
+  supertonicVoice: string,
+  port: number,
+  speed: number,
+): Promise<void> {
+  if (await isSupertonicAlive(port)) {
+    try {
+      await speakSupertonic(text, supertonicVoice, port);
+      saveLastMessage(text);
+      return;
+    } catch {
+      // Supertonic 실패 시 기존 체인으로 폴백
+    }
+  }
+  await speak(text, "", speed, "");
 }
 
 export async function speak(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
