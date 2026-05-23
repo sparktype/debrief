@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 import { existsSync, unlinkSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { saveLastMessage } from "./last-message-store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MLX_PYTHON = join(__dirname, "..", "tts-venv", "bin", "python3");
@@ -138,6 +139,7 @@ export async function speak(text: string, voice = "", speed = 1.2, instruct = ""
   if (existsSync(MLX_PYTHON)) {
     try {
       await speakEdge(text, voice, speed);
+      saveLastMessage(text);
       return;
     } catch {
       // 네트워크 오류 또는 타임아웃 시 폴백
@@ -147,11 +149,13 @@ export async function speak(text: string, voice = "", speed = 1.2, instruct = ""
   if (await isTTSServerAlive()) {
     try {
       await speakHTTP(text, voice, speed, instruct);
+      saveLastMessage(text);
       return;
     } catch {
       // 서버 응답 실패 시 폴백
     }
   }
   // 3. MLX subprocess → 4. macOS say
-  return speakSubprocess(text, voice, speed, instruct);
+  await speakSubprocess(text, voice, speed, instruct);
+  saveLastMessage(text);
 }

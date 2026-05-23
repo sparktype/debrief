@@ -13,6 +13,11 @@ vi.mock("fs", async (importOriginal) => {
   return { ...orig, existsSync: vi.fn(() => true), unlinkSync: vi.fn() };
 });
 
+vi.mock("../src/last-message-store.js", () => ({
+  saveLastMessage: vi.fn(),
+}));
+import * as store from "../src/last-message-store.js";
+
 import { speak } from "../src/player.js";
 
 // proc.on("close") 등록 시점에 lazily 이벤트를 발생 — 타이밍 경합 방지
@@ -191,5 +196,12 @@ describe("speak — MLX TTS 폴백 경로 (EdgeTTS 실패, HTTP 없음)", () => 
     mockSpawnSequence(0);
     await speak("안녕", "Sohee");
     expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Sohee", "안녕"]);
+  });
+
+  it("speak 성공 시 saveLastMessage 호출", async () => {
+    const proc = makeOnceProc(0);
+    vi.mocked(cp.spawn).mockReturnValue(proc);
+    await speak("테스트", "Sohee", 1.0, "");
+    expect(vi.mocked(store.saveLastMessage)).toHaveBeenCalledWith("테스트");
   });
 });
