@@ -1,10 +1,10 @@
 {
-  "name": "siren-mcp",
+  "name": "summary-voice-mcp",
   "version": "0.1.0",
   "description": "Claude Code 답변을 음성으로 전달하는 MCP 서버",
   "type": "module",
   "bin": {
-    "siren-mcp": "./dist/index.js"
+    "summary-voice-mcp": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",

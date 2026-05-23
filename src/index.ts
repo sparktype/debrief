@@ -24,7 +24,7 @@ if (process.argv[2] === "hook") {
 
 // ── MCP 서버 모드 ──────────────────────────────────────────
 const server = new Server(
-  { name: "siren-mcp", version: "0.1.0" },
+  { name: "summary-voice-mcp", version: "0.1.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -54,7 +54,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "set_config",
-      description: "siren-mcp 설정을 런타임에 변경합니다.",
+      description: "summary-voice-mcp 설정을 런타임에 변경합니다.",
       inputSchema: {
         type: "object" as const,
         properties: {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# siren-mcp 실행·관리 스크립트
+# summary-voice-mcp 실행·관리 스크립트
 # 사용법: ./server.sh [start|stop|restart|status|logs [줄수]|build|install|uninstall]
 set -euo pipefail
 
@@ -11,8 +11,8 @@ HOOK_CMD="$SCRIPT_DIR/hooks/stop.sh"
 
 # ── launchd 서비스 설정 (macOS) ────────────────────────────
 LAUNCHD_PLIST_DIR="$HOME/Library/LaunchAgents"
-LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/com.siren-mcp.tts-server.plist"
-LAUNCHD_LABEL="com.siren-mcp.tts-server"
+LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/com.summary-voice-mcp.tts-server.plist"
+LAUNCHD_LABEL="com.summary-voice-mcp.tts-server"
 
 # ── TTS 서버 설정 ──────────────────────────────────────────
 TTS_PORT=7777
@@ -125,7 +125,7 @@ do_restart() {
 }
 
 do_status() {
-  echo "● siren-mcp 상태"
+  echo "● summary-voice-mcp 상태"
 
   # 빌드 확인
   if [[ -f "$SCRIPT_DIR/dist/index.js" ]]; then
@@ -314,7 +314,7 @@ PLIST_EOF
   done
 
   echo ""
-  echo "✓ siren-mcp 설치 완료"
+  echo "✓ summary-voice-mcp 설치 완료"
   echo ""
   echo "  Stop hook: Claude 응답 완료 시 자동 TTS 실행"
   echo "  TTS 서버:  로그인 시 자동 시작 + 크래시 후 자동 재시작"
@@ -359,7 +359,7 @@ PYEOF
   fi
 
   echo ""
-  echo "✓ siren-mcp 제거 완료"
+  echo "✓ summary-voice-mcp 제거 완료"
   echo "  수동 실행: $(basename "$0") start"
 }
 
