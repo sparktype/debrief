@@ -1,0 +1,17 @@
+[
+  { "skill": "plan", "description": "다단계 작업 전 계획과 체크리스트를 먼저 작성" },
+  { "skill": "code-review", "description": "변경된 코드의 버그·보안·품질 리뷰" },
+  { "skill": "gitnexus-debugging", "description": "버그 원인 추적 및 에러 경로 분석" },
+  { "skill": "gitnexus-exploring", "description": "코드베이스 아키텍처 이해 및 실행 흐름 탐색" },
+  { "skill": "gitnexus-impact-analysis", "description": "변경 시 영향받는 코드 사전 분석" },
+  { "skill": "gitnexus-refactoring", "description": "함수·파일·모듈 이름 변경 및 구조 개선" },
+  { "skill": "k8s-debug", "description": "K8s 파드·서비스 로그 및 상태 디버깅" },
+  { "skill": "pipeline", "description": "Kafka·Iceberg·Spark 데이터 파이프라인 진단" },
+  { "skill": "docker-build", "description": "HMG 사내망 Docker 이미지 빌드 및 인증서 주입" },
+  { "skill": "prp-pr", "description": "현재 브랜치의 변경사항으로 GitHub PR 자동 생성" },
+  { "skill": "save-session", "description": "현재 세션 상태 저장 (장기 작업 이어받기)" },
+  { "skill": "resume-session", "description": "이전 세션 컨텍스트 복원" },
+  { "skill": "knowhow", "description": "PKM 자동화 — RSS 수집, RAG 인덱싱, 하이라이트 생성" },
+  { "skill": "security-scan", "description": "훅·MCP·권한·시크릿 보안 취약점 스캔" },
+  { "skill": "prp-prd", "description": "인터랙티브 PRD(제품 요구사항 문서) 생성" }
+]
