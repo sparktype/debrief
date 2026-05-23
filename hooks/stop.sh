@@ -18,7 +18,8 @@ if [ -z "$TEXT" ]; then
   exit 0
 fi
 
-# siren-mcp hook 모드로 실행 (TTS 실패해도 0 exit)
+# siren-mcp hook 모드로 실행 — hook timeout과 무관하게 TTS가 끝까지 재생되도록 분리
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-node "$SCRIPT_DIR/../dist/index.js" hook "$TEXT" 2>/dev/null || true
+nohup node "$SCRIPT_DIR/../dist/index.js" hook "$TEXT" > /dev/null 2>&1 &
+disown
 exit 0

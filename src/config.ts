@@ -13,7 +13,7 @@ export interface SirenConfig {
 const DEFAULTS: SirenConfig = {
   autoSpeak: true,
   minChars: 500,
-  voice: "nova",
+  voice: "Yuna",
   summaryModel: "gpt-4o-mini",
   ttsModel: "tts-1",
   language: "ko",

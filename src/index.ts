@@ -17,7 +17,7 @@ if (process.argv[2] === "hook") {
   const text = process.argv.slice(3).join(" ");
   if (text.length >= config.minChars) {
     const summary = extractSummary(text);
-    await speak(summary).catch(() => {}); // silent fail
+    await speak(summary, config.voice).catch(() => {}); // silent fail
   }
   process.exit(0);
 }
@@ -70,13 +70,13 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
   try {
     if (name === "speak_text") {
-      await speak(String(args?.text ?? ""));
+      await speak(String(args?.text ?? ""), config.voice);
       return { content: [{ type: "text" as const, text: "재생 완료" }] };
     }
     if (name === "summarize_and_speak") {
       const text = String(args?.text ?? "");
       const summary = extractSummary(text);
-      await speak(summary);
+      await speak(summary, config.voice);
       return { content: [{ type: "text" as const, text: `요약 재생: ${summary}` }] };
     }
     if (name === "set_config") {
