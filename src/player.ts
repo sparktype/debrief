@@ -30,14 +30,14 @@ async function isTTSServerAlive(): Promise<boolean> {
   }
 }
 
-async function speakHTTP(text: string, voice: string, speed: number): Promise<void> {
+async function speakHTTP(text: string, voice: string, speed: number, instruct: string): Promise<void> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), SPEAK_TIMEOUT_MS);
   try {
     const res = await fetch(`${TTS_SERVER_BASE}/speak`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice, lang_code: "korean", speed }),
+      body: JSON.stringify({ text, voice, lang_code: "korean", speed, instruct }),
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`TTS 서버 응답 오류: ${res.status}`);
@@ -46,9 +46,9 @@ async function speakHTTP(text: string, voice: string, speed: number): Promise<vo
   }
 }
 
-function speakMLX(text: string, voice: string, speed: number): Promise<void> {
+function speakMLX(text: string, voice: string, speed: number, instruct: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(MLX_PYTHON, [
+    const args = [
       "-m", "mlx_audio.tts.generate",
       "--model", MLX_MODEL,
       "--text", text,
@@ -57,7 +57,9 @@ function speakMLX(text: string, voice: string, speed: number): Promise<void> {
       "--speed", String(speed),
       "--output_path", "/tmp",
       "--play",
-    ], { env: { ...process.env, HF_HUB_OFFLINE: "1" } });
+    ];
+    if (instruct) args.push("--instruct", instruct);
+    const proc = spawn(MLX_PYTHON, args, { env: { ...process.env, HF_HUB_OFFLINE: "1" } });
     proc.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`MLX TTS 실패: exit ${code}`));
@@ -78,21 +80,21 @@ function speakSay(text: string, voice: string): Promise<void> {
   });
 }
 
-function speakSubprocess(text: string, voice: string, speed: number): Promise<void> {
+function speakSubprocess(text: string, voice: string, speed: number, instruct: string): Promise<void> {
   if (MLX_SPEAKERS.has(voice) && existsSync(MLX_PYTHON)) {
-    return speakMLX(text, voice, speed);
+    return speakMLX(text, voice, speed, instruct);
   }
   return speakSay(text, voice);
 }
 
-export async function speak(text: string, voice = "", speed = 1.2): Promise<void> {
+export async function speak(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
   if (await isTTSServerAlive()) {
     try {
-      await speakHTTP(text, voice, speed);
+      await speakHTTP(text, voice, speed, instruct);
       return;
     } catch {
       // 서버 응답 실패 시 subprocess 폴백
     }
   }
-  return speakSubprocess(text, voice, speed);
+  return speakSubprocess(text, voice, speed, instruct);
 }

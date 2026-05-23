@@ -133,7 +133,7 @@ def _tts_worker() -> None:
         item = _work_queue.get()
         if item is None:  # 종료 신호
             break
-        text, voice, lang_code, speed = item
+        text, voice, lang_code, speed, instruct = item
 
         # 한국어 모드에서 영문 기술 용어 발음 보정
         if lang_code == "korean":
@@ -144,7 +144,7 @@ def _tts_worker() -> None:
 
         tmpdir = tempfile.mkdtemp(prefix="siren_tts_")
         try:
-            print(f"[TTS Server] 재생 시작: {text[:40]!r} (speed={speed}x)", flush=True)
+            print(f"[TTS Server] 재생 시작: {text[:40]!r} (speed={speed}x, instruct={instruct!r})", flush=True)
             # speed=1.0 고정 — Qwen3-TTS는 speed!=1.0 시 최적화 경로가 꺼짐
             # 재생 속도는 afplay -r 로 후처리
             generate_audio(
@@ -156,6 +156,7 @@ def _tts_worker() -> None:
                 play=False,
                 output_path=tmpdir,
                 save=True,
+                instruct=instruct if instruct else None,
             )
             files = sorted(glob.glob(f"{tmpdir}/*.wav"))
             if files:
@@ -189,6 +190,7 @@ class SpeakRequest(BaseModel):
     voice: str = "Sohee"
     lang_code: str = "korean"
     speed: float = 1.2
+    instruct: str = "밝고 활기차게 말해주세요"
 
 
 @app.post("/speak", status_code=202)
@@ -197,7 +199,7 @@ async def speak(req: SpeakRequest):
     if not _model_ready.is_set():
         return JSONResponse({"status": "loading"}, status_code=503)
     try:
-        _work_queue.put_nowait((req.text, req.voice, req.lang_code, req.speed))
+        _work_queue.put_nowait((req.text, req.voice, req.lang_code, req.speed, req.instruct))
         return {"status": "accepted"}
     except queue.Full:
         return JSONResponse({"status": "busy"}, status_code=429)

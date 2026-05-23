@@ -9,6 +9,7 @@ export interface SirenConfig {
   ttsModel: string;
   language: string;
   ttsSpeed: number;
+  ttsInstruct: string;
 }
 
 const DEFAULTS: SirenConfig = {
@@ -19,6 +20,7 @@ const DEFAULTS: SirenConfig = {
   ttsModel: "tts-1",
   language: "ko",
   ttsSpeed: 1.2,
+  ttsInstruct: "밝고 활기차게 말해주세요",
 };
 
 export function loadConfig(path?: string): SirenConfig {
