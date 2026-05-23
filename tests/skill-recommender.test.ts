@@ -163,3 +163,27 @@ describe("recommendSkill — loadCooldowns 단일 호출", () => {
     expect(cooldownCalls).toBeLessThanOrEqual(1);
   });
 });
+
+describe("readRecentTranscripts — content 배열 파싱", () => {
+  beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue(["session.jsonl"] as unknown as fs.Dirent[]);
+    vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: Date.now() } as fs.Stats);
+    _resetTranscriptCache();
+  });
+
+  it("content가 배열일 때 text 필드만 추출하고 [object Object] 반환 안 함", () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({
+        type: "assistant",
+        content: [
+          { type: "text", text: "배열 콘텐츠 메시지" },
+          { type: "tool_use", id: "x", name: "Bash", input: {} },
+        ],
+      }) + "\n"
+    );
+    const result = readRecentTranscripts("/fake/transcripts");
+    expect(result).toContain("배열 콘텐츠 메시지");
+    expect(result).not.toContain("[object Object]");
+  });
+});

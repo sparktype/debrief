@@ -65,6 +65,21 @@ export function loadCatalog(): SkillEntry[] {
   }
 }
 
+function extractContent(raw: unknown): string {
+  if (typeof raw === "string") return raw.slice(0, 300);
+  if (Array.isArray(raw)) {
+    return raw
+      .filter(
+        (b): b is { type: string; text: string } =>
+          typeof b === "object" && b !== null && typeof (b as Record<string, unknown>).text === "string"
+      )
+      .map((b) => b.text)
+      .join(" ")
+      .slice(0, 300);
+  }
+  return "";
+}
+
 export function readRecentTranscripts(
   transcriptsDir = join(homedir(), ".claude", "transcripts"),
   maxFiles = 3,
@@ -95,7 +110,7 @@ export function readRecentTranscripts(
           .map((line) => {
             try {
               const entry = JSON.parse(line);
-              const content = String(entry.content ?? "").slice(0, 300);
+              const content = extractContent(entry.content);
               if (entry.type === "user") return `User: ${content}`;
               if (entry.type === "assistant") return `Assistant: ${content}`;
               return null;
