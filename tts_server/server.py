@@ -1,5 +1,8 @@
 # TTS 상주 서버 — 모델 로딩과 추론을 동일한 워커 스레드에서 실행 (MLX GPU 스트림 요건)
 import os
+import glob
+import subprocess
+import tempfile
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 
@@ -34,20 +37,32 @@ def _tts_worker() -> None:
         item = _work_queue.get()
         if item is None:  # 종료 신호
             break
-        text, voice, lang_code = item
+        text, voice, lang_code, speed = item
+        tmpdir = tempfile.mkdtemp(prefix="siren_tts_")
         try:
-            print(f"[TTS Server] 재생 시작: {text[:40]!r}", flush=True)
+            print(f"[TTS Server] 재생 시작: {text[:40]!r} (speed={speed}x)", flush=True)
+            # speed=1.0 고정 — Qwen3-TTS는 speed!=1.0 시 최적화 경로가 꺼짐
+            # 재생 속도는 afplay -r 로 후처리
             generate_audio(
                 text=text,
                 model=model,
                 voice=voice,
                 lang_code=lang_code,
-                play=True,
-                output_path="/tmp",
+                speed=1.0,
+                play=False,
+                output_path=tmpdir,
+                save=True,
             )
+            files = sorted(glob.glob(f"{tmpdir}/*.wav"))
+            if files:
+                subprocess.run(["afplay", "-r", str(speed), files[0]], check=False)
             print("[TTS Server] 재생 완료", flush=True)
         except Exception as e:
             print(f"[TTS Server] 재생 오류: {e}", flush=True)
+        finally:
+            for f in glob.glob(f"{tmpdir}/*"):
+                os.unlink(f)
+            os.rmdir(tmpdir)
 
 
 @asynccontextmanager
@@ -69,6 +84,7 @@ class SpeakRequest(BaseModel):
     text: str
     voice: str = "Sohee"
     lang_code: str = "korean"
+    speed: float = 1.2
 
 
 @app.post("/speak", status_code=202)
@@ -77,7 +93,7 @@ async def speak(req: SpeakRequest):
     if not _model_ready.is_set():
         return JSONResponse({"status": "loading"}, status_code=503)
     try:
-        _work_queue.put_nowait((req.text, req.voice, req.lang_code))
+        _work_queue.put_nowait((req.text, req.voice, req.lang_code, req.speed))
         return {"status": "accepted"}
     except queue.Full:
         return JSONResponse({"status": "busy"}, status_code=429)

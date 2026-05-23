@@ -30,14 +30,14 @@ async function isTTSServerAlive(): Promise<boolean> {
   }
 }
 
-async function speakHTTP(text: string, voice: string): Promise<void> {
+async function speakHTTP(text: string, voice: string, speed: number): Promise<void> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), SPEAK_TIMEOUT_MS);
   try {
     const res = await fetch(`${TTS_SERVER_BASE}/speak`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice, lang_code: "Auto" }),
+      body: JSON.stringify({ text, voice, lang_code: "korean", speed }),
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`TTS 서버 응답 오류: ${res.status}`);
@@ -46,14 +46,15 @@ async function speakHTTP(text: string, voice: string): Promise<void> {
   }
 }
 
-function speakMLX(text: string, voice: string): Promise<void> {
+function speakMLX(text: string, voice: string, speed: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(MLX_PYTHON, [
       "-m", "mlx_audio.tts.generate",
       "--model", MLX_MODEL,
       "--text", text,
       "--voice", voice,
-      "--lang_code", "Auto",
+      "--lang_code", "korean",
+      "--speed", String(speed),
       "--output_path", "/tmp",
       "--play",
     ], { env: { ...process.env, HF_HUB_OFFLINE: "1" } });
@@ -77,21 +78,21 @@ function speakSay(text: string, voice: string): Promise<void> {
   });
 }
 
-function speakSubprocess(text: string, voice: string): Promise<void> {
+function speakSubprocess(text: string, voice: string, speed: number): Promise<void> {
   if (MLX_SPEAKERS.has(voice) && existsSync(MLX_PYTHON)) {
-    return speakMLX(text, voice);
+    return speakMLX(text, voice, speed);
   }
   return speakSay(text, voice);
 }
 
-export async function speak(text: string, voice = ""): Promise<void> {
+export async function speak(text: string, voice = "", speed = 1.2): Promise<void> {
   if (await isTTSServerAlive()) {
     try {
-      await speakHTTP(text, voice);
+      await speakHTTP(text, voice, speed);
       return;
     } catch {
       // 서버 응답 실패 시 subprocess 폴백
     }
   }
-  return speakSubprocess(text, voice);
+  return speakSubprocess(text, voice, speed);
 }

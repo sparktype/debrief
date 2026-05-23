@@ -8,6 +8,7 @@ export interface SirenConfig {
   summaryModel: string;
   ttsModel: string;
   language: string;
+  ttsSpeed: number;
 }
 
 const DEFAULTS: SirenConfig = {
@@ -17,6 +18,7 @@ const DEFAULTS: SirenConfig = {
   summaryModel: "gpt-5.4",
   ttsModel: "tts-1",
   language: "ko",
+  ttsSpeed: 1.2,
 };
 
 export function loadConfig(path?: string): SirenConfig {
