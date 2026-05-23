@@ -4,12 +4,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_BIN="$SCRIPT_DIR/../tts-venv/bin"
-PID_FILE="$SCRIPT_DIR/../.supertonic.pid"
 LOG_FILE="/tmp/supertonic.log"
 PORT=7788
 
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-    echo "[Supertonic] 이미 실행 중 (PID $(cat "$PID_FILE"))"
+if lsof -iTCP:${PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
+    PID=$(lsof -iTCP:${PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
+    echo "[Supertonic] 이미 실행 중 (PID $PID)"
     exit 0
 fi
 
@@ -22,10 +22,8 @@ fi
 nohup env HF_HUB_OFFLINE=0 "$VENV_BIN/supertonic" serve --host 127.0.0.1 --port "$PORT" \
     > "$LOG_FILE" 2>&1 &
 BGPID=$!
-echo "$BGPID" > "$PID_FILE"
 sleep 1
 if ! kill -0 "$BGPID" 2>/dev/null; then
-    rm -f "$PID_FILE"
     echo "[Supertonic] 서버 시작 실패. 로그를 확인하세요: $LOG_FILE" >&2
     exit 1
 fi
@@ -40,6 +38,5 @@ for i in $(seq 1 30); do
     fi
     sleep 1
 done
-echo "[Supertonic] 서버 시작 실패 — PID 파일 제거" >&2
-rm -f "$PID_FILE"
+echo "[Supertonic] 서버 시작 실패 (30초 타임아웃)" >&2
 exit 1

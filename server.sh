@@ -17,7 +17,6 @@ LAUNCHD_LABEL="com.summary-voice-mcp.tts-server"
 # ── TTS 서버 설정 ──────────────────────────────────────────
 TTS_PORT=7777
 SUPERTONIC_PORT=7788
-SUPERTONIC_PID_FILE="$SCRIPT_DIR/.supertonic.pid"
 PLAYER_PID_FILE=/tmp/tts-player.pid
 PLAYER_SPOOL=/tmp/tts-spool
 
@@ -47,7 +46,7 @@ _tts_running() {
 }
 
 _supertonic_running() {
-  [ -f "$SUPERTONIC_PID_FILE" ] && kill -0 "$(cat "$SUPERTONIC_PID_FILE")" 2>/dev/null
+  lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
 }
 
 _player_running() {
@@ -194,7 +193,7 @@ do_status() {
   # Supertonic 서버 확인
   if _supertonic_running; then
     local st_pid
-    st_pid=$(cat "$SUPERTONIC_PID_FILE")
+    st_pid=$(lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
     echo "  Supertonic: ✓ 실행 중 (PID: $st_pid, 포트 ${SUPERTONIC_PORT})"
     local st_code
     st_code=$(curl -s -o /dev/null -w "%{http_code}" \
