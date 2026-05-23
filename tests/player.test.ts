@@ -10,19 +10,29 @@ vi.mock("child_process", async (importOriginal) => {
 
 vi.mock("fs", async (importOriginal) => {
   const orig = await importOriginal<typeof fs>();
-  return { ...orig, existsSync: vi.fn(() => true) };
+  return { ...orig, existsSync: vi.fn(() => true), unlinkSync: vi.fn() };
 });
 
 import { speak } from "../src/player.js";
 
-afterEach(() => vi.clearAllMocks());
-
-function mockProc(exitCode: number) {
+// proc.on("close") 등록 시점에 lazily 이벤트를 발생 — 타이밍 경합 방지
+function makeOnceProc(exitCode: number): any {
   const proc = new EventEmitter() as any;
   proc.stderr = new EventEmitter();
-  vi.mocked(cp.spawn).mockReturnValue(proc as any);
-  setImmediate(() => proc.emit("close", exitCode));
+  const origOn = proc.on.bind(proc);
+  proc.on = (event: string, listener: any) => {
+    origOn(event, listener);
+    if (event === "close") setImmediate(() => proc.emit("close", exitCode));
+    return proc;
+  };
   return proc;
+}
+
+// 여러 spawn 호출을 순서대로 mock (mockReturnValueOnce 큐)
+function mockSpawnSequence(...exitCodes: number[]) {
+  exitCodes.forEach((code) => {
+    vi.mocked(cp.spawn).mockReturnValueOnce(makeOnceProc(code) as any);
+  });
 }
 
 // fetch mock 헬퍼: health OK + speak OK
@@ -45,7 +55,61 @@ function mockFetchHealthOkSpeakFail() {
   );
 }
 
-describe("speak — HTTP 서버 경로", () => {
+// mockReturnValueOnce 큐까지 완전 초기화
+beforeEach(() => { vi.mocked(fs.existsSync).mockReturnValue(true); });
+afterEach(() => vi.resetAllMocks());
+
+describe("speak — EdgeTTS 경로 (온라인 우선)", () => {
+  beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(true); // tts-venv 존재
+    vi.stubGlobal("fetch", vi.fn()); // 호출 감시용 (성공 케이스에서는 호출 없어야 함)
+  });
+
+  it("EdgeTTS 성공 → python3 + afplay 두 번 spawn, fetch 미호출", async () => {
+    mockSpawnSequence(0, 0); // python3 exit 0, afplay exit 0
+    await speak("안녕", "Sohee");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(cp.spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("Sohee voice → ko-KR-SunHiNeural 로 python3 호출", async () => {
+    mockSpawnSequence(0, 0);
+    await speak("안녕", "Sohee");
+    expect(cp.spawn).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("python3"),
+      expect.arrayContaining(["ko-KR-SunHiNeural"]),
+    );
+  });
+
+  it("instruct 파라미터는 EdgeTTS에 전달되지 않음", async () => {
+    mockSpawnSequence(0, 0);
+    await speak("안녕", "Sohee", 1.2, "빠르게 말해주세요");
+    const [, args] = vi.mocked(cp.spawn).mock.calls[0];
+    expect(args).not.toContain("빠르게 말해주세요");
+  });
+
+  it("EdgeTTS 실패(exit 1) → HTTP 폴백 시도", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    mockSpawnSequence(1); // python3 fail
+    await speak("안녕", "Sohee");
+    expect(fetch).toHaveBeenCalled();
+  });
+
+  it("tts-venv 없으면 EdgeTTS 건너뜀 → HTTP 폴백", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    await speak("안녕", "Sohee");
+    expect(cp.spawn).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalled();
+  });
+});
+
+describe("speak — HTTP 서버 폴백 경로 (tts-venv 없음)", () => {
+  beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(false); // EdgeTTS·MLX 건너뜀
+  });
+
   it("서버 응답 200 → fetch만 호출, spawn 없음", async () => {
     mockFetchOk();
     await speak("안녕", "Sohee");
@@ -53,84 +117,78 @@ describe("speak — HTTP 서버 경로", () => {
     expect(cp.spawn).not.toHaveBeenCalled();
   });
 
-  it("서버 speak 500 응답 → subprocess 폴백", async () => {
+  it("서버 speak 500 응답 → say 폴백", async () => {
     mockFetchHealthOkSpeakFail();
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    mockProc(0);
+    mockSpawnSequence(0);
     await speak("안녕", "Sohee");
-    expect(cp.spawn).toHaveBeenCalled();
+    expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Sohee", "안녕"]);
   });
 
-  it("서버 연결 거부(fetch throw) → subprocess 폴백", async () => {
+  it("서버 연결 거부 → say 폴백", async () => {
     mockFetchDead();
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    mockProc(0);
+    mockSpawnSequence(0);
     await speak("안녕");
     expect(cp.spawn).toHaveBeenCalledWith("say", ["안녕"]);
   });
 });
 
-describe("speak — say 경로 (서버 없음, MLX 스피커 아닌 경우)", () => {
+describe("speak — macOS say 폴백 경로 (tts-venv 없음, HTTP 없음)", () => {
   beforeEach(() => {
-    // health check 실패 → subprocess 경로
+    vi.mocked(fs.existsSync).mockReturnValue(false); // EdgeTTS·MLX 건너뜀
     mockFetchDead();
   });
 
   it("기본 목소리(시스템) — -v 없이 say 호출", async () => {
-    mockProc(0);
+    mockSpawnSequence(0);
     await expect(speak("안녕")).resolves.toBeUndefined();
     expect(cp.spawn).toHaveBeenCalledWith("say", ["안녕"]);
   });
 
   it("macOS 목소리 지정 시 -v 옵션 포함", async () => {
-    mockProc(0);
+    mockSpawnSequence(0);
     await speak("안녕", "Yuna");
     expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Yuna", "안녕"]);
   });
 
   it("say 실패 시 reject", async () => {
-    mockProc(1);
+    mockSpawnSequence(1);
     await expect(speak("안녕")).rejects.toThrow("say 명령 실패");
   });
 
   it("spawn 오류 시 reject", async () => {
     const proc = new EventEmitter() as any;
     proc.stderr = new EventEmitter();
-    vi.mocked(cp.spawn).mockReturnValue(proc as any);
+    vi.mocked(cp.spawn).mockReturnValueOnce(proc as any);
     setImmediate(() => proc.emit("error", new Error("ENOENT")));
     await expect(speak("안녕")).rejects.toThrow("ENOENT");
   });
 });
 
-describe("speak — MLX TTS 경로 (서버 없음, Sohee 등)", () => {
+describe("speak — MLX TTS 폴백 경로 (EdgeTTS 실패, HTTP 없음)", () => {
   beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(true); // tts-venv 존재 (MLX 활성)
     mockFetchDead();
   });
 
-  it("Sohee — python3 mlx_audio.tts.generate 호출", async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    mockProc(0);
+  it("Sohee — EdgeTTS 실패 후 mlx_audio.tts.generate 호출", async () => {
+    mockSpawnSequence(1, 0); // EdgeTTS python3 fail, MLX success
     await speak("안녕", "Sohee");
-    expect(cp.spawn).toHaveBeenCalledWith(
+    expect(cp.spawn).toHaveBeenNthCalledWith(
+      2,
       expect.stringContaining("python3"),
-      expect.arrayContaining([
-        "-m", "mlx_audio.tts.generate",
-        "--voice", "Sohee",
-        "--play",
-      ]),
+      expect.arrayContaining(["-m", "mlx_audio.tts.generate", "--voice", "Sohee"]),
       expect.any(Object),
     );
   });
 
   it("MLX TTS 실패 시 reject", async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    mockProc(1);
+    mockSpawnSequence(1, 1); // EdgeTTS fail, MLX fail
     await expect(speak("안녕", "Sohee")).rejects.toThrow("MLX TTS 실패");
   });
 
-  it("tts-venv 없으면 say 폴백", async () => {
+  it("tts-venv 없으면 MLX 건너뜀 → say 폴백", async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    mockProc(0);
+    mockSpawnSequence(0);
     await speak("안녕", "Sohee");
     expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Sohee", "안녕"]);
   });

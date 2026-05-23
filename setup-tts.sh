@@ -67,7 +67,17 @@ else
   ok "mlx-audio 설치 완료"
 fi
 
-# ── 4. 모델 사전 다운로드 ───────────────────────────────────────────────────
+# ── 4. edge-tts 설치 (EdgeTTS 온라인 TTS) ───────────────────────────────────
+step "edge-tts 설치"
+
+if "${PYTHON}" -c "import edge_tts" &>/dev/null 2>&1; then
+  ok "edge-tts가 이미 설치되어 있습니다 — 스킵"
+else
+  "${PIP}" install -q edge-tts
+  ok "edge-tts 설치 완료"
+fi
+
+# ── 5. 모델 사전 다운로드 ───────────────────────────────────────────────────
 step "HuggingFace 모델 다운로드 (${MODEL_ID})"
 
 HF_CLI="${VENV_DIR}/bin/huggingface-cli"
@@ -91,7 +101,7 @@ else
   fi
 fi
 
-# ── 5. LaunchAgent plist 생성 ───────────────────────────────────────────────
+# ── 6. LaunchAgent plist 생성 ───────────────────────────────────────────────
 step "LaunchAgent plist 생성"
 
 mkdir -p "${HOME}/Library/LaunchAgents"
@@ -138,7 +148,7 @@ PLIST_EOF
 
 ok "plist 생성 완료: ${PLIST_PATH}"
 
-# ── 6. LaunchAgent 등록 ─────────────────────────────────────────────────────
+# ── 7. LaunchAgent 등록 ─────────────────────────────────────────────────────
 step "LaunchAgent 등록"
 
 # 이미 등록된 경우 unload 후 재등록
@@ -150,7 +160,7 @@ fi
 launchctl load "${PLIST_PATH}"
 ok "LaunchAgent 등록 완료"
 
-# ── 7. TTS 서버 즉시 시작 ──────────────────────────────────────────────────
+# ── 8. TTS 서버 즉시 시작 ──────────────────────────────────────────────────
 step "TTS 서버 시작"
 
 if [[ ! -f "${START_SH}" ]]; then
