@@ -10,8 +10,9 @@
 ## 배경
 
 1차 개선 19건이 모두 완료되어 71개 테스트가 통과하는 안정된 상태에서 재분석을 수행했다.
-분석 결과 14건의 이슈가 도출됐다. 이 중 3건은 운영에 실제 영향을 주는 버그이며,
+분석 결과 15건의 이슈가 도출됐다. 이 중 3건은 운영에 실제 영향을 주는 버그이며,
 P6(Supertonic 상태 확인 포트 방식으로 교체)의 사이드이펙트로 발생한 회귀(C1)가 포함된다.
+운영 중 동시 발화 현상이 실제로 관측되어 D1(TTS Player 중복 실행) 항목을 추가했다.
 
 ---
 
@@ -19,7 +20,7 @@ P6(Supertonic 상태 확인 포트 방식으로 교체)의 사이드이펙트로
 
 | 팀 | 담당 항목 | 파일 범위 |
 |---|---|---|
-| Shell 팀 | C1·C2·C3·S1·S2 (5건) | `server.sh`, `tts_server/supertonic_stop.sh`, `tts_server/supertonic_start.sh`, `tts_server/tts_player.sh` |
+| Shell 팀 | C1·C2·C3·D1·S1·S2 (6건) | `server.sh`, `tts_server/supertonic_stop.sh`, `tts_server/supertonic_start.sh`, `tts_server/tts_player.sh` |
 | TypeScript 팀 | L1·L2·L3·Q1·Q2·Q3·Q4·S3 (8건) | `src/` 전체 |
 
 두 팀은 파일 범위가 겹치지 않아 완전 병렬 실행 가능.  
@@ -67,6 +68,39 @@ launchd `KeepAlive.SuccessfulExit=false` 설정으로 kill 후 즉시 재시작�
 `launchctl stop $LAUNCHD_LABEL`으로 요청 후 프로세스 종료 확인 대기.
 
 **변경 파일**: `server.sh`
+
+---
+
+### D1 — TTS Player 중복 실행 방지 (HIGH)
+
+**문제**: `tts_player.sh`는 시작 시 PID 파일을 생성하지만, 스테일 PID 파일이 남아있으면
+`_player_running()` 체크가 false를 반환해 두 번째 인스턴스가 시작된다.
+두 Player가 동일한 스풀 디렉토리를 동시에 소비하면 같은 파일을 양쪽에서 afplay → 동시 발화.
+실제 운영 중 launchd + 수동 시작 혼용 환경에서 재현됨.
+
+**해결**:
+
+1. `tts_player.sh` 시작 시 PID 파일 체크 외에 `pgrep -f tts_player.sh`로 실행 중인 인스턴스 추가 확인. 이미 실행 중이면 즉시 exit.
+2. `server.sh`의 `_player_running()`을 PID 파일 단독 → `pgrep -f tts_player.sh` 우선으로 교체.
+3. `_start_player()`에서 `pgrep` 기반 체크로 이중 시작 차단.
+
+```bash
+# tts_player.sh 상단에 추가
+if pgrep -f "tts_player.sh" | grep -v "^$$\$" > /dev/null 2>&1; then
+  echo "[TTS Player] 이미 실행 중 — 중복 실행 방지로 종료"
+  exit 0
+fi
+```
+
+```bash
+# server.sh _player_running() 교체
+_player_running() {
+  pgrep -f "tts_player.sh" > /dev/null 2>&1
+}
+```
+
+**변경 파일**: `tts_server/tts_player.sh`, `server.sh`  
+**테스트**: 두 번째 tts_player.sh 실행 시 즉시 exit 0 확인.
 
 ---
 
@@ -234,6 +268,7 @@ delay = Math.min(delay * 1.5, 1000);
 | Supertonic 종료 동작 | `server.sh stop` 후 포트 7788 미점유 확인 |
 | LaunchAgent 재시작 후 LLM 동작 | plist 환경변수 확인 |
 | `autoSpeak: false` 작동 | `.siren.json`에서 비활성화 후 hook 미실행 확인 |
+| TTS Player 단일 실행 보장 | `_start_player()` 두 번 호출해도 인스턴스 1개 확인 |
 
 ---
 
