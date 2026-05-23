@@ -18,7 +18,8 @@ if ! [ -f "$VENV_BIN/supertonic" ]; then
     exit 1
 fi
 
-nohup "$VENV_BIN/supertonic" serve --host 127.0.0.1 --port "$PORT" \
+# Supertonic은 모델을 HuggingFace에서 캐시하므로 첫 실행 시 다운로드 허용
+nohup env HF_HUB_OFFLINE=0 "$VENV_BIN/supertonic" serve --host 127.0.0.1 --port "$PORT" \
     > "$LOG_FILE" 2>&1 &
 BGPID=$!
 echo "$BGPID" > "$PID_FILE"
@@ -32,7 +33,7 @@ echo "[Supertonic] 서버 시작 (PID $BGPID, 포트 $PORT, 로그 $LOG_FILE)"
 echo "[Supertonic] /health 응답 대기 중 (최대 30초)..."
 for i in $(seq 1 30); do
     code=$(curl -sf -o /dev/null -w "%{http_code}" \
-        "http://127.0.0.1:$PORT/health" 2>/dev/null || echo "000")
+        "http://127.0.0.1:$PORT/v1/health" 2>/dev/null || echo "000")
     if [[ "$code" == "200" ]]; then
         echo "[Supertonic] 서버 준비 완료 (${i}초)"
         exit 0

@@ -28,7 +28,7 @@ vi.mock("../src/last-message-store.js", () => ({
 }));
 import * as store from "../src/last-message-store.js";
 
-import { speak, speakAgent } from "../src/player.js";
+import { speak, speakAgent, splitByLanguage, mergeWavBuffers } from "../src/player.js";
 const { existsSync, unlinkSync, writeFileSync } = fs;
 
 // proc.on("close") 등록 시점에 lazily 이벤트를 발생 — 타이밍 경합 방지
@@ -263,6 +263,66 @@ describe("speakAgent", () => {
     expect(spawnMock).toHaveBeenCalled();
   });
 
+  it("한영 혼합 텍스트 → batch 경로 (/v1/tts/batch 호출)", async () => {
+    // 최소 유효 WAV: RIFF + fmt + data 청크
+    function makeWav(pcm: Buffer): Buffer {
+      const fmtChunk = Buffer.alloc(24);
+      fmtChunk.write("fmt ", 0);
+      fmtChunk.writeUInt32LE(16, 4);
+      fmtChunk.writeUInt16LE(1, 8);   // PCM
+      fmtChunk.writeUInt16LE(1, 10);  // 모노
+      fmtChunk.writeUInt32LE(44100, 12);
+      fmtChunk.writeUInt32LE(88200, 16);
+      fmtChunk.writeUInt16LE(2, 20);
+      fmtChunk.writeUInt16LE(16, 22);
+      const dataHeader = Buffer.alloc(8);
+      dataHeader.write("data", 0);
+      dataHeader.writeUInt32LE(pcm.length, 4);
+      const riffBody = Buffer.concat([Buffer.from("WAVE"), fmtChunk, dataHeader, pcm]);
+      const riff = Buffer.alloc(8);
+      riff.write("RIFF", 0);
+      riff.writeUInt32LE(riffBody.length, 4);
+      return Buffer.concat([riff, riffBody]);
+    }
+
+    const wav1 = makeWav(Buffer.from([0x01, 0x02]));
+    const wav2 = makeWav(Buffer.from([0x03, 0x04]));
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true } as Response)  // health
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [
+            { audio_base64: wav1.toString("base64") },
+            { audio_base64: wav2.toString("base64") },
+          ],
+        }),
+      } as unknown as Response);  // /v1/tts/batch
+
+    const spawnMock = vi.fn().mockImplementation(() => {
+      const proc = { on: vi.fn() } as any;
+      proc.on.mockImplementation((event: string, cb: Function) => {
+        if (event === "close") cb(0);
+      });
+      return proc;
+    });
+    vi.mocked(cp.spawn).mockImplementation(spawnMock);
+
+    await speakAgent("리뷰어입니다. TypeScript 수정 완료", "M2", 7788, 1.2);
+
+    const batchCall = vi.mocked(global.fetch).mock.calls.find(
+      ([url]) => (url as string).includes("tts/batch")
+    );
+    expect(batchCall).toBeDefined();
+    const body = JSON.parse(batchCall![1]!.body as string);
+    expect(body.items.length).toBeGreaterThan(1);
+    // 영문 구간은 "en", 한글 구간은 "ko" 확인
+    const langs = body.items.map((it: any) => it.lang);
+    expect(langs).toContain("en");
+    expect(langs).toContain("ko");
+  });
+
   it("Supertonic 서버 응답 없음(500ms 타임아웃) → speak()로 폴백한다", async () => {
     vi.useFakeTimers();
     // EdgeTTS·MLX 건너뜀 → say 폴백까지 즉시 진행
@@ -298,5 +358,88 @@ describe("speakAgent", () => {
     vi.useRealTimers();
     // say 폴백이 실제로 호출됐는지 검증
     expect(spawnMock).toHaveBeenCalledWith("say", ["타임아웃 테스트"]);
+  });
+});
+
+describe("splitByLanguage", () => {
+  it("순수 한국어 → 구간 1개 (ko)", () => {
+    const segs = splitByLanguage("리뷰어입니다.");
+    expect(segs).toHaveLength(1);
+    expect(segs[0]).toEqual({ text: "리뷰어입니다.", lang: "ko" });
+  });
+
+  it("순수 영어 → 구간 1개 (en)", () => {
+    const segs = splitByLanguage("TypeScript");
+    expect(segs).toHaveLength(1);
+    expect(segs[0]).toEqual({ text: "TypeScript", lang: "en" });
+  });
+
+  it("혼합 문장 → ko/en/ko 구간 분리", () => {
+    const segs = splitByLanguage("리뷰어입니다. TypeScript 수정 완료");
+    const langs = segs.map(s => s.lang);
+    expect(langs).toContain("ko");
+    expect(langs).toContain("en");
+    const enSeg = segs.find(s => s.lang === "en")!;
+    expect(enSeg.text.trim()).toBe("TypeScript");
+  });
+
+  it("하이픈 포함 영어 단어는 하나의 en 구간으로 묶임", () => {
+    const segs = splitByLanguage("gpt-5.4 모델");
+    const enSeg = segs.find(s => s.lang === "en")!;
+    expect(enSeg.text.trim()).toBe("gpt-5.4");
+  });
+
+  it("빈 문자열 → 빈 배열", () => {
+    expect(splitByLanguage("")).toHaveLength(0);
+    expect(splitByLanguage("   ")).toHaveLength(0);
+  });
+});
+
+describe("mergeWavBuffers", () => {
+  function makeWav(pcmBytes: number[]): Buffer {
+    const pcm = Buffer.from(pcmBytes);
+    const fmtChunk = Buffer.alloc(24);
+    fmtChunk.write("fmt ", 0);
+    fmtChunk.writeUInt32LE(16, 4);
+    fmtChunk.writeUInt16LE(1, 8);
+    fmtChunk.writeUInt16LE(1, 10);
+    fmtChunk.writeUInt32LE(44100, 12);
+    fmtChunk.writeUInt32LE(88200, 16);
+    fmtChunk.writeUInt16LE(2, 20);
+    fmtChunk.writeUInt16LE(16, 22);
+    const dataHeader = Buffer.alloc(8);
+    dataHeader.write("data", 0);
+    dataHeader.writeUInt32LE(pcm.length, 4);
+    const body = Buffer.concat([Buffer.from("WAVE"), fmtChunk, dataHeader, pcm]);
+    const riff = Buffer.alloc(8);
+    riff.write("RIFF", 0);
+    riff.writeUInt32LE(body.length, 4);
+    return Buffer.concat([riff, body]);
+  }
+
+  it("버퍼 1개 → 그대로 반환", () => {
+    const wav = makeWav([1, 2, 3, 4]);
+    expect(mergeWavBuffers([wav])).toBe(wav);
+  });
+
+  it("버퍼 2개 → PCM 이어붙임, 'RIFF' 헤더 유지", () => {
+    const wav1 = makeWav([0x01, 0x02]);
+    const wav2 = makeWav([0x03, 0x04]);
+    const merged = mergeWavBuffers([wav1, wav2]);
+    expect(merged.slice(0, 4).toString()).toBe("RIFF");
+    // 병합된 PCM에 두 버퍼의 데이터가 모두 포함됨
+    const dataOffset = merged.indexOf(Buffer.from("data")) + 8;
+    const pcm = merged.slice(dataOffset);
+    expect(pcm.includes(Buffer.from([0x01, 0x02]))).toBe(true);
+    expect(pcm.includes(Buffer.from([0x03, 0x04]))).toBe(true);
+  });
+
+  it("병합 후 data 청크 크기가 정확히 갱신됨", () => {
+    const wav1 = makeWav([0x01, 0x02]);
+    const wav2 = makeWav([0x03, 0x04]);
+    const merged = mergeWavBuffers([wav1, wav2]);
+    const dataIdx = merged.indexOf(Buffer.from("data"));
+    const dataSize = merged.readUInt32LE(dataIdx + 4);
+    expect(dataSize).toBe(4); // 2 + 2 바이트
   });
 });

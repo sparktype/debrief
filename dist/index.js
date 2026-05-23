@@ -3,15 +3,29 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig } from "./config.js";
-import { extractSummary } from "./summarizer.js";
+import { extractSummary, extractOneLiner } from "./summarizer.js";
 import { speak, speakAgent } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
 let config = loadConfig();
+// stdin 전체를 읽어 문자열로 반환 — Command Injection 방지용 텍스트 수신 헬퍼
+async function readStdin() {
+    return new Promise((resolve) => {
+        // TTY(터미널 직접 실행)면 stdin 대기 없이 빈 문자열 반환
+        if (process.stdin.isTTY) {
+            resolve("");
+            return;
+        }
+        const chunks = [];
+        process.stdin.on("data", (chunk) => chunks.push(chunk));
+        process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8").trim()));
+        process.stdin.on("error", () => resolve(""));
+    });
+}
 // ── hook CLI 모드 ──────────────────────────────────────────
-// 사용 예: node dist/index.js hook "읽을 텍스트"
+// 사용 예: printf '%s' "$TEXT" | node dist/index.js hook
 if (process.argv[2] === "hook") {
-    const text = process.argv.slice(3).join(" ");
+    const text = await readStdin();
     if (text.length >= config.minChars) {
         const summary = await extractSummary(text, config.summaryModel);
         await speak(summary, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => { }); // silent fail
@@ -19,20 +33,23 @@ if (process.argv[2] === "hook") {
     process.exit(0);
 }
 if (process.argv[2] === "subagent-stop") {
-    const text = process.argv[3] ?? "";
-    const agentType = process.argv[4] ?? "";
+    // TEXT: stdin으로 수신, AGENT_TYPE: argv[3] (특수문자 없는 타입명)
+    const text = await readStdin();
+    const agentType = process.argv[3] ?? "";
     if (text.length >= config.minChars) {
-        const { loadVoiceMap, resolveVoice } = await import("./voice-router.js");
+        const { loadVoiceMap, resolveVoice, getAgentLabel } = await import("./voice-router.js");
         const voiceMap = loadVoiceMap();
         const voice = resolveVoice(agentType, voiceMap);
-        const summary = await extractSummary(text, config.summaryModel);
-        await speakAgent(summary, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => { });
+        const label = getAgentLabel(agentType, voiceMap);
+        const oneLiner = await extractOneLiner(text, config.summaryModel);
+        const announcement = `${label}입니다. ${oneLiner}`;
+        await speakAgent(announcement, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => { });
     }
     process.exit(0);
 }
 if (process.argv[2] === "hook-suggest") {
     const context = process.argv[3] ?? readRecentTranscripts();
-    const rec = await recommendSkill(context, false, config.skillCooldownMinutes);
+    const rec = await recommendSkill(context, false, config.skillCooldownMinutes, config.summaryModel);
     if (rec) {
         const msg = `지금 상황엔 ${rec.skill} 스킬이 유용할 것 같아요`;
         await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => { });
@@ -104,7 +121,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
             return { content: [{ type: "text", text: `요약 재생: ${summary}` }] };
         }
         if (name === "set_config") {
-            config = { ...config, ...args };
+            const ALLOWED_CONFIG_KEYS = ["autoSpeak", "minChars", "ttsInstruct"];
+            const patch = Object.fromEntries(ALLOWED_CONFIG_KEYS
+                .filter(k => k in (args ?? {}))
+                .map(k => [k, args[k]]));
+            config = { ...config, ...patch };
             return { content: [{ type: "text", text: "설정 변경 완료" }] };
         }
         if (name === "suggest_skill") {

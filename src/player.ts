@@ -195,7 +195,7 @@ async function isSupertonicAlive(port: number): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 500);
-    const res = await fetch(`http://localhost:${port}/health`, { signal: ctrl.signal });
+    const res = await fetch(`http://localhost:${port}/v1/health`, { signal: ctrl.signal });
     clearTimeout(timer);
     return res.ok;
   } catch {
@@ -203,25 +203,86 @@ async function isSupertonicAlive(port: number): Promise<boolean> {
   }
 }
 
+// 한영 혼합 처리를 위한 언어 구간 타입
+type LangSegment = { text: string; lang: "ko" | "en" };
+
+// 영문자 연속 구간을 "en", 나머지를 "ko"로 분리
+// 공백·구두점은 앞 구간에 붙여 구간 경계에서 끊김 방지
+export function splitByLanguage(text: string): LangSegment[] {
+  // 영문자로 시작하는 단어 기준 분리 (하이픈·언더스코어·점 포함: gpt-5.4, my_func)
+  const parts = text.split(/([A-Za-z][A-Za-z0-9\-_.]*)/);
+  const segs: LangSegment[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (!parts[i]) continue;
+    const lang: "ko" | "en" = i % 2 === 1 ? "en" : "ko";
+    if (!parts[i].trim()) {
+      // 공백만 있는 구간 — 이전 구간에 붙임 (자연스러운 경계 유지)
+      if (segs.length > 0) segs[segs.length - 1].text += parts[i];
+    } else if (segs.length > 0 && segs[segs.length - 1].lang === lang) {
+      segs[segs.length - 1].text += parts[i];
+    } else {
+      segs.push({ text: parts[i], lang });
+    }
+  }
+  return segs.filter(s => s.text.trim());
+}
+
+// WAV 버퍼에서 "data" 청크 시작 오프셋 반환
+function findDataOffset(buf: Buffer): number {
+  for (let i = 12; i < buf.length - 8; i++) {
+    if (buf[i] === 0x64 && buf[i + 1] === 0x61 && buf[i + 2] === 0x74 && buf[i + 3] === 0x61) {
+      return i;
+    }
+  }
+  throw new Error("WAV 'data' 청크 없음");
+}
+
+// 여러 WAV 버퍼를 하나로 병합 — PCM 데이터를 이어붙이고 헤더 크기 필드 갱신
+export function mergeWavBuffers(buffers: Buffer[]): Buffer {
+  if (buffers.length === 1) return buffers[0];
+  const offsets = buffers.map(findDataOffset);
+  const pcms = buffers.map((b, i) => b.slice(offsets[i] + 8));
+  const pcm = Buffer.concat(pcms);
+  const header = Buffer.from(buffers[0].slice(0, offsets[0] + 8));
+  header.writeUInt32LE(pcm.length, offsets[0] + 4);         // data 청크 크기 갱신
+  header.writeUInt32LE(header.length + pcm.length - 8, 4);  // RIFF 청크 크기 갱신
+  return Buffer.concat([header, pcm]);
+}
+
 async function speakSupertonic(text: string, voice: string, port: number, speed: number): Promise<void> {
+  const segments = splitByLanguage(text);
   const outFile = `/tmp/siren_supertonic_${Date.now()}.wav`;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15000);
+  const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
-    const res = await fetch(`http://localhost:${port}/v1/audio/speech`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "supertonic-3",
-        input: text,
-        voice,
-        response_format: "wav",
-      }),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`Supertonic 응답 오류: ${res.status}`);
-    const buf = await res.arrayBuffer();
-    writeFileSync(outFile, Buffer.from(buf));
+    let audioBuf: Buffer;
+    if (segments.length <= 1) {
+      // 단일 언어 — /v1/audio/speech
+      const lang = segments[0]?.lang ?? "ko";
+      const res = await fetch(`http://localhost:${port}/v1/audio/speech`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "supertonic-3", input: text, voice, response_format: "wav", lang }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`Supertonic 응답 오류: ${res.status}`);
+      audioBuf = Buffer.from(await res.arrayBuffer());
+    } else {
+      // 혼합 언어 — /v1/tts/batch (구간별 lang 지정)
+      const res = await fetch(`http://localhost:${port}/v1/tts/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: segments.map(s => ({ text: s.text, voice, lang: s.lang })),
+          response_format: "wav",
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`Supertonic batch 오류: ${res.status}`);
+      const { items } = await res.json() as { items: { audio_base64: string }[] };
+      audioBuf = mergeWavBuffers(items.map(it => Buffer.from(it.audio_base64, "base64")));
+    }
+    writeFileSync(outFile, audioBuf);
     await spawnPromise("afplay", ["-r", String(speed), outFile]);
   } finally {
     clearTimeout(timer);

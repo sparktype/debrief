@@ -1,9 +1,51 @@
 // EdgeTTS(온라인 우선) → HTTP TTS 서버 → MLX subprocess → macOS say 순서로 음성 재생
 import { spawn } from "child_process";
-import { existsSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, unlinkSync, writeFileSync, openSync, writeSync, closeSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { saveLastMessage } from "./last-message-store.js";
+// 동시 발화 방지 — 프로세스 간 파일 기반 배타 잠금
+const TTS_LOCK_FILE = "/tmp/siren-tts.lock";
+const LOCK_STALE_MS = 30_000;
+const LOCK_WAIT_MS = 25_000;
+async function withTTSLock(fn) {
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    let acquired = false;
+    while (!acquired) {
+        try {
+            // O_CREAT|O_EXCL — 원자적 배타 생성
+            const fd = openSync(TTS_LOCK_FILE, "wx");
+            writeSync(fd, String(Date.now()));
+            closeSync(fd);
+            acquired = true;
+        }
+        catch {
+            try {
+                const t = parseInt(readFileSync(TTS_LOCK_FILE, "utf-8"), 10);
+                if (isNaN(t) || Date.now() - t > LOCK_STALE_MS) {
+                    unlinkSync(TTS_LOCK_FILE);
+                    continue;
+                }
+            }
+            catch {
+                break;
+            }
+            if (Date.now() > deadline)
+                break;
+            await new Promise(r => setTimeout(r, 300));
+        }
+    }
+    try {
+        return await fn();
+    }
+    finally {
+        if (acquired)
+            try {
+                unlinkSync(TTS_LOCK_FILE);
+            }
+            catch { /* 무시 */ }
+    }
+}
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MLX_PYTHON = join(__dirname, "..", "tts-venv", "bin", "python3");
 const MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit";
@@ -58,6 +100,9 @@ async function speakHTTP(text, voice, speed, instruct) {
             body: JSON.stringify({ text, voice, lang_code: "korean", speed, instruct }),
             signal: ctrl.signal,
         });
+        if (res.status === 429) {
+            return; // 이미 재생 중 — 스킵
+        }
         if (!res.ok)
             throw new Error(`TTS 서버 응답 오류: ${res.status}`);
     }
@@ -104,7 +149,7 @@ function speakSay(text, voice) {
 }
 function spawnPromise(cmd, args, opts) {
     return new Promise((resolve, reject) => {
-        const proc = opts ? spawn(cmd, args, opts) : spawn(cmd, args);
+        const proc = spawn(cmd, args, opts ?? {});
         proc.on("close", (code) => {
             if (code === 0)
                 resolve();
@@ -117,16 +162,38 @@ function spawnPromise(cmd, args, opts) {
 async function speakEdge(text, voice, speed) {
     const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-HyunsuMultilingualNeural";
     const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
-    // 타임아웃은 네트워크 생성 단계에만 — 재생은 완료까지 기다림
-    await Promise.race([
-        spawnPromise(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)),
-    ]);
-    await spawnPromise("afplay", ["-r", String(speed), outFile]);
+    // proc을 outer scope에 선언해 타임아웃 시 kill 가능하도록
+    let proc;
+    const edgePromise = new Promise((resolve, reject) => {
+        proc = spawn(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
+        proc.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
+        proc.on("error", reject);
+    });
     try {
-        unlinkSync(outFile);
+        await Promise.race([
+            edgePromise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)),
+        ]);
     }
-    catch { /* 임시 파일 정리 실패 무시 */ }
+    catch (e) {
+        // 타임아웃 또는 오류 시 orphan 프로세스 종료 + 임시 파일 삭제
+        proc?.kill();
+        try {
+            unlinkSync(outFile);
+        }
+        catch { /* 무시 */ }
+        throw e;
+    }
+    // 재생은 완료까지 기다림
+    try {
+        await spawnPromise("afplay", ["-r", String(speed), outFile]);
+    }
+    finally {
+        try {
+            unlinkSync(outFile);
+        }
+        catch { /* 임시 파일 정리 실패 무시 */ }
+    }
 }
 function speakSubprocess(text, voice, speed, instruct) {
     if (MLX_SPEAKERS.has(voice) && existsSync(MLX_PYTHON)) {
@@ -138,7 +205,7 @@ async function isSupertonicAlive(port) {
     try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 500);
-        const res = await fetch(`http://localhost:${port}/health`, { signal: ctrl.signal });
+        const res = await fetch(`http://localhost:${port}/v1/health`, { signal: ctrl.signal });
         clearTimeout(timer);
         return res.ok;
     }
@@ -146,27 +213,89 @@ async function isSupertonicAlive(port) {
         return false;
     }
 }
-async function speakSupertonic(text, voice, port) {
+// 영문자 연속 구간을 "en", 나머지를 "ko"로 분리
+// 공백·구두점은 앞 구간에 붙여 구간 경계에서 끊김 방지
+export function splitByLanguage(text) {
+    // 영문자로 시작하는 단어 기준 분리 (하이픈·언더스코어·점 포함: gpt-5.4, my_func)
+    const parts = text.split(/([A-Za-z][A-Za-z0-9\-_.]*)/);
+    const segs = [];
+    for (let i = 0; i < parts.length; i++) {
+        if (!parts[i])
+            continue;
+        const lang = i % 2 === 1 ? "en" : "ko";
+        if (!parts[i].trim()) {
+            // 공백만 있는 구간 — 이전 구간에 붙임 (자연스러운 경계 유지)
+            if (segs.length > 0)
+                segs[segs.length - 1].text += parts[i];
+        }
+        else if (segs.length > 0 && segs[segs.length - 1].lang === lang) {
+            segs[segs.length - 1].text += parts[i];
+        }
+        else {
+            segs.push({ text: parts[i], lang });
+        }
+    }
+    return segs.filter(s => s.text.trim());
+}
+// WAV 버퍼에서 "data" 청크 시작 오프셋 반환
+function findDataOffset(buf) {
+    for (let i = 12; i < buf.length - 8; i++) {
+        if (buf[i] === 0x64 && buf[i + 1] === 0x61 && buf[i + 2] === 0x74 && buf[i + 3] === 0x61) {
+            return i;
+        }
+    }
+    throw new Error("WAV 'data' 청크 없음");
+}
+// 여러 WAV 버퍼를 하나로 병합 — PCM 데이터를 이어붙이고 헤더 크기 필드 갱신
+export function mergeWavBuffers(buffers) {
+    if (buffers.length === 1)
+        return buffers[0];
+    const offsets = buffers.map(findDataOffset);
+    const pcms = buffers.map((b, i) => b.slice(offsets[i] + 8));
+    const pcm = Buffer.concat(pcms);
+    const header = Buffer.from(buffers[0].slice(0, offsets[0] + 8));
+    header.writeUInt32LE(pcm.length, offsets[0] + 4); // data 청크 크기 갱신
+    header.writeUInt32LE(header.length + pcm.length - 8, 4); // RIFF 청크 크기 갱신
+    return Buffer.concat([header, pcm]);
+}
+async function speakSupertonic(text, voice, port, speed) {
+    const segments = splitByLanguage(text);
     const outFile = `/tmp/siren_supertonic_${Date.now()}.wav`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     try {
-        const res = await fetch(`http://localhost:${port}/v1/audio/speech`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model: "supertonic-3",
-                input: text,
-                voice,
-                response_format: "wav",
-            }),
-            signal: ctrl.signal,
-        });
-        if (!res.ok)
-            throw new Error(`Supertonic 응답 오류: ${res.status}`);
-        const buf = await res.arrayBuffer();
-        writeFileSync(outFile, Buffer.from(buf));
-        await spawnPromise("afplay", [outFile]);
+        let audioBuf;
+        if (segments.length <= 1) {
+            // 단일 언어 — /v1/audio/speech
+            const lang = segments[0]?.lang ?? "ko";
+            const res = await fetch(`http://localhost:${port}/v1/audio/speech`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ model: "supertonic-3", input: text, voice, response_format: "wav", lang }),
+                signal: ctrl.signal,
+            });
+            if (!res.ok)
+                throw new Error(`Supertonic 응답 오류: ${res.status}`);
+            audioBuf = Buffer.from(await res.arrayBuffer());
+        }
+        else {
+            // 혼합 언어 — /v1/tts/batch (구간별 lang 지정)
+            const res = await fetch(`http://localhost:${port}/v1/tts/batch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    items: segments.map(s => ({ text: s.text, voice, lang: s.lang })),
+                    response_format: "wav",
+                }),
+                signal: ctrl.signal,
+            });
+            if (!res.ok)
+                throw new Error(`Supertonic batch 오류: ${res.status}`);
+            const { items } = await res.json();
+            audioBuf = mergeWavBuffers(items.map(it => Buffer.from(it.audio_base64, "base64")));
+        }
+        writeFileSync(outFile, audioBuf);
+        await spawnPromise("afplay", ["-r", String(speed), outFile]);
     }
     finally {
         clearTimeout(timer);
@@ -177,21 +306,27 @@ async function speakSupertonic(text, voice, port) {
     }
 }
 export async function speakAgent(text, supertonicVoice, port, speed) {
-    if (await isSupertonicAlive(port)) {
-        try {
-            await speakSupertonic(text, supertonicVoice, port);
-            saveLastMessage(text);
-            return;
+    return withTTSLock(async () => {
+        if (await isSupertonicAlive(port)) {
+            try {
+                await speakSupertonic(text, supertonicVoice, port, speed);
+                saveLastMessage(text);
+                return;
+            }
+            catch {
+                // Supertonic 실패 시 기존 체인으로 폴백
+            }
         }
-        catch {
-            // Supertonic 실패 시 기존 체인으로 폴백
-        }
-    }
-    await speak(text, "", speed, "");
+        await speakInner(text, "", speed, "");
+    });
 }
 export async function speak(text, voice = "", speed = 1.2, instruct = "") {
-    // 1. EdgeTTS (온라인 우선, tts-venv에 edge-tts 설치 필요)
-    if (existsSync(MLX_PYTHON)) {
+    return withTTSLock(() => speakInner(text, voice, speed, instruct));
+}
+async function speakInner(text, voice = "", speed = 1.2, instruct = "") {
+    // 1. EdgeTTS (온라인 우선, tts-venv에 edge-tts 설치 필요, SIREN_OFFLINE=1이면 건너뜀)
+    const skipEdge = process.env.SIREN_OFFLINE === "1";
+    if (!skipEdge && existsSync(MLX_PYTHON)) {
         try {
             await speakEdge(text, voice, speed);
             saveLastMessage(text);
