@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import datetime
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 
@@ -16,6 +17,13 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+
+def _log(level: str, message: str) -> None:
+    """구조화 로그 출력 — [LEVEL] YYYY-MM-DD HH:MM:SS message 형식."""
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{level}] {ts} {message}", flush=True)
+
 
 _MODEL_ID = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 
@@ -125,9 +133,9 @@ def _tts_worker() -> None:
     from mlx_audio.tts.generate import generate_audio
     from mlx_audio.tts.utils import load_model
 
-    print(f"[TTS Server] 모델 로딩 중: {_MODEL_ID}", flush=True)
+    _log("INFO", f"모델 로딩 중: {_MODEL_ID}")
     model = load_model(_MODEL_ID)
-    print("[TTS Server] 모델 로딩 완료. 서버 준비.", flush=True)
+    _log("INFO", "모델 로딩 완료. 서버 준비.")
     _model_ready.set()
 
     while True:
@@ -140,12 +148,12 @@ def _tts_worker() -> None:
         if lang_code == "korean":
             processed = _preprocess_for_tts(text)
             if processed != text:
-                print(f"[TTS Server] 발음 보정: {text[:60]!r} → {processed[:60]!r}", flush=True)
+                _log("INFO", f"발음 보정: {text[:60]!r} → {processed[:60]!r}")
             text = processed
 
         tmpdir = tempfile.mkdtemp(prefix="siren_tts_")
         try:
-            print(f"[TTS Server] 재생 시작: {text[:40]!r} (speed={speed}x, instruct={instruct!r})", flush=True)
+            _log("INFO", f"재생 시작: {text[:40]!r} (speed={speed}x)")
             # speed=1.0 고정 — Qwen3-TTS는 speed!=1.0 시 최적화 경로가 꺼짐
             # 재생 속도는 afplay -r 로 후처리
             generate_audio(
@@ -162,9 +170,9 @@ def _tts_worker() -> None:
             files = sorted(glob.glob(f"{tmpdir}/*.wav"))
             if files:
                 subprocess.run(["afplay", "-r", str(speed), files[0]], check=False)
-            print("[TTS Server] 재생 완료", flush=True)
+            _log("INFO", "재생 완료")
         except Exception as e:
-            print(f"[TTS Server] 재생 오류: {e}", flush=True)
+            _log("ERROR", f"재생 오류: {e}")
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -178,7 +186,7 @@ async def lifespan(app: FastAPI):
     _work_queue.put(None)
     if _worker_thread:
         _worker_thread.join(timeout=5)
-    print("[TTS Server] 서버 종료.", flush=True)
+    _log("INFO", "서버 종료.")
 
 
 app = FastAPI(title="Siren TTS Server", lifespan=lifespan)

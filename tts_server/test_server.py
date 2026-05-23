@@ -29,3 +29,26 @@ class TestTechPhonetics:
     def test_unknown_word_unchanged(self):
         result = _preprocess_for_tts("SomeUnknownWord")
         assert "SomeUnknownWord" in result
+
+
+import datetime
+from tts_server.server import _log
+
+
+class TestStructuredLog:
+    def test_info_prefix(self, capsys):
+        _log("INFO", "서버 시작")
+        captured = capsys.readouterr()
+        assert "[INFO]" in captured.out
+        assert "서버 시작" in captured.out
+
+    def test_error_prefix(self, capsys):
+        _log("ERROR", "오류 발생")
+        captured = capsys.readouterr()
+        assert "[ERROR]" in captured.out
+
+    def test_timestamp_included(self, capsys):
+        _log("INFO", "타임스탬프 확인")
+        captured = capsys.readouterr()
+        import re
+        assert re.search(r"\d{4}-\d{2}-\d{2}", captured.out)
