@@ -1,86 +1,91 @@
-# TTS 상주 서버 — 모델을 한 번 로딩해 메모리에 유지하며 /speak 요청 처리
+# TTS 상주 서버 — 모델 로딩과 추론을 동일한 워커 스레드에서 실행 (MLX GPU 스트림 요건)
 import os
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 
+import queue
 import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-# --- 전역 상태 ---
-_model = None
-_play_lock = threading.Lock()
 _MODEL_ID = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 
+# 단일 워커 스레드 상태
+_work_queue: queue.Queue = queue.Queue(maxsize=1)
+_model_ready = threading.Event()
+_worker_thread: Optional[threading.Thread] = None
 
-# --- lifespan: 시작 시 모델 로딩 ---
+
+def _tts_worker() -> None:
+    """모델 로딩 + TTS 생성을 같은 스레드에서 처리 — MLX Metal 스트림 유지."""
+    from mlx_audio.tts.generate import generate_audio
+    from mlx_audio.tts.utils import load_model
+
+    print(f"[TTS Server] 모델 로딩 중: {_MODEL_ID}", flush=True)
+    model = load_model(_MODEL_ID)
+    print("[TTS Server] 모델 로딩 완료. 서버 준비.", flush=True)
+    _model_ready.set()
+
+    while True:
+        item = _work_queue.get()
+        if item is None:  # 종료 신호
+            break
+        text, voice, lang_code = item
+        try:
+            print(f"[TTS Server] 재생 시작: {text[:40]!r}", flush=True)
+            generate_audio(
+                text=text,
+                model=model,
+                voice=voice,
+                lang_code=lang_code,
+                play=True,
+                output_path="/tmp",
+            )
+            print("[TTS Server] 재생 완료", flush=True)
+        except Exception as e:
+            print(f"[TTS Server] 재생 오류: {e}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model
-    print(f"[TTS Server] 모델 로딩 중: {_MODEL_ID}", flush=True)
-    from mlx_audio.tts.utils import load_model
-    _model = load_model(_MODEL_ID)
-    print("[TTS Server] 모델 로딩 완료. 서버 준비.", flush=True)
+    global _worker_thread
+    _worker_thread = threading.Thread(target=_tts_worker, daemon=True, name="tts-worker")
+    _worker_thread.start()
     yield
-    # 종료 시 정리 (필요 시 추가)
-    _model = None
+    _work_queue.put(None)
+    if _worker_thread:
+        _worker_thread.join(timeout=5)
     print("[TTS Server] 서버 종료.", flush=True)
 
 
 app = FastAPI(title="Siren TTS Server", lifespan=lifespan)
 
 
-# --- 요청 스키마 ---
 class SpeakRequest(BaseModel):
     text: str
     voice: str = "Sohee"
     lang_code: str = "Auto"
 
 
-# --- 재생 작업 (백그라운드 스레드) ---
-def _do_speak(text: str, voice: str, lang_code: str) -> None:
-    """Lock 획득 후 TTS 생성 + 재생. 이미 재생 중이면 즉시 반환."""
-    acquired = _play_lock.acquire(blocking=False)
-    if not acquired:
-        print("[TTS Server] 재생 중 — 새 요청 무시", flush=True)
-        return
-    try:
-        from mlx_audio.tts.generate import generate_audio
-        print(f"[TTS Server] 재생 시작: {text[:40]!r}", flush=True)
-        generate_audio(
-            text=text,
-            model=_model,
-            voice=voice,
-            lang_code=lang_code,
-            play=True,
-            output_path="/tmp",
-        )
-        print("[TTS Server] 재생 완료", flush=True)
-    except Exception as e:
-        print(f"[TTS Server] 재생 오류: {e}", flush=True)
-    finally:
-        _play_lock.release()
-
-
-# --- 엔드포인트 ---
 @app.post("/speak", status_code=202)
-async def speak(req: SpeakRequest, background_tasks: BackgroundTasks):
-    """TTS 재생 요청 — 즉시 202 반환, 백그라운드에서 재생."""
-    background_tasks.add_task(
-        lambda: threading.Thread(
-            target=_do_speak,
-            args=(req.text, req.voice, req.lang_code),
-            daemon=True,
-        ).start()
-    )
-    return {"status": "accepted"}
+async def speak(req: SpeakRequest):
+    """TTS 재생 요청 — 즉시 202 반환, 워커 스레드에서 재생."""
+    if not _model_ready.is_set():
+        return JSONResponse({"status": "loading"}, status_code=503)
+    try:
+        _work_queue.put_nowait((req.text, req.voice, req.lang_code))
+        return {"status": "accepted"}
+    except queue.Full:
+        return JSONResponse({"status": "busy"}, status_code=429)
 
 
 @app.get("/health")
 async def health():
-    """서버 상태 확인."""
+    """서버 상태 확인 — 모델 로딩 전이면 503."""
+    if not _model_ready.is_set():
+        return JSONResponse({"status": "loading"}, status_code=503)
     return {"status": "ok"}
