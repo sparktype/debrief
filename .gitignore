@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.mp3
 .siren.json
+tts-venv/
+*.wav
