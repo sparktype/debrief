@@ -36,7 +36,7 @@ async function readStdin(): Promise<string> {
 // 사용 예: printf '%s' "$TEXT" | node dist/index.js hook
 if (process.argv[2] === "hook") {
   const text = await readStdin();
-  if (text.length >= config.minChars) {
+  if (config.autoSpeak && text.length >= config.minChars) {
     const summary = await extractSummary(text, config.summaryModel);
     // EdgeTTS(HyunsuMultilingualNeural) → 스풀 큐 → 데몬 순차 재생
     await speakHook(summary, config.voice, config.ttsSpeed).catch(() => {});
