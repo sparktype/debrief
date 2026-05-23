@@ -10,7 +10,7 @@ describe("loadConfig", () => {
   it("파일 없으면 기본값 반환", () => {
     const c = loadConfig("/nonexistent/path.json");
     expect(c.autoSpeak).toBe(true);
-    expect(c.minChars).toBe(200);
+    expect(c.minChars).toBe(50);
     expect(c.voice).toBe("Sohee");
     expect(c.language).toBe("ko");
     expect(c.ttsSpeed).toBe(1.2);
@@ -29,7 +29,7 @@ describe("loadConfig", () => {
   it("JSON 파싱 실패 시 기본값 반환", () => {
     writeFileSync(TMP, "not json");
     const c = loadConfig(TMP);
-    expect(c.minChars).toBe(200);
+    expect(c.minChars).toBe(50);
   });
 
   it("skillCooldownMinutes 기본값 30", () => {
