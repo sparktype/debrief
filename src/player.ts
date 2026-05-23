@@ -33,8 +33,10 @@ const EDGE_VOICE_MAP: Record<string, string> = {
 };
 
 // edge-tts Python API를 argv로 호출 — 쉘 이스케이프 없이 텍스트 전달
+// SSL 검증 비활성화: HMG 사내 프록시가 자체 CA로 TLS를 인터셉트하기 때문에 certifi 번들 검증 실패
 const EDGE_SCRIPT =
-  "import asyncio, edge_tts, sys; " +
+  "import asyncio, edge_tts, edge_tts.communicate as ec, ssl, sys; " +
+  "ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; ec._SSL_CTX=ctx; " +
   "asyncio.run(edge_tts.Communicate(sys.argv[1], sys.argv[2]).save(sys.argv[3]))";
 
 async function isTTSServerAlive(): Promise<boolean> {
