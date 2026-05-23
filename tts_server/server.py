@@ -103,18 +103,18 @@ _TECH_PHONETICS: dict[str, str] = {
     "Android": "안드로이드",
 }
 
+# 대소문자 무관 O(1) 조회를 위한 정규화 Map (key를 upper로 통일)
+_TECH_PHONETICS_UPPER: dict[str, str] = {
+    k.upper(): v for k, v in _TECH_PHONETICS.items()
+}
+
 
 def _preprocess_for_tts(text: str) -> str:
     """영문 기술 용어를 한국어 발음으로 치환 — lang_code=korean 시 발음 개선."""
     def _replace(m: re.Match) -> str:
         word = m.group(0)
-        if word in _TECH_PHONETICS:
-            return _TECH_PHONETICS[word]
-        # 대소문자 무관 매핑 (DOCKER → 도커)
-        for key, val in _TECH_PHONETICS.items():
-            if key.upper() == word.upper():
-                return val
-        return word
+        # 정규화 Map에서 O(1) 조회
+        return _TECH_PHONETICS_UPPER.get(word.upper(), word)
 
     # 단어 경계 기준으로 치환 (한국어 조사 바로 앞 영문도 처리됨)
     return re.sub(r"[A-Za-z][A-Za-z0-9\-/\.]*", _replace, text)
