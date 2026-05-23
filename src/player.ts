@@ -115,17 +115,15 @@ function spawnPromise(cmd: string, args: string[], opts?: object): Promise<void>
 async function speakEdge(text: string, voice: string, speed: number): Promise<void> {
   const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-SunHiNeural";
   const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
-  const edgePromise = (async () => {
-    await spawnPromise(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
-    await spawnPromise("afplay", ["-r", String(speed), outFile]);
-    try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
-  })();
+  // 타임아웃은 네트워크 생성 단계에만 — 재생은 완료까지 기다림
   await Promise.race([
-    edgePromise,
+    spawnPromise(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]),
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("EdgeTTS 타임아웃")), EDGE_TIMEOUT_MS)
     ),
   ]);
+  await spawnPromise("afplay", ["-r", String(speed), outFile]);
+  try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
 }
 
 function speakSubprocess(text: string, voice: string, speed: number, instruct: string): Promise<void> {
