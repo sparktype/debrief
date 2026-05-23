@@ -20,16 +20,16 @@ function mockProc(exitCode: number) {
 }
 
 describe("speak", () => {
-  it("기본 목소리(Yuna)로 say 호출 후 resolve", async () => {
+  it("기본 목소리(시스템) — -v 없이 say 호출", async () => {
     mockProc(0);
     await expect(speak("안녕")).resolves.toBeUndefined();
-    expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Yuna", "안녕"]);
+    expect(cp.spawn).toHaveBeenCalledWith("say", ["안녕"]);
   });
 
-  it("지정한 목소리로 say 호출", async () => {
+  it("목소리 지정 시 -v 옵션 포함", async () => {
     mockProc(0);
-    await speak("안녕", "Eddy");
-    expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Eddy", "안녕"]);
+    await speak("안녕", "Yuna");
+    expect(cp.spawn).toHaveBeenCalledWith("say", ["-v", "Yuna", "안녕"]);
   });
 
   it("say 실패 시 reject", async () => {
