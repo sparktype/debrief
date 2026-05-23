@@ -156,6 +156,17 @@ do_stop() {
     echo "TTS 서버가 실행 중이지 않습니다."
     return 0
   fi
+  if _is_launchd_managed; then
+    echo "launchd 관리 서버 종료 중 (launchctl stop)..."
+    launchctl stop "$LAUNCHD_LABEL"
+    local i=0
+    while (( i < 8 )); do
+      _tts_running || break
+      sleep 1
+      i=$(( i + 1 ))
+    done
+    return 0
+  fi
   bash "$SCRIPT_DIR/tts_server/stop.sh"
 }
 
