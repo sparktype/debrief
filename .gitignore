@@ -5,6 +5,7 @@ dist/
 tts-venv/
 *.wav
 .tts_server.pid
+.supertonic.pid
 tts_server/__pycache__/
 .claude/
 .superpowers/

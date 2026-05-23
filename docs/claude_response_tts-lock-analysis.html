@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>withTTSLock 동작 분석</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: -apple-system, 'Apple SD Gothic Neo', sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 32px; line-height: 1.7; }
+    h1 { color: #f0f6fc; border-bottom: 1px solid #30363d; padding-bottom: 12px; }
+    h2 { color: #79c0ff; margin-top: 40px; }
+    h3 { color: #d2a8ff; margin-top: 28px; }
+    section { max-width: 900px; margin: 0 auto; }
+    .bad  { background: #2d0f0f; border-left: 4px solid #f85149; padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+    .warn { background: #1f1700; border-left: 4px solid #e3b341; padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+    .good { background: #0d2410; border-left: 4px solid #3fb950; padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+    .info { background: #0d1f36; border-left: 4px solid #388bfd; padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+    code.inline { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #e3b341; font-family: monospace; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th { background: #161b22; color: #8b949e; font-weight: 600; padding: 10px 14px; text-align: left; border-bottom: 2px solid #30363d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; vertical-align: top; }
+    .tag-bad  { display: inline-block; background: #8b1a1a; color: #ffa198; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .tag-ok   { display: inline-block; background: #1a4d1a; color: #aff5b4; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .tag-warn { display: inline-block; background: #4d3800; color: #e3b341; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    pre { margin: 12px 0; }
+    .line-highlight { background: #ff000033; display: block; margin: 0 -12px; padding: 0 12px; }
+  </style>
+</head>
+<body>
+<section>
+  <h1>withTTSLock 동작 분석</h1>
+  <p>여러 에이전트 프로세스가 동시에 발화를 시도할 때 <code class="inline">withTTSLock</code>이 어떻게 동작하는지 분석합니다.</p>
+
+  <h2>결론 요약</h2>
+  <table>
+    <tr><th>질문</th><th>실제 동작</th><th>판정</th></tr>
+    <tr>
+      <td>동시 발화가 완전히 막히는가?</td>
+      <td>타임아웃 또는 readFileSync 오류 시 잠금 없이 실행됨</td>
+      <td><span class="tag-bad">불완전</span></td>
+    </tr>
+    <tr>
+      <td>대기 에이전트가 순서대로 발화되는가?</td>
+      <td>순서 보장 없음 — OS 스케줄링에 의해 결정됨</td>
+      <td><span class="tag-warn">비보장</span></td>
+    </tr>
+    <tr>
+      <td>대기 중인 발화가 누락되는가?</td>
+      <td>타임아웃(25초) 이내면 발화됨, 이후는 잠금 없이 실행</td>
+      <td><span class="tag-ok">정상 범위 내</span></td>
+    </tr>
+  </table>
+
+  <h2>버그 1 — 타임아웃 후에도 발화 실행 (잠금 없이)</h2>
+
+  <pre><code class="language-typescript">async function withTTSLock&lt;T&gt;(fn: () => Promise&lt;T&gt;): Promise&lt;T&gt; {
+  const deadline = Date.now() + LOCK_WAIT_MS;   // 25초
+  let acquired = false;
+  while (!acquired) {
+    try {
+      const fd = openSync(TTS_LOCK_FILE, "wx");
+      ...
+      acquired = true;
+    } catch {
+      ...
+      if (Date.now() &gt; deadline) break;          // ← acquired = false 인 채로 탈출
+      await new Promise(r =&gt; setTimeout(r, 300));
+    }
+  }
+  try {
+    return await fn();    // ← acquired = false 여도 실행!
+  } finally {
+    if (acquired) try { unlinkSync(TTS_LOCK_FILE); } catch { }
+  }
+}</code></pre>
+
+  <div class="bad">
+    <strong>문제:</strong> 25초를 기다렸는데 잠금을 못 얻으면 <code class="inline">break</code> → <code class="inline">acquired = false</code>
+    인 채로 <code class="inline">fn()</code>이 실행됩니다.
+    잠금 보유자(리더)가 아직 발화 중인 경우 <strong>동시 발화가 발생</strong>합니다.
+  </div>
+
+  <h2>버그 2 — readFileSync 예외 시 즉시 탈출 (잠금 없이)</h2>
+
+  <pre><code class="language-typescript">    } catch {
+      try {
+        const t = parseInt(readFileSync(TTS_LOCK_FILE, "utf-8"), 10);
+        if (isNaN(t) || Date.now() - t &gt; LOCK_STALE_MS) {
+          unlinkSync(TTS_LOCK_FILE);
+          continue;
+        }
+      } catch { break; }   // ← 잠금 파일 읽기 실패 → break → fn() 실행!
+      ...
+    }</code></pre>
+
+  <div class="bad">
+    <strong>문제:</strong> 잠금 파일을 읽는 도중 다른 프로세스가 파일을 삭제하면
+    <code class="inline">readFileSync</code>가 ENOENT를 던집니다.
+    이때 <code class="inline">break</code>로 탈출해 <code class="inline">acquired = false</code>인 채로 <code class="inline">fn()</code>이 실행됩니다.
+    다음 루프에서 다시 <code class="inline">openSync("wx")</code>를 시도해야 올바른 동작입니다.
+  </div>
+
+  <h2>순서 보장 문제</h2>
+
+  <div class="warn">
+    <strong>FIFO 순서 보장 없음:</strong> 여러 에이전트가 300ms마다 <code class="inline">openSync("wx")</code>를 시도합니다.
+    잠금이 해제될 때 먼저 대기하고 있었던 에이전트가 우선권을 갖지 않습니다.
+    OS 타이머와 스케줄러가 누가 먼저 파일 생성에 성공하는지를 결정합니다.
+  </div>
+
+  <div class="info">
+    <strong>실용적 관점:</strong> TTS는 각 에이전트가 3~10초 발화하므로 순서가 바뀌어도 큰 문제가 없습니다.
+    "리뷰어 다음 플래너" vs "플래너 다음 리뷰어"는 사용자 경험에 영향이 적습니다.
+    완전한 FIFO가 필요하다면 별도 큐 파일이 필요합니다.
+  </div>
+
+  <h2>수정 방법</h2>
+
+  <h3>버그 1·2 수정 — <code>break</code> → <code>continue</code>, 타임아웃 시 skip</h3>
+
+  <pre><code class="language-typescript">async function withTTSLock&lt;T&gt;(fn: () => Promise&lt;T&gt;): Promise&lt;T&gt; {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  let acquired = false;
+  while (!acquired) {
+    try {
+      const fd = openSync(TTS_LOCK_FILE, "wx");
+      writeSync(fd, String(Date.now()));
+      closeSync(fd);
+      acquired = true;
+    } catch {
+      // 잠금 파일 읽기 실패(ENOENT 등) → 다음 루프에서 재시도 (break 아님)
+      try {
+        const t = parseInt(readFileSync(TTS_LOCK_FILE, "utf-8"), 10);
+        if (isNaN(t) || Date.now() - t &gt; LOCK_STALE_MS) {
+          unlinkSync(TTS_LOCK_FILE);
+        }
+      } catch { /* ENOENT: 다음 루프에서 openSync 재시도 */ }
+
+      if (Date.now() &gt; deadline) {
+        // 타임아웃 — fn()을 실행하지 않고 조용히 포기
+        return undefined as T;
+      }
+      await new Promise(r =&gt; setTimeout(r, 300));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    try { unlinkSync(TTS_LOCK_FILE); } catch { /* 무시 */ }
+  }
+}</code></pre>
+
+  <div class="good">
+    <strong>변경 포인트:</strong>
+    <ul>
+      <li><code class="inline">catch { break }</code> → <code class="inline">catch { /* continue */ }</code> — ENOENT 시 다음 루프에서 openSync 재시도</li>
+      <li>타임아웃 → <code class="inline">return undefined</code> — 잠금 없이 발화하지 않음 (음성 스킵)</li>
+      <li><code class="inline">if (acquired)</code> 가드 제거 — finally는 항상 획득 상태이므로 무조건 해제</li>
+    </ul>
+  </div>
+
+  <h2>수정 후 동작 시나리오</h2>
+
+  <table>
+    <tr><th>시각</th><th>리더</th><th>에이전트 A</th><th>에이전트 B</th></tr>
+    <tr><td>t=0</td><td>잠금 획득, 발화 시작</td><td>잠금 시도 → 대기</td><td>잠금 시도 → 대기</td></tr>
+    <tr><td>t=7s</td><td>발화 완료, 잠금 해제</td><td>폴링 중</td><td>폴링 중</td></tr>
+    <tr><td>t=7.3s</td><td>종료</td><td>잠금 획득, 발화 시작 (or B)</td><td>대기 (or A가 먼저)</td></tr>
+    <tr><td>t=12s</td><td>-</td><td>발화 완료, 잠금 해제</td><td>잠금 획득, 발화 시작</td></tr>
+    <tr><td>t=16s</td><td>-</td><td>-</td><td>발화 완료</td></tr>
+  </table>
+  <p>순서: 리더 → A 또는 B → 나머지. 동시 발화 없음. A와 B 중 누가 먼저냐는 비결정적이나, 둘 다 발화함.</p>
+
+</section>
+<script>hljs.highlightAll();</script>
+</body>
+</html>

@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Siren MCP — 전체 분석 리포트</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+      --green: #3fb950; --yellow: #d29922; --red: #f85149; --orange: #e3b341;
+      --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; }
+    .header { background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border-bottom: 1px solid var(--border); padding: 32px 40px; }
+    .header h1 { font-size: 28px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+    .header p { color: var(--muted); font-size: 13px; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; }
+    .badge-green { background: #1a3f2a; color: var(--green); }
+    .badge-yellow { background: #3d2e10; color: var(--yellow); }
+    .badge-red { background: #3d1f1f; color: var(--red); }
+    nav { display: flex; gap: 4px; padding: 12px 40px; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+    nav a { color: var(--muted); text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; white-space: nowrap; }
+    nav a:hover { background: var(--border); color: var(--text); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 32px 40px; }
+    section { margin-bottom: 48px; }
+    h2 { font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    h3 { font-size: 15px; font-weight: 600; color: var(--accent); margin: 20px 0 10px; }
+    h4 { font-size: 13px; font-weight: 600; color: var(--orange); margin: 14px 0 8px; }
+    p { margin-bottom: 10px; color: var(--text); }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+    th { background: var(--surface); padding: 10px 14px; text-align: left; font-weight: 600; color: var(--muted); border: 1px solid var(--border); }
+    td { padding: 9px 14px; border: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 10px 0; }
+    pre code { font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    code { background: rgba(88,166,255,0.1); color: var(--accent); padding: 1px 5px; border-radius: 4px; font-size: 12px; font-family: monospace; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+    .card h3 { margin-top: 0; }
+    .issue { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+    .issue-high { border-left: 4px solid var(--red); }
+    .issue-medium { border-left: 4px solid var(--yellow); }
+    .issue-low { border-left: 4px solid var(--muted); }
+    .issue-title { font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .issue-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .severity { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .sev-high { background: #3d1f1f; color: var(--red); }
+    .sev-medium { background: #3d2e10; color: var(--yellow); }
+    .sev-low { background: #1e2a1e; color: var(--muted); }
+    .voice-check { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface); border-radius: 8px; margin-bottom: 8px; }
+    .voice-icon { font-size: 22px; }
+    .voice-info { flex: 1; }
+    .voice-name { font-weight: 600; font-size: 13px; }
+    .voice-sub { font-size: 12px; color: var(--muted); }
+    .status-ok { color: var(--green); font-size: 16px; }
+    .status-fail { color: var(--red); font-size: 16px; }
+    .status-warn { color: var(--yellow); font-size: 16px; }
+    .summary-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+    .stat-row { display: flex; gap: 20px; margin: 12px 0; }
+    .stat { text-align: center; flex: 1; }
+    .stat-num { font-size: 28px; font-weight: 700; }
+    .stat-label { font-size: 11px; color: var(--muted); }
+    ul { padding-left: 20px; margin-bottom: 10px; }
+    li { margin-bottom: 4px; }
+    .diff-add { color: var(--green); }
+    .diff-del { color: var(--red); }
+    .flow-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 12px 0; font-family: monospace; font-size: 12px; white-space: pre; line-height: 1.5; overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔊 Siren MCP — 전체 분석 리포트</h1>
+  <p>생성일: 2026-05-23 &nbsp;|&nbsp; 분석 에이전트: code-explorer · code-reviewer · (문서 직접 작성) &nbsp;|&nbsp; 버전: 0.1.0</p>
+</div>
+
+<nav>
+  <a href="#overview">개요</a>
+  <a href="#architecture">아키텍처</a>
+  <a href="#voice-check">에이전트별 음성 검증</a>
+  <a href="#issues-high">이슈 (HIGH)</a>
+  <a href="#issues-medium">이슈 (MEDIUM)</a>
+  <a href="#issues-low">이슈 (LOW)</a>
+  <a href="#claude-md-diff">CLAUDE.md 개선</a>
+  <a href="#verdict">종합 판정</a>
+</nav>
+
+<div class="container">
+
+<!-- ============================================================ -->
+<section id="overview">
+  <h2>📊 분석 개요</h2>
+
+  <div class="summary-box">
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-num" style="color: var(--accent)">7</div>
+        <div class="stat-label">소스 파일 (TS)</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--purple)">1</div>
+        <div class="stat-label">TTS 서버 (Python)</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--green)">6</div>
+        <div class="stat-label">테스트 파일</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--red)">4</div>
+        <div class="stat-label">HIGH 이슈</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--yellow)">12</div>
+        <div class="stat-label">MEDIUM 이슈</div>
+      </div>
+      <div class="stat">
+        <div class="stat-num" style="color: var(--muted)">5</div>
+        <div class="stat-label">LOW 이슈</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>TTS 파이프라인</h3>
+      <p>Edge TTS → MLX 서버 → MLX subprocess → macOS say 4단계 폴백. Apple Silicon MLX 기반 Qwen3-TTS-0.6B 모델 상주.</p>
+    </div>
+    <div class="card">
+      <h3>다성 TTS</h3>
+      <p>서브에이전트 타입(code-reviewer, planner 등)에 따라 Supertonic voice ID 자동 배정. voice-map.json만 편집하면 코드 변경 없이 확장 가능.</p>
+    </div>
+    <div class="card">
+      <h3>스킬 추천</h3>
+      <p>세션 시작·프롬프트 입력 시 대화 transcript를 LLM으로 분석해 Claude Code 스킬 1개 음성 추천. 30분 쿨다운으로 반복 억제.</p>
+    </div>
+    <div class="card">
+      <h3>설계 원칙</h3>
+      <p>nohup &amp; disown 패턴으로 TTS를 hook timeout에서 완전 분리. silent fail 정책으로 Claude Code 응답을 절대 방해하지 않음.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="architecture">
+  <h2>🏗️ 아키텍처</h2>
+
+  <h3>전체 실행 흐름</h3>
+  <div class="flow-box">Claude 응답 완료 (Stop 이벤트)
+  └─ hooks/stop.sh
+       ├─ stdin JSON → last_assistant_message 추출
+       └─ nohup node dist/index.js hook "&lt;TEXT&gt;" &amp; disown
+            └─ index.ts [hook 모드]
+                 ├─ loadConfig() — .siren.json 로드
+                 ├─ text.length &lt; minChars(200) → exit 0
+                 ├─ extractSummary() — HMG Hub LLM → 마지막 3문장 폴백
+                 └─ speak()
+                      ├─ 1순위: speakEdge() — Microsoft Edge TTS (온라인, 10초 타임아웃)
+                      ├─ 2순위: speakHTTP() — MLX 상주 서버 localhost:7777 (202 비동기)
+                      ├─ 3순위: speakMLX() — tts-venv subprocess
+                      └─ 4순위: speakSay() — macOS say
+
+서브에이전트 완료 (SubagentStop 이벤트)
+  └─ hooks/subagent-stop.sh
+       ├─ stdin JSON → last_assistant_message 추출
+       ├─ transcript.jsonl 역방향 파싱 → subagent_type 추출
+       └─ nohup node dist/index.js subagent-stop "&lt;TEXT&gt;" "&lt;AGENT_TYPE&gt;" &amp; disown
+            └─ index.ts [subagent-stop 모드]
+                 ├─ loadVoiceMap() → resolveVoice(agentType) → voice ID
+                 ├─ extractSummary()
+                 └─ speakAgent()
+                      ├─ isSupertonicAlive(7788) → speakSupertonic() → WAV → afplay
+                      └─ 실패 시 speak() 폴백 체인</div>
+
+  <h3>파일별 역할</h3>
+  <table>
+    <tr><th>파일</th><th>역할</th><th>중요도</th></tr>
+    <tr><td><code>src/index.ts</code></td><td>MCP 서버 진입점 + CLI 분기 (hook / subagent-stop / hook-suggest)</td><td>최고</td></tr>
+    <tr><td><code>src/player.ts</code></td><td>TTS 4단계 폴백 체인 (EdgeTTS → HTTP → MLX → say)</td><td>최고</td></tr>
+    <tr><td><code>src/voice-router.ts</code></td><td>agentType → 카테고리 → Supertonic voice ID 변환</td><td>높음</td></tr>
+    <tr><td><code>src/skill-recommender.ts</code></td><td>transcript 분석 → LLM → catalog 검증 → 쿨다운 관리</td><td>높음</td></tr>
+    <tr><td><code>src/summarizer.ts</code></td><td>HMG Hub LLM 요약 + 규칙 기반 폴백</td><td>높음</td></tr>
+    <tr><td><code>src/config.ts</code></td><td>.siren.json 로더 + DEFAULTS merge</td><td>중간</td></tr>
+    <tr><td><code>src/last-message-store.ts</code></td><td>마지막 TTS 텍스트 파일 영속화</td><td>중간</td></tr>
+    <tr><td><code>tts_server/server.py</code></td><td>FastAPI MLX TTS 상주 서버 — 단일 워커 스레드</td><td>최고</td></tr>
+    <tr><td><code>hooks/subagent-stop.sh</code></td><td>SubagentStop 이벤트 처리, transcript 역방향 파싱</td><td>높음</td></tr>
+    <tr><td><code>voice-map.json</code></td><td>에이전트 카테고리-voice 매핑 데이터</td><td>중간</td></tr>
+  </table>
+
+  <h3>외부 의존성</h3>
+  <table>
+    <tr><th>의존성</th><th>종류</th><th>용도</th><th>오프라인 가능</th></tr>
+    <tr><td>HMG Hub LLM API</td><td>외부 서비스</td><td>요약, 스킬 추천</td><td>폴백 있음</td></tr>
+    <tr><td>Microsoft Edge TTS</td><td>외부 서비스</td><td>온라인 TTS 1순위</td><td>10초 후 폴백</td></tr>
+    <tr><td>HuggingFace Hub</td><td>모델 저장소</td><td>초기 모델 다운로드만</td><td>이후 오프라인</td></tr>
+    <tr><td>MLX (Apple Silicon)</td><td>로컬 라이브러리</td><td>Qwen3-TTS 추론</td><td>완전 오프라인</td></tr>
+    <tr><td>Supertonic</td><td>로컬 서버</td><td>에이전트별 다성 TTS</td><td>완전 오프라인</td></tr>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<section id="voice-check">
+  <h2>🎙️ 에이전트별 음성 검증</h2>
+
+  <div class="summary-box">
+    <h3 style="color: var(--red); margin-top: 0;">⚠️ Supertonic 서버 미실행 — 다성 TTS 미작동</h3>
+    <p>이번 병렬 에이전트 실행 시 <code>SubagentStop</code> 훅이 정상 발동됐지만, <strong>Supertonic(7788)이 꺼져 있어</strong> 모든 에이전트가 동일한 폴백 음성을 사용했습니다.</p>
+    <pre><code class="language-bash">./tts_server/supertonic_start.sh  # 다성 TTS 활성화</code></pre>
+  </div>
+
+  <h3>현재 서버 상태</h3>
+  <div class="voice-check">
+    <span class="voice-icon">🟢</span>
+    <div class="voice-info">
+      <div class="voice-name">MLX TTS 서버 (포트 7777)</div>
+      <div class="voice-sub">Qwen3-TTS — 정상 응답 (status: ok)</div>
+    </div>
+    <span class="status-ok">✓</span>
+  </div>
+  <div class="voice-check">
+    <span class="voice-icon">🔴</span>
+    <div class="voice-info">
+      <div class="voice-name">Supertonic (포트 7788)</div>
+      <div class="voice-sub">에이전트별 다성 TTS — 중지됨</div>
+    </div>
+    <span class="status-fail">✗</span>
+  </div>
+  <div class="voice-check">
+    <span class="voice-icon">🟢</span>
+    <div class="voice-info">
+      <div class="voice-name">SubagentStop 훅 등록</div>
+      <div class="voice-sub"><code>~/.claude/settings.json</code> 글로벌 등록됨</div>
+    </div>
+    <span class="status-ok">✓</span>
+  </div>
+
+  <h3>이번 에이전트 3종의 예상 음성 매핑</h3>
+  <table>
+    <tr><th>에이전트 타입</th><th>카테고리</th><th>Supertonic Voice</th><th>실제 동작</th></tr>
+    <tr>
+      <td><code>code-explorer</code></td>
+      <td>explorer</td>
+      <td><strong>F3</strong></td>
+      <td style="color: var(--yellow);">폴백 (Supertonic 미실행)</td>
+    </tr>
+    <tr>
+      <td><code>code-reviewer</code></td>
+      <td>reviewer</td>
+      <td><strong>M2</strong></td>
+      <td style="color: var(--yellow);">폴백 (Supertonic 미실행)</td>
+    </tr>
+    <tr>
+      <td><code>doc-updater</code></td>
+      <td>(없음 → default)</td>
+      <td><strong>F1</strong></td>
+      <td style="color: var(--red);">에이전트 자체 실패 (0 tokens)</td>
+    </tr>
+  </table>
+
+  <h3>voice-router.ts 로직 검증</h3>
+  <p>코드 레벨 검증 결과 <code>resolveVoice()</code> 로직은 정상입니다. <code>voice-map.json</code>의 categories 배열을 순회해 agentType 포함 여부를 확인 후 voice를 반환합니다.</p>
+  <pre><code class="language-typescript">// src/voice-router.ts:31-38
+export function resolveVoice(agentType: string, map: VoiceMap): string {
+  for (const [category, agents] of Object.entries(map.categories)) {
+    if (agents.includes(agentType)) {
+      return map.voices[category] ?? map.voices.default ?? "F1";
+    }
+  }
+  return map.voices.default ?? "F1";
+}</code></pre>
+
+  <h3>doc-updater 카테고리 누락 문제</h3>
+  <p>현재 <code>voice-map.json</code>에 <code>doc-updater</code> 타입이 정의되지 않아 default(F1)가 배정됩니다. <code>builder</code> 또는 별도 카테고리 추가를 권장합니다.</p>
+  <pre><code class="language-json">// voice-map.json — builder 카테고리에 추가 권장
+{
+  "categories": {
+    "builder": [
+      "...",
+      "doc-updater"  // 추가
+    ]
+  }
+}</code></pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="issues-high">
+  <h2>🔴 HIGH 이슈 (4건)</h2>
+
+  <div class="issue issue-high">
+    <div class="issue-title"><span class="severity sev-high">HIGH</span> &nbsp;stop.sh — TEXT 쉘 인수 전달 → Command Injection 가능</div>
+    <div class="issue-meta">📄 hooks/stop.sh:24 &nbsp;|&nbsp; hooks/subagent-stop.sh:63 동일</div>
+    <p><code>nohup node ... hook "$TEXT"</code>에서 Claude 응답 전체 텍스트를 쉘 인수로 전달합니다. <code>$(...)</code>나 백틱이 응답에 포함되면 쉘이 추가 실행을 시도합니다.</p>
+    <h4>개선 방안 — stdin으로 전달</h4>
+    <pre><code class="language-bash"># 현재 (위험)
+nohup node "$SCRIPT" hook "$TEXT" > /dev/null 2>&1 &
+
+# 개선 — stdin 경유
+echo "$TEXT" | nohup node "$SCRIPT" hook > /dev/null 2>&1 &</code></pre>
+    <p>Node.js 쪽에서 <code>process.stdin</code>을 읽도록 수정 필요.</p>
+  </div>
+
+  <div class="issue issue-high">
+    <div class="issue-title"><span class="severity sev-high">HIGH</span> &nbsp;speakEdge — 타임아웃 시 orphan 프로세스 + 임시 파일 누수</div>
+    <div class="issue-meta">📄 src/player.ts:119-131</div>
+    <p><code>Promise.race</code>로 10초 타임아웃이 발동할 때 python3 프로세스가 계속 실행되고, <code>/tmp/siren_edge_*.mp3</code> 파일이 정리되지 않아 누적됩니다.</p>
+    <pre><code class="language-typescript">async function speakEdge(text: string, voice: string, speed: number): Promise&lt;void&gt; {
+  const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
+  let proc: ReturnType&lt;typeof spawn&gt; | undefined;
+  const edgePromise = new Promise&lt;void&gt;((resolve, reject) =&gt; {
+    proc = spawn(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
+    proc.on("close", (code) =&gt; code === 0 ? resolve() : reject());
+    proc.on("error", reject);
+  });
+  try {
+    await Promise.race([edgePromise, timeout(EDGE_TIMEOUT_MS)]);
+  } catch {
+    proc?.kill();          // orphan 프로세스 정리
+    try { unlinkSync(outFile); } catch {}
+    throw new Error("EdgeTTS 실패");
+  }
+  await spawnPromise("afplay", ["-r", String(speed), outFile]);
+  try { unlinkSync(outFile); } catch {}
+}</code></pre>
+  </div>
+
+  <div class="issue issue-high">
+    <div class="issue-title"><span class="severity sev-high">HIGH</span> &nbsp;EdgeTTS 온라인 우선 — 오프라인/사내망 환경에서 매 응답마다 10초 지연</div>
+    <div class="issue-meta">📄 src/player.ts:196-219 &nbsp;|&nbsp; CLAUDE.md 불일치</div>
+    <p>현재 <code>speak()</code>는 항상 Edge TTS를 먼저 시도합니다. HMG 사내망에서 차단되면 매 Claude 응답마다 10초를 기다린 뒤 폴백합니다. CLAUDE.md 아키텍처 다이어그램(HTTP → MLX → say)과도 불일치합니다.</p>
+    <h4>개선 방안 옵션</h4>
+    <ul>
+      <li><code>.siren.json</code>에 <code>"preferOnline": false</code> 옵션 추가</li>
+      <li>네트워크 도달 가능 여부를 캐싱 (세션당 1회만 체크)</li>
+      <li>환경변수 <code>SIREN_OFFLINE=1</code>로 Edge TTS 비활성화</li>
+    </ul>
+  </div>
+
+  <div class="issue issue-high">
+    <div class="issue-title"><span class="severity sev-high">HIGH</span> &nbsp;speakSupertonic — speed 파라미터 미전달</div>
+    <div class="issue-meta">📄 src/player.ts:152-176</div>
+    <p><code>speakAgent()</code>에 <code>speed</code> 파라미터가 있지만 <code>speakSupertonic()</code>으로 전달되지 않아, Supertonic으로 재생 시 <code>afplay</code>가 기본 속도(1.0)로 재생됩니다. <code>ttsSpeed: 1.2</code> 설정이 무시됩니다.</p>
+    <pre><code class="language-typescript">// 현재 — afplay에 speed 없음
+await spawnPromise("afplay", [outFile]);
+
+// 개선
+await spawnPromise("afplay", ["-r", String(speed), outFile]);</code></pre>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="issues-medium">
+  <h2>🟡 MEDIUM 이슈 (12건)</h2>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;config.ts — dist/.siren.json을 찾아야 할 경로가 틀림</div>
+    <div class="issue-meta">📄 src/config.ts:29</div>
+    <p><code>new URL(".siren.json", import.meta.url)</code>은 <code>dist/config.js</code> 기준이므로 <code>dist/.siren.json</code>을 찾습니다. 실제 파일은 프로젝트 루트에 있습니다.</p>
+    <pre><code class="language-typescript">import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CONFIG_PATH = join(__dirname, "..", ".siren.json"); // dist/ → 루트</code></pre>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;set_config tool — 임의 키 병합 (타입 단언 우회)</div>
+    <div class="issue-meta">📄 src/index.ts:120</div>
+    <p><code>config = { ...config, ...(args as Partial&lt;SirenConfig&gt;) }</code> — allowlist 검증 없이 MCP 클라이언트가 보낸 임의 키가 런타임 config에 병합됩니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;tts_server/server.py — tmpdir 정리에 shutil.rmtree 권장</div>
+    <div class="issue-meta">📄 tts_server/server.py:168-170</div>
+    <p>glob으로 못 잡은 파일이 있으면 <code>os.rmdir</code>이 <code>OSError</code>로 실패합니다.</p>
+    <pre><code class="language-python">import shutil
+shutil.rmtree(tmpdir, ignore_errors=True)  # 현재 glob+unlink+rmdir 대체</code></pre>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;HUB 클라이언트 설정이 summarizer.ts와 skill-recommender.ts에 중복</div>
+    <div class="issue-meta">📄 src/summarizer.ts:4-6 &nbsp;|&nbsp; src/skill-recommender.ts:10-12</div>
+    <p>동일한 환경변수 읽기 + OpenAI 클라이언트 생성 로직이 두 파일에 복사되어 있습니다. <code>src/llm-client.ts</code>로 추출해 공유하세요.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;skill-recommender.ts — summaryModel 하드코딩, .siren.json 무시</div>
+    <div class="issue-meta">📄 src/skill-recommender.ts:154-155</div>
+    <p><code>recommendSkill()</code>이 config를 받지 않아 <code>gpt-5.4</code>가 하드코딩됩니다. <code>.siren.json</code>의 <code>summaryModel</code> 변경이 스킬 추천에 반영되지 않습니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;voice-router.ts — voice-map.json 구조 검증 없음</div>
+    <div class="issue-meta">📄 src/voice-router.ts:26</div>
+    <p><code>JSON.parse(...) as VoiceMap</code>은 런타임 구조 검증 없이 타입 단언만 합니다. <code>supertonic.port</code>가 없으면 <code>NaN</code> 포트로 fetch 시도가 발생합니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;speakHTTP 202 수신 후 재생 완료를 알 수 없어 큐 충돌 발생 가능</div>
+    <div class="issue-meta">📄 src/player.ts:58-72</div>
+    <p>큐 크기가 1이므로 연속 Claude 응답 시 429를 받고 불필요한 Edge TTS 재시도가 발생합니다. 큐 크기 조정 또는 재생 완료 대기 엔드포인트가 필요합니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;server.sh — rc 파일 grep/sed 방식이 인라인 주석에 취약</div>
+    <div class="issue-meta">📄 server.sh:34-37</div>
+    <p><code>export HUB_API_KEY="key" # comment</code>처럼 인라인 주석이 있으면 주석 포함 값이 키로 사용됩니다. <code>source "$_rc"</code> 후 환경변수 직접 참조가 더 안전합니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;spawnPromise — opts: object + as any 타입 포기</div>
+    <div class="issue-meta">📄 src/player.ts:108-117</div>
+    <p><code>SpawnOptions</code> 타입을 import해서 명시하면 타입 안전성이 확보됩니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;player.test.ts — speakAgent 폴백 경로 커버리지 미흡</div>
+    <div class="issue-meta">📄 tests/player.test.ts:210-254</div>
+    <p>spawn mock이 동기적으로 close 이벤트를 발생시켜 실제 <code>Promise.race</code> 타임아웃 로직과 다른 경로를 테스트합니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;config.test.ts — 기본값 전체 검증 없음</div>
+    <div class="issue-meta">📄 tests/config.test.ts</div>
+    <p><code>ttsSpeed</code>, <code>ttsInstruct</code>, <code>summaryModel</code> 기본값이 테스트에서 검증되지 않아 회귀 시 발견이 늦습니다.</p>
+  </div>
+
+  <div class="issue issue-medium">
+    <div class="issue-title"><span class="severity sev-medium">MEDIUM</span> &nbsp;readRecentTranscripts — statSync TOCTOU race condition</div>
+    <div class="issue-meta">📄 src/skill-recommender.ts:69-74</div>
+    <p>readdirSync 후 statSync 사이에 파일 삭제 시 <code>ENOENT</code>로 전체 transcript 읽기 실패. 개별 파일 단위로 try/catch 필요.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="issues-low">
+  <h2>⚪ LOW 이슈 (5건)</h2>
+
+  <div class="issue issue-low">
+    <div class="issue-title"><span class="severity sev-low">LOW</span> &nbsp;EDGE_SCRIPT — SSL 검증 비활성화 하드코딩</div>
+    <div class="issue-meta">📄 src/player.ts:41-44</div>
+    <p>HMG 사내 프록시 우회 목적이지만, 사내망 외부 환경에서 MITM 취약점이 됩니다. <code>SIREN_DISABLE_SSL_VERIFY=1</code> 환경변수로 조건부 적용 권장.</p>
+  </div>
+
+  <div class="issue issue-low">
+    <div class="issue-title"><span class="severity sev-low">LOW</span> &nbsp;server.sh do_restart — 불필요한 sleep 1</div>
+    <div class="issue-meta">📄 server.sh:126-131</div>
+    <p>서버가 이미 종료된 상태라면 1초 대기는 불필요합니다. 포트 해제 확인 후 즉시 시작 가능.</p>
+  </div>
+
+  <div class="issue issue-low">
+    <div class="issue-title"><span class="severity sev-low">LOW</span> &nbsp;supertonic_start.sh — PID 파일이 크래시 후 좀비 상태 유지</div>
+    <div class="issue-meta">📄 tts_server/supertonic_start.sh:25-30</div>
+    <p>1초 후 프로세스 생존 확인 후 크래시 시 PID 파일이 남아 다음 실행 시 "이미 실행 중"으로 오판합니다. /health 폴링 실패 시 PID 파일 정리 로직 추가 필요.</p>
+  </div>
+
+  <div class="issue issue-low">
+    <div class="issue-title"><span class="severity sev-low">LOW</span> &nbsp;summarizer.test.ts — getMockCreate() null 가능성</div>
+    <div class="issue-meta">📄 tests/summarizer.test.ts:20-23</div>
+    <p>테스트 순서나 모듈 캐싱에 따라 undefined 반환 시 TypeError로 테스트 실패.</p>
+  </div>
+
+  <div class="issue issue-low">
+    <div class="issue-title"><span class="severity sev-low">LOW</span> &nbsp;last-message-store.test.ts — vi.stubEnv 없이 process.env 설정</div>
+    <div class="issue-meta">📄 tests/last-message-store.test.ts:7</div>
+    <p>다른 테스트 파일이 모듈을 먼저 import했으면 <code>getDataDir()</code>가 다른 경로로 캐싱될 수 있습니다. <code>vi.stubEnv</code> 사용 권장.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="claude-md-diff">
+  <h2>📝 CLAUDE.md 개선 제안</h2>
+
+  <h3>1. 아키텍처 다이어그램 — EdgeTTS 추가</h3>
+  <p>현재 CLAUDE.md는 TTS 폴백을 3단계(HTTP → MLX → say)로 설명하지만, 실제는 4단계입니다.</p>
+  <pre><code class="language-diff">-      → speak() (player.ts)
+-          ├─ HTTP: http://localhost:7777/speak  ← TTS 상주 서버 (우선)
+-          ├─ MLX subprocess: tts-venv/bin/python3 -m mlx_audio.tts.generate
+-          └─ macOS say: 최후 폴백
++      → speak() (player.ts)
++          ├─ Edge TTS: edge-tts Python 라이브러리 → /tmp/siren_edge_*.mp3 (온라인, 10초 타임아웃)
++          ├─ HTTP: http://localhost:7777/speak  ← TTS 상주 서버
++          ├─ MLX subprocess: tts-venv/bin/python3 -m mlx_audio.tts.generate
++          └─ macOS say: 최후 폴백</code></pre>
+
+  <h3>2. 서브에이전트 다성 TTS 흐름 추가</h3>
+  <p>CLAUDE.md에 SubagentStop 흐름, speakAgent(), voice-map.json 설명이 없습니다. 새 섹션 추가가 필요합니다.</p>
+
+  <h3>3. 파일별 역할 테이블 업데이트</h3>
+  <p>현재 CLAUDE.md 테이블에 <code>voice-router.ts</code>, <code>skill-recommender.ts</code>, <code>last-message-store.ts</code>가 누락되어 있습니다.</p>
+  <pre><code class="language-diff">+| `src/voice-router.ts`       | agentType → Supertonic voice ID 변환 |
++| `src/skill-recommender.ts`  | transcript 분석 → 스킬 추천 로직 |
++| `src/last-message-store.ts` | 마지막 TTS 텍스트 파일 영속화 |</code></pre>
+
+  <h3>4. MCP 도구 테이블 업데이트</h3>
+  <pre><code class="language-diff">+| `speak_last`    | 마지막으로 재생한 텍스트 다시 재생 |
++| `suggest_skill` | 대화 맥락 분석 후 적합한 스킬 음성 추천 |</code></pre>
+
+  <h3>5. 환경변수 테이블 업데이트</h3>
+  <pre><code class="language-diff">+| `SIREN_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: ~/.local/share/summary-voice-mcp) |</code></pre>
+</section>
+
+<!-- ============================================================ -->
+<section id="verdict">
+  <h2>⚖️ 종합 판정</h2>
+
+  <div class="summary-box" style="border-left: 4px solid var(--yellow);">
+    <h3 style="color: var(--yellow); margin-top: 0;">VERDICT: WARNING</h3>
+    <p>기능적 완성도는 높지만 <strong>4개의 HIGH 이슈</strong>가 실 운영 환경에서 반복 발생할 수 있습니다.</p>
+  </div>
+
+  <h3>즉시 수정 권장 (HIGH)</h3>
+  <table>
+    <tr><th>우선순위</th><th>이슈</th><th>영향</th></tr>
+    <tr>
+      <td>1</td>
+      <td>EdgeTTS 온라인 우선 → 10초 지연</td>
+      <td>매 Claude 응답마다 사용성 직접 영향</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>stop.sh TEXT 인수 → Command Injection</td>
+      <td>보안 취약점, 특수문자 응답 시 동작 불안정</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>speakEdge orphan 프로세스 + 파일 누수</td>
+      <td>장시간 사용 시 시스템 리소스 소진</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>speakSupertonic speed 미전달</td>
+      <td>Supertonic 재생 속도 설정 무시</td>
+    </tr>
+  </table>
+
+  <h3>에이전트별 음성 테스트 방법</h3>
+  <pre><code class="language-bash"># 1. Supertonic 서버 시작
+./tts_server/supertonic_start.sh
+
+# 2. voice-router 단위 테스트
+npx vitest run tests/voice-router.test.ts
+
+# 3. 실제 동작 확인 — CLI로 에이전트 타입 지정
+node dist/index.js subagent-stop "테스트 메시지입니다" "code-reviewer"
+node dist/index.js subagent-stop "테스트 메시지입니다" "code-explorer"
+node dist/index.js subagent-stop "테스트 메시지입니다" "planner"</code></pre>
+
+  <h3>README.md 작성 완료</h3>
+  <p>이번 분석을 바탕으로 <code>README.md</code>가 프로젝트 루트에 새로 작성됐습니다. 아키텍처·설치·설정·지원 음성·트러블슈팅 전 섹션 포함.</p>
+</section>
+
+</div>
+
+<script>hljs.highlightAll();</script>
+</body>
+</html>

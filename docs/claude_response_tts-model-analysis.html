@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>한국어 TTS 모델 분석 2025</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.7; padding: 40px; max-width: 1100px; margin: 0 auto; }
+  h1 { color: #58a6ff; font-size: 1.8rem; margin-bottom: 8px; }
+  h2 { color: #58a6ff; font-size: 1.2rem; margin: 32px 0 16px; border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+  h3 { color: #e6edf3; font-size: 1rem; margin: 20px 0 10px; }
+  .subtitle { color: #8b949e; font-size: 0.9rem; margin-bottom: 32px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card.current { border-color: #388bfd; }
+  .card.recommended { border-color: #3fb950; }
+  .card.notable { border-color: #d29922; }
+  .card.limited { border-color: #6e7681; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin: 2px; }
+  .badge.green { background: #1a4731; color: #3fb950; border: 1px solid #3fb950; }
+  .badge.blue { background: #1c2d3e; color: #58a6ff; border: 1px solid #58a6ff; }
+  .badge.yellow { background: #3d2e00; color: #d29922; border: 1px solid #d29922; }
+  .badge.red { background: #3d1515; color: #f85149; border: 1px solid #f85149; }
+  .badge.gray { background: #21262d; color: #8b949e; border: 1px solid #6e7681; }
+  .badge.purple { background: #2e1f4d; color: #bc8cff; border: 1px solid #bc8cff; }
+  .model-name { font-size: 1.15rem; font-weight: 700; color: #e6edf3; margin-bottom: 8px; }
+  .model-sub { color: #8b949e; font-size: 0.85rem; margin-bottom: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .stat-item { background: #0d1117; border-radius: 8px; padding: 10px 14px; }
+  .stat-label { font-size: 0.72rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .stat-value { font-size: 0.9rem; color: #e6edf3; font-weight: 600; }
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .pros, .cons { background: #0d1117; border-radius: 8px; padding: 12px; }
+  .pros { border-left: 3px solid #3fb950; }
+  .cons { border-left: 3px solid #f85149; }
+  .section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .pros .section-title { color: #3fb950; }
+  .cons .section-title { color: #f85149; }
+  ul { padding-left: 0; list-style: none; }
+  li { font-size: 0.88rem; padding: 2px 0; color: #c9d1d9; }
+  li::before { content: '• '; color: #6e7681; }
+  .score-bar { height: 6px; background: #21262d; border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 3px; }
+  .score-row { margin-bottom: 8px; }
+  .score-label { font-size: 0.78rem; color: #8b949e; display: flex; justify-content: space-between; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85rem; }
+  th { background: #21262d; color: #8b949e; text-align: left; padding: 8px 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 10px 12px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
+  tr:hover td { background: #161b22; }
+  .tag-row { margin-top: 10px; }
+  .highlight-box { background: #1a4731; border: 1px solid #3fb950; border-radius: 8px; padding: 14px 18px; margin-top: 16px; }
+  .highlight-box p { font-size: 0.9rem; color: #aff4c6; }
+  pre { background: #0d1117 !important; border-radius: 8px; padding: 16px; margin-top: 12px; overflow-x: auto; font-size: 0.82rem; }
+  code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  .label-current { color: #388bfd; font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .label-rec { color: #3fb950; font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+<h1>한국어 TTS 모델 분석 2025</h1>
+<p class="subtitle">mlx-audio 기반 Apple Silicon 환경 · siren-mcp 프로젝트 기준 · 2026-05-23</p>
+
+<section class="card" style="background:#1a2a3a; border-color:#388bfd; margin-bottom:28px;">
+  <h3 style="color:#58a6ff; margin-bottom:8px;">📋 조사 방법</h3>
+  <p style="font-size:0.88rem; color:#8b949e;">설치된 mlx-audio 패키지 소스코드 직접 분석 + 지식 기반. HuggingFace 웹 검색은 내부 게이트웨이 제한으로 불가. 로컬 캐시에는 현재 모델(Qwen3-TTS CustomVoice)만 존재.</p>
+</section>
+
+<!-- ──────────────── 현재 모델 ──────────────── -->
+<h2>현재 사용 중인 모델</h2>
+
+<div class="card current">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div>
+      <div class="label-current">Current</div>
+      <div class="model-name">Qwen3-TTS 0.6B CustomVoice (8-bit)</div>
+      <div class="model-sub">mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit · Alibaba Qwen Team</div>
+    </div>
+  </div>
+  <div class="tag-row">
+    <span class="badge green">한국어 네이티브</span>
+    <span class="badge blue">MLX 최적화</span>
+    <span class="badge blue">Apple Silicon</span>
+    <span class="badge yellow">~1.2GB</span>
+    <span class="badge purple">instruct 제어</span>
+  </div>
+  <div class="grid2">
+    <div class="stat-item">
+      <div class="stat-label">한국어 스피커</div>
+      <div class="stat-value">Sohee, Vivian, Serena, Aiden, Ryan, Dylan, Eric, Ono_Anna, Uncle_Fu</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">생성 속도</div>
+      <div class="stat-value">~17초 / 2문장 단락 (RTF ~2.5x)</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">지원 언어</div>
+      <div class="stat-value">Korean, Chinese, English, Japanese, German, French, Russian 등 12개</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">특이사항</div>
+      <div class="stat-value">speed ≠ 1.0 시 최적화 비활성화 버그 (afplay -r로 우회)</div>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros">
+      <div class="section-title">장점</div>
+      <ul>
+        <li>한국어 전용 스피커 다수 보유</li>
+        <li>instruct로 감정·톤 LLM 수준 제어</li>
+        <li>mlx-audio 공식 지원, 오프라인 실행</li>
+        <li>lang_code="korean" 명시 지원</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="section-title">단점</div>
+      <ul>
+        <li>생성 속도가 느림 (RTF 2.5x)</li>
+        <li>speed 파라미터 버그 (현재 우회 처리)</li>
+        <li>영문 혼용 발음 부자연스러움 (사전 치환으로 보완)</li>
+        <li>0.6B 소형 모델 한계</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────────── 추천 대안 ──────────────── -->
+<h2>mlx-audio 내 즉시 테스트 가능한 대안</h2>
+
+<!-- Chatterbox -->
+<div class="card recommended">
+  <div class="label-rec">★ 최우선 추천</div>
+  <div class="model-name">Chatterbox (Resemble AI, 2025)</div>
+  <div class="model-sub">resemble-ai/chatterbox · mlx-audio 내장 지원</div>
+  <div class="tag-row">
+    <span class="badge green">한국어(ko) 지원</span>
+    <span class="badge green">음성 복제</span>
+    <span class="badge blue">MLX 지원</span>
+    <span class="badge purple">다국어 15개</span>
+    <span class="badge yellow">~1.5GB 예상</span>
+  </div>
+  <div class="grid2">
+    <div class="stat-item">
+      <div class="stat-label">한국어 지원 방식</div>
+      <div class="stat-value">multilingual 모드, lang_code="ko"</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">2025년 화제성</div>
+      <div class="stat-value">HuggingFace 출시 직후 최상위 트렌드</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">핵심 기능</div>
+      <div class="stat-value">Zero-shot 음성 복제 (ref_audio), 감정 제어</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">지원 언어</div>
+      <div class="stat-value">ar, da, de, en, es, fr, he, hi, it, ja, ko, ms, nl, pl, pt, ru 등</div>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros">
+      <div class="section-title">장점</div>
+      <ul>
+        <li>2025년 가장 주목받는 오픈소스 TTS</li>
+        <li>한국어 공식 지원 (음소 처리 포함)</li>
+        <li>레퍼런스 오디오로 목소리 복제 가능</li>
+        <li>한국어 Jamo 분리 로직 내장</li>
+        <li>mlx-audio에 이미 설치됨</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="section-title">단점</div>
+      <ul>
+        <li>한국어 품질은 영어 대비 낮을 수 있음</li>
+        <li>로컬 캐시 없음 → 최초 다운로드 필요</li>
+        <li>multilingual 모드 속도가 단일 언어보다 느릴 수 있음</li>
+      </ul>
+    </div>
+  </div>
+  <div class="highlight-box">
+    <p><strong>테스트 방법:</strong> mlx-audio가 이미 Chatterbox를 지원하므로 HuggingFace에서 <code>resemble-ai/chatterbox</code> 모델 다운로드 후 즉시 테스트 가능</p>
+  </div>
+</div>
+
+<!-- MeloTTS -->
+<div class="card notable">
+  <div style="color:#d29922; font-weight:700; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.08em;">속도 우선 추천</div>
+  <div class="model-name">MeloTTS (MyShell AI)</div>
+  <div class="model-sub">myshell-ai/MeloTTS · mlx-audio 내장 지원</div>
+  <div class="tag-row">
+    <span class="badge green">한국어(KR) 네이티브</span>
+    <span class="badge blue">MLX 지원</span>
+    <span class="badge green">초고속</span>
+    <span class="badge yellow">~300MB 예상</span>
+  </div>
+  <div class="grid2">
+    <div class="stat-item">
+      <div class="stat-label">한국어 지원 방식</div>
+      <div class="stat-value">lang_code="KR" (id=4), 음소 기반 G2P</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">생성 속도</div>
+      <div class="stat-value">RTF &lt; 0.3 (실시간보다 3배 이상 빠름)</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">모델 아키텍처</div>
+      <div class="stat-value">VITS 기반, BERT 피처 활용</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">지원 언어</div>
+      <div class="stat-value">ZH, JP, EN, ZH_MIX_EN, KR, ES, FR</div>
+    </div>
+  </div>
+  <div class="pros-cons">
+    <div class="pros">
+      <div class="section-title">장점</div>
+      <ul>
+        <li>압도적으로 빠른 생성 속도</li>
+        <li>한국어 음소 처리 네이티브</li>
+        <li>작은 모델 크기</li>
+        <li>mlx-audio에 이미 설치됨</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="section-title">단점</div>
+      <ul>
+        <li>음질이 Qwen3-TTS보다 낮음</li>
+        <li>VITS 특유의 약간 기계적인 느낌</li>
+        <li>instruct / 감정 제어 없음</li>
+        <li>목소리 다양성 제한적</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Kokoro -->
+<div class="card limited">
+  <div style="color:#6e7681; font-weight:700; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.08em;">한국어 미지원</div>
+  <div class="model-name">Kokoro (hexgrad, 2024)</div>
+  <div class="model-sub">hexgrad/Kokoro-82M · mlx-audio 내장 지원</div>
+  <div class="tag-row">
+    <span class="badge red">한국어 미지원</span>
+    <span class="badge blue">MLX 지원</span>
+    <span class="badge green">82M 초경량</span>
+    <span class="badge green">초고속 RTF &lt;0.1</span>
+  </div>
+  <div class="pros-cons">
+    <div class="pros">
+      <div class="section-title">장점</div>
+      <ul>
+        <li>영어 최고 품질 중 하나</li>
+        <li>82M 파라미터로 매우 빠름</li>
+        <li>다양한 영어 목소리 (50개+)</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <div class="section-title">단점</div>
+      <ul>
+        <li>한국어 없음 (EN, JA, ZH, ES, FR, HI, IT, PT만)</li>
+        <li>siren-mcp 용도에는 부적합</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────────── 외부 모델 분석 ──────────────── -->
+<h2>외부 주목 모델 (별도 설치 필요)</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>모델</th>
+      <th>출처</th>
+      <th>한국어</th>
+      <th>MLX</th>
+      <th>크기</th>
+      <th>특징</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>CosyVoice 2</strong></td>
+      <td>Alibaba (2024)</td>
+      <td><span class="badge green">지원</span></td>
+      <td><span class="badge gray">미확인</span></td>
+      <td>~1GB</td>
+      <td>Instruct 모드, 감정 태그, 영어·중국어 최강</td>
+    </tr>
+    <tr>
+      <td><strong>Fish Speech 1.5</strong></td>
+      <td>Fish Audio</td>
+      <td><span class="badge green">지원</span></td>
+      <td><span class="badge blue">fish_qwen3_omni</span></td>
+      <td>~1.5GB</td>
+      <td>zero-shot 복제, 다국어 최고 수준 중 하나</td>
+    </tr>
+    <tr>
+      <td><strong>Spark TTS</strong></td>
+      <td>SparkAudio (2025)</td>
+      <td><span class="badge yellow">제한적</span></td>
+      <td><span class="badge blue">지원</span></td>
+      <td>~0.5B</td>
+      <td>Bi-codec 아키텍처, 고품질</td>
+    </tr>
+    <tr>
+      <td><strong>StyleTTS2</strong></td>
+      <td>Aaron Li (2023)</td>
+      <td><span class="badge yellow">파인튜닝 필요</span></td>
+      <td><span class="badge gray">미지원</span></td>
+      <td>~200MB</td>
+      <td>학계 최고 품질, 한국어 파인튜닝 모델 존재</td>
+    </tr>
+    <tr>
+      <td><strong>XTTS v2 (Coqui)</strong></td>
+      <td>Coqui AI</td>
+      <td><span class="badge green">지원</span></td>
+      <td><span class="badge gray">미지원</span></td>
+      <td>~1.8GB</td>
+      <td>한국어 포함 17개 언어, 음성 복제</td>
+    </tr>
+    <tr>
+      <td><strong>Edge TTS</strong></td>
+      <td>Microsoft Azure</td>
+      <td><span class="badge green">최상위</span></td>
+      <td><span class="badge gray">클라우드</span></td>
+      <td>-</td>
+      <td>나나·선히·인준 등 네이티브 한국어 목소리, 무료 tier</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ──────────────── 종합 비교 ──────────────── -->
+<h2>종합 비교 점수 (한국어 TTS 관점)</h2>
+
+<div class="card">
+  <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 8px; font-size: 0.8rem; margin-bottom: 16px;">
+    <div style="color:#8b949e; font-weight:700;">모델</div>
+    <div style="color:#8b949e; font-weight:700; text-align:center;">한국어 품질</div>
+    <div style="color:#8b949e; font-weight:700; text-align:center;">속도</div>
+    <div style="color:#8b949e; font-weight:700; text-align:center;">자연스러움</div>
+    <div style="color:#8b949e; font-weight:700; text-align:center;">설치 용이성</div>
+  </div>
+  
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid #21262d;">
+    <div><span class="badge blue">현재</span> Qwen3-TTS Sohee</div>
+    <div><div class="score-bar"><div class="score-fill" style="width:80%;background:#58a6ff;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">8/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:30%;background:#d29922;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">3/10 느림</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:75%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">7.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:100%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">설치됨</div></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid #21262d;">
+    <div><span class="badge green">추천</span> Chatterbox</div>
+    <div><div class="score-bar"><div class="score-fill" style="width:75%;background:#58a6ff;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">7.5/10 추정</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:50%;background:#d29922;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:85%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">8.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:80%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">다운로드만</div></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid #21262d;">
+    <div>MeloTTS</div>
+    <div><div class="score-bar"><div class="score-fill" style="width:60%;background:#58a6ff;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">6/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:90%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">9/10 빠름</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:55%;background:#d29922;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">5.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:100%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">설치됨</div></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid #21262d;">
+    <div>Fish Speech 1.5</div>
+    <div><div class="score-bar"><div class="score-fill" style="width:85%;background:#58a6ff;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">8.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:60%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">6/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:85%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">8.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:60%;background:#d29922;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">별도 설치</div></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; gap:8px; align-items:center; padding:10px 0;">
+    <div>Edge TTS (클라우드)</div>
+    <div><div class="score-bar"><div class="score-fill" style="width:95%;background:#58a6ff;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">9.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:95%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">9.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:95%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">9.5/10</div></div>
+    <div><div class="score-bar"><div class="score-fill" style="width:90%;background:#3fb950;"></div></div><div style="text-align:center;font-size:0.75rem;color:#8b949e;">pip install</div></div>
+  </div>
+</div>
+
+<!-- ──────────────── 권장 행동 ──────────────── -->
+<h2>권장 다음 단계</h2>
+
+<div class="card" style="border-color:#3fb950;">
+  <h3 style="color:#3fb950; margin-bottom:16px;">① Chatterbox 즉시 테스트 (mlx-audio 지원, 설치 불필요)</h3>
+  <pre><code class="language-bash"># HuggingFace에서 모델 다운로드 후 테스트
+python3 -m mlx_audio.tts.generate \
+  --model resemble-ai/chatterbox \
+  --text "안녕하세요, Chatterbox로 한국어 TTS를 테스트합니다." \
+  --lang_code ko \
+  --play</code></pre>
+  
+  <h3 style="color:#3fb950; margin: 20px 0 12px;">② MeloTTS 속도 테스트 (mlx-audio 지원)</h3>
+  <pre><code class="language-bash"># KR 스피커로 빠른 생성 테스트
+python3 -m mlx_audio.tts.generate \
+  --model myshell-ai/MeloTTS \
+  --text "한국어 TTS 속도 테스트입니다." \
+  --lang_code KR \
+  --play</code></pre>
+  
+  <h3 style="color:#3fb950; margin: 20px 0 12px;">③ Edge TTS 클라우드 폴백 검토 (품질 최상)</h3>
+  <pre><code class="language-bash">pip install edge-tts
+# 한국어 목소리: ko-KR-NanaNeural, ko-KR-SunHiNeural, ko-KR-InJoonNeural
+edge-tts --voice ko-KR-NanaNeural --text "마이크로소프트 에지 TTS 테스트" --write-media test.mp3
+afplay test.mp3</code></pre>
+</div>
+
+<div class="card" style="background:#1a2a1a; border-color:#3fb950; margin-top:20px;">
+  <h3 style="color:#3fb950; margin-bottom:8px;">💡 결론 요약</h3>
+  <ul style="font-size:0.9rem; line-height:2;">
+    <li><strong>현재 Qwen3-TTS</strong>는 한국어 전용 스피커 + instruct 제어로 siren-mcp 용도에 적합한 선택</li>
+    <li><strong>Chatterbox</strong>는 2025년 최신 모델로 한국어 품질이 더 자연스러울 가능성 높음, <em>바로 테스트 권장</em></li>
+    <li><strong>MeloTTS</strong>는 속도가 압도적으로 빠르므로 RTF 개선이 필요할 때 유용</li>
+    <li><strong>Edge TTS</strong>는 네트워크 의존이지만 품질 최상, 오프라인 불가시 클라우드 폴백으로 검토 가능</li>
+    <li>Kokoro는 한국어 미지원으로 제외</li>
+  </ul>
+</div>
+
+<script>hljs.highlightAll();</script>
+</body>
+</html>

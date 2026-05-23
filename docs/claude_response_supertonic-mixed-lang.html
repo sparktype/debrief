@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Supertonic 한영 혼합 발음 분석</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: -apple-system, 'Apple SD Gothic Neo', sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 32px; line-height: 1.7; }
+    h1 { color: #f0f6fc; border-bottom: 1px solid #30363d; padding-bottom: 12px; }
+    h2 { color: #79c0ff; margin-top: 40px; }
+    h3 { color: #d2a8ff; margin-top: 28px; }
+    section { max-width: 900px; margin: 0 auto; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+    .tag-default { background: #1f6feb; color: #fff; }
+    .tag-na { background: #388bfd22; color: #79c0ff; border: 1px solid #388bfd; }
+    .tag-good { background: #238636; color: #aff5b4; }
+    .tag-bad { background: #8b1a1a; color: #ffa198; }
+    .tag-warn { background: #9e6a03; color: #e3b341; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th { background: #161b22; color: #8b949e; font-weight: 600; padding: 10px 14px; text-align: left; border-bottom: 2px solid #30363d; }
+    td { padding: 10px 14px; border-bottom: 1px solid #21262d; vertical-align: top; }
+    tr:hover td { background: #161b22; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px 24px; margin: 16px 0; }
+    .card-warn { border-left: 3px solid #e3b341; }
+    .card-good { border-left: 3px solid #3fb950; }
+    .card-info { border-left: 3px solid #388bfd; }
+    .flow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+    .flow-step { background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 14px; }
+    .flow-arrow { color: #8b949e; font-size: 18px; }
+    code.inline { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #e3b341; }
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+    .pros { background: #0d2410; border: 1px solid #238636; border-radius: 6px; padding: 12px 16px; }
+    .cons { background: #2d0f0f; border: 1px solid #8b1a1a; border-radius: 6px; padding: 12px 16px; }
+    .pros h4 { color: #3fb950; margin: 0 0 8px; }
+    .cons h4 { color: #f85149; margin: 0 0 8px; }
+    ul { padding-left: 20px; }
+    li { margin: 4px 0; }
+    .highlight-box { background: #0d419d22; border: 1px solid #1f6feb; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+    .rec-badge { display: inline-block; background: #388bfd; color: #fff; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; margin-right: 8px; }
+    pre { margin: 0; }
+  </style>
+</head>
+<body>
+<section>
+  <h1>Supertonic 한영 혼합 발음 분석</h1>
+
+  <h2>1. 핵심 발견사항</h2>
+
+  <div class="card card-good">
+    <strong>supertonic-3는 다국어(31개 언어) 모델이다.</strong><br>
+    <code class="inline">config.py</code>에서 <code class="inline">multilingual: True</code>로 명시되어 있고,
+    <code class="inline">"na"</code>라는 특수 폴백 코드가 존재한다. <code class="inline">lang</code>을 지정하지 않으면 multilingual 모델은 자동으로 <code class="inline">"na"</code>를 사용한다.
+  </div>
+
+  <div class="card card-warn">
+    <strong>현재 코드에서 <code class="inline">lang</code> 필드를 전혀 보내지 않는다.</strong><br>
+    <code class="inline">speakSupertonic()</code>의 요청 body에 <code class="inline">lang</code>이 없으므로 서버는 기본값 <code class="inline">"na"</code>로 처리한다.
+    이는 "모델이 알아서 언어를 감지해라"는 의미지만, 혼합 문장에서 영문을 한국어 발음으로 읽거나 반대 현상이 발생할 수 있다.
+  </div>
+
+  <h2>2. <code>lang</code> 파라미터 동작 방식</h2>
+
+  <table>
+    <tr>
+      <th>lang 값</th>
+      <th>동작</th>
+      <th>max_chunk_length</th>
+      <th>혼합 문장 적합성</th>
+    </tr>
+    <tr>
+      <td><code class="inline">"ko"</code></td>
+      <td>한국어 음소 처리, <code>&lt;ko&gt;...&lt;/ko&gt;</code> 토큰 삽입</td>
+      <td>120자 (짧음)</td>
+      <td><span class="tag tag-bad">부적합</span> 영문 단어를 한국어 발음으로 읽음</td>
+    </tr>
+    <tr>
+      <td><code class="inline">"en"</code></td>
+      <td>영어 음소 처리, <code>&lt;en&gt;...&lt;/en&gt;</code> 토큰 삽입</td>
+      <td>300자</td>
+      <td><span class="tag tag-bad">부적합</span> 한글이 영어 발음 체계로 처리됨</td>
+    </tr>
+    <tr>
+      <td><code class="inline">"na"</code> (현재)</td>
+      <td><code>&lt;na&gt;...&lt;/na&gt;</code> 폴백 토큰 — 모델이 자동 감지</td>
+      <td>300자</td>
+      <td><span class="tag tag-warn">보통</span> 모델 훈련 품질에 의존, 불규칙함</td>
+    </tr>
+    <tr>
+      <td>구간별 지정 (배치)</td>
+      <td>언어 전환 시점에 각각 올바른 토큰 삽입</td>
+      <td>각 구간 적용</td>
+      <td><span class="tag tag-good">최적</span> 각 언어가 올바른 음소 체계 사용</td>
+    </tr>
+  </table>
+
+  <h2>3. 적용 가능한 접근법</h2>
+
+  <h3>접근법 A — 기술 용어 발음 사전 (단기, 즉시 적용 가능)</h3>
+  <div class="card card-info">
+    MLX TTS 서버의 <code class="inline">_TECH_PHONETICS</code> 패턴과 동일한 방식을 Node.js 쪽에 적용.
+    영문 기술 용어를 한국어 발음 표기로 치환한 뒤 <code class="inline">lang="ko"</code>로 전송.
+  </div>
+  <div class="pros-cons">
+    <div class="pros"><h4>장점</h4><ul><li>서버 변경 없음</li><li>즉시 적용 가능</li><li>발음 예측 가능</li></ul></div>
+    <div class="cons"><h4>단점</h4><ul><li>사전에 없는 단어는 여전히 부자연스럽다</li><li>고유명사·신조어 대응 불가</li></ul></div>
+  </div>
+  <pre><code class="language-typescript">// player.ts 또는 voice-router.ts에 추가
+const TECH_PHONETICS: Record<string, string> = {
+  "TypeScript": "타입스크립트",
+  "React":      "리액트",
+  "fetch":      "패치",
+  "TTS":        "티티에스",
+  "MCP":        "엠씨피",
+  "API":        "에이피아이",
+  "PR":         "피알",
+  "CI":         "씨아이",
+  // ... 확장 가능
+};
+
+function applyPhonetics(text: string): string {
+  return Object.entries(TECH_PHONETICS).reduce(
+    (t, [eng, kor]) => t.replace(new RegExp(`\\b${eng}\\b`, "gi"), kor),
+    text
+  );
+}</code></pre>
+
+  <h3>접근법 B — 언어 구간 분할 + <code>/v1/tts/batch</code> (중기, 고품질)</h3>
+  <div class="card card-info">
+    텍스트를 한글/영어 구간으로 분리 → 배치 API로 각 구간에 올바른 <code>lang</code> 지정 →
+    base64 WAV를 클라이언트에서 이어붙임. 각 언어가 올바른 음소 체계를 사용하므로 가장 자연스럽다.
+  </div>
+
+  <div class="flow">
+    <div class="flow-step">"리뷰어입니다. TypeScript 코드 3건 수정"</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">구간 분할</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">[ko] "리뷰어입니다. "</div>
+    <div class="flow-step">[en] "TypeScript"</div>
+    <div class="flow-step">[ko] " 코드 3건 수정"</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">WAV 이어붙임</div>
+  </div>
+
+  <pre><code class="language-typescript">type LangSegment = { text: string; lang: "ko" | "en" };
+
+function splitByLanguage(text: string): LangSegment[] {
+  // 한글이 포함된 구간 = ko, 그 외 = en
+  const segments: LangSegment[] = [];
+  let cur = "";
+  let curLang: "ko" | "en" | null = null;
+
+  for (const ch of text) {
+    const isKo = /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch);
+    const lang: "ko" | "en" = isKo ? "ko" : "en";
+    if (lang !== curLang) {
+      if (cur.trim()) segments.push({ text: cur, lang: curLang! });
+      cur = ch;
+      curLang = lang;
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur.trim()) segments.push({ text: cur, lang: curLang! });
+  return segments;
+}
+
+async function speakSupertonicMixed(
+  text: string, voice: string, port: number, speed: number
+): Promise<void> {
+  const segments = splitByLanguage(text);
+
+  // 구간이 1개면 기존 방식
+  if (segments.length === 1) {
+    return speakSupertonic(text, voice, port, speed);
+  }
+
+  // 배치 요청
+  const items = segments.map(s => ({
+    text: s.text,
+    voice,
+    lang: s.lang,
+    speed,
+  }));
+  const res = await fetch(`http://localhost:${port}/v1/tts/batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, response_format: "wav" }),
+  });
+  if (!res.ok) throw new Error(`Supertonic batch 오류: ${res.status}`);
+
+  const { items: results } = await res.json() as { items: { audio_base64: string }[] };
+  // base64 WAV 이어붙이기 (헤더는 첫 번째만, 이후는 data chunk만)
+  const bufs = results.map(r => Buffer.from(r.audio_base64, "base64"));
+  const merged = mergeWavBuffers(bufs);
+
+  const outFile = `/tmp/siren_supertonic_${Date.now()}.wav`;
+  writeFileSync(outFile, merged);
+  await spawnPromise("afplay", ["-r", String(speed), outFile]);
+  unlinkSync(outFile);
+}</code></pre>
+
+  <div class="card card-warn">
+    <strong>WAV 이어붙이기 주의:</strong> 각 배치 항목은 독립적인 WAV 파일(헤더 포함)이므로,
+    단순 Buffer.concat은 중간 헤더가 노이즈로 들린다.
+    첫 번째 WAV 헤더를 재사용하고 나머지는 PCM 데이터만 추출해야 한다 (<code class="inline">mergeWavBuffers</code> 구현 필요).
+    또는 <code class="inline">ffmpeg -i concat:a.wav:b.wav -c copy out.wav</code>를 사용하면 간단하다.
+  </div>
+
+  <div class="pros-cons">
+    <div class="pros"><h4>장점</h4><ul><li>각 구간이 정확한 음소 체계 사용</li><li>supertonic-3 본연의 다국어 능력 활용</li><li>사전 관리 불필요</li></ul></div>
+    <div class="cons"><h4>단점</h4><ul><li>구간 경계에서 운율이 끊길 수 있음</li><li>WAV 이어붙이기 구현 필요</li><li>요청 수 증가 (배치 1회 = 동기 처리)</li></ul></div>
+  </div>
+
+  <h3>접근법 C — <code>lang="na"</code> 유지 + 영문 스페이싱 개선 (단기, 최소 변경)</h3>
+  <div class="card card-info">
+    현재 기본값(<code class="inline">"na"</code>)을 유지하되, 영문 단어 사이 공백을 확보해 모델이 단어 경계를 명확히 인식하도록 정규화.
+    대소문자 혼용 카멜케이스를 분리해 추가 힌트를 줌.
+  </div>
+  <pre><code class="language-typescript">function normalizeForSupertonicNa(text: string): string {
+  return text
+    // 카멜케이스 분리: "TypeScript" → "Type Script"
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    // 한글+영문 경계에 공백 확보: "코드TypeScript" → "코드 TypeScript"
+    .replace(/([가-힣])([A-Za-z])/g, "$1 $2")
+    .replace(/([A-Za-z])([가-힣])/g, "$1 $2")
+    // 연속 공백 정리
+    .replace(/\s+/g, " ")
+    .trim();
+}</code></pre>
+
+  <h2>4. 권장 적용 순서</h2>
+
+  <table>
+    <tr>
+      <th>단계</th>
+      <th>방법</th>
+      <th>난이도</th>
+      <th>품질 향상</th>
+    </tr>
+    <tr>
+      <td>1단계 <span class="rec-badge">즉시</span></td>
+      <td>접근법 C — 경계 공백 정규화 + <code class="inline">lang: "na"</code> 명시</td>
+      <td>낮음</td>
+      <td>약간 개선</td>
+    </tr>
+    <tr>
+      <td>2단계 <span class="rec-badge">단기</span></td>
+      <td>접근법 A — 기술 용어 사전 치환 + <code class="inline">lang: "ko"</code></td>
+      <td>낮음</td>
+      <td>주요 용어 개선</td>
+    </tr>
+    <tr>
+      <td>3단계 <span class="rec-badge">중기</span></td>
+      <td>접근법 B — 배치 API + WAV 병합</td>
+      <td>중간</td>
+      <td>최대 개선</td>
+    </tr>
+  </table>
+
+  <div class="highlight-box">
+    <strong>Supertonic 서버가 아직 기동 중이 아닙니다.</strong>
+    모델 다운로드 완료 후 실제 혼합 문장 테스트를 해봐야 <code class="inline">"na"</code> 모드의 실제 품질을 알 수 있습니다.
+    <code class="inline">"na"</code>만으로 충분히 자연스러우면 1단계만으로 끝낼 수 있고, 영어 단어 발음이 어색하다면 2→3단계로 진행합니다.
+  </div>
+
+  <h2>5. 현재 코드에서 가장 빠른 개선 포인트</h2>
+  <p>
+    <code class="inline">src/player.ts</code>의 <code class="inline">speakSupertonic()</code>에서
+    요청 body에 <code class="inline">lang: "na"</code>를 추가하고,
+    텍스트를 보내기 전에 경계 공백 정규화를 적용하면 됩니다.
+    배치 API 접근은 Supertonic 서버 동작 확인 후 품질 평가를 보고 결정하는 것을 권장합니다.
+  </p>
+
+</section>
+<script>hljs.highlightAll();</script>
+</body>
+</html>
