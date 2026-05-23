@@ -68,7 +68,7 @@ app = FastAPI(title="Siren TTS Server", lifespan=lifespan)
 class SpeakRequest(BaseModel):
     text: str
     voice: str = "Sohee"
-    lang_code: str = "Auto"
+    lang_code: str = "korean"
 
 
 @app.post("/speak", status_code=202)
