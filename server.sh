@@ -18,6 +18,8 @@ LAUNCHD_LABEL="com.summary-voice-mcp.tts-server"
 TTS_PORT=7777
 SUPERTONIC_PORT=7788
 SUPERTONIC_PID_FILE="$SCRIPT_DIR/.supertonic.pid"
+PLAYER_PID_FILE=/tmp/tts-player.pid
+PLAYER_SPOOL=/tmp/tts-spool
 
 # ── 환경변수 ───────────────────────────────────────────────
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
@@ -46,6 +48,24 @@ _tts_running() {
 
 _supertonic_running() {
   [ -f "$SUPERTONIC_PID_FILE" ] && kill -0 "$(cat "$SUPERTONIC_PID_FILE")" 2>/dev/null
+}
+
+_player_running() {
+  [ -f "$PLAYER_PID_FILE" ] && kill -0 "$(cat "$PLAYER_PID_FILE")" 2>/dev/null
+}
+
+_start_player() {
+  if _player_running; then return 0; fi
+  mkdir -p "$PLAYER_SPOOL"
+  nohup bash "$SCRIPT_DIR/tts_server/tts_player.sh" >> /tmp/tts-player.log 2>&1 &
+  echo "[TTS Player] 시작 (PID $!)"
+}
+
+_stop_player() {
+  if ! _player_running; then return 0; fi
+  kill "$(cat "$PLAYER_PID_FILE")" 2>/dev/null || true
+  rm -f "$PLAYER_PID_FILE"
+  echo "[TTS Player] 종료"
 }
 
 _is_launchd_managed() {
@@ -97,6 +117,7 @@ do_start() {
 
   echo "TTS 서버 시작 중..."
   bash "$SCRIPT_DIR/tts_server/start.sh"
+  _start_player
 
   # 최대 10초 대기하여 /health 응답 확인
   local i=0
@@ -116,6 +137,7 @@ do_start() {
 }
 
 do_stop() {
+  _stop_player
   if ! _tts_running; then
     echo "TTS 서버가 실행 중이지 않습니다."
     return 0
@@ -158,6 +180,17 @@ do_status() {
     echo "  TTS 서버:  ✗ 중지됨"
   fi
 
+  # TTS Player 데몬 확인
+  if _player_running; then
+    local pl_pid
+    pl_pid=$(cat "$PLAYER_PID_FILE")
+    local spool_count
+    spool_count=$(find "$PLAYER_SPOOL" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
+    echo "  TTS Player: ✓ 실행 중 (PID: $pl_pid, 스풀 대기: ${spool_count}개)"
+  else
+    echo "  TTS Player: ✗ 중지됨"
+  fi
+
   # Supertonic 서버 확인
   if _supertonic_running; then
     local st_pid
@@ -165,11 +198,11 @@ do_status() {
     echo "  Supertonic: ✓ 실행 중 (PID: $st_pid, 포트 ${SUPERTONIC_PORT})"
     local st_code
     st_code=$(curl -s -o /dev/null -w "%{http_code}" \
-      --connect-timeout 2 "http://127.0.0.1:${SUPERTONIC_PORT}/health" 2>/dev/null)
+      --connect-timeout 2 "http://127.0.0.1:${SUPERTONIC_PORT}/v1/health" 2>/dev/null)
     if [[ "$st_code" == "200" ]]; then
-      echo "  ST HTTP:    ✓ /health 응답 정상"
+      echo "  ST HTTP:    ✓ /v1/health 응답 정상"
     else
-      echo "  ST HTTP:    △ /health 미응답 (모델 로딩 중이거나 오류)"
+      echo "  ST HTTP:    △ /v1/health 미응답 (모델 로딩 중이거나 오류)"
     fi
   else
     echo "  Supertonic: ✗ 중지됨"
@@ -285,7 +318,11 @@ PYEOF
   echo "Supertonic 서버 시작 중..."
   bash "$SCRIPT_DIR/tts_server/supertonic_start.sh"
 
-  # 4. TTS LaunchAgent 등록 (수동 실행 서버 종료 후)
+  # 4. TTS Player 데몬 시작
+  echo "TTS Player 데몬 시작 중..."
+  _start_player
+
+  # 5. TTS LaunchAgent 등록 (수동 실행 서버 종료 후)
   if _tts_running && ! _is_launchd_managed; then
     echo "수동 실행 TTS 서버 종료 중..."
     do_stop
@@ -415,6 +452,9 @@ else:
     print("  SubagentStop hook이 등록되지 않았습니다.")
 PYEOF
   fi
+
+  # TTS Player 종료
+  _stop_player
 
   # Supertonic 서버 종료
   if _supertonic_running; then

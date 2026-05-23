@@ -9,7 +9,7 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 - **4단계 폴백 TTS** — Edge TTS → MLX TTS 서버 → MLX subprocess → macOS say
 - **에이전트별 다성(多聲)** — 코드 리뷰어·플래너·빌더·탐색기 역할마다 다른 목소리
 - **자기 소개 + 한 줄 보고** — 팀원 완료 시 `"리뷰어입니다. [25자 요약]"` 형식으로 발화
-- **동시 발화 방지** — 리더·팀원 발화가 겹치지 않도록 파일 잠금으로 자동 직렬화
+- **파일 스풀 큐** — 리더·팀원 오디오를 `/tmp/tts-spool/`에 순서대로 쌓고 단일 데몬이 직렬 재생
 - **스킬 추천** — 대화 맥락 분석 → 적합한 Claude Code 스킬 자동 음성 안내
 - **Apple Silicon 최적화** — MLX 프레임워크로 Metal GPU 활용
 
@@ -31,14 +31,22 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 ┌─────────────────────────────────────────────────────────┐
 │ Node.js MCP 서버 (src/)                                 │
 │                                                         │
-│  hook 모드      ──→ extractSummary() → speak()          │
+│  hook 모드      ──→ extractSummary() → speakHook()      │
+│                     → EdgeTTS MP3 → /tmp/tts-spool/     │
 │  subagent-stop  ──→ getAgentLabel() → extractOneLiner() │
-│                     → withTTSLock → speakAgent()        │
+│                     → speakAgent() → Supertonic WAV     │
+│                     → /tmp/tts-spool/                   │
 │  hook-suggest   ──→ recommendSkill() → speak()          │
 │  MCP 도구 모드  ──→ stdio transport (Claude Code 직접)   │
-└──────────┬──────────────────────────┬───────────────────┘
-           │                          │
-           ▼                          ▼
+└──────────┬────────────────────────┬─────────────────────┘
+           │                        │
+           ▼                        │
+┌──────────────────────────────┐    │ 파일 스풀
+│ TTS Player 데몬               │ ◀──┘ /tmp/tts-spool/
+│ (tts_server/tts_player.sh)   │ epoch_ms 순서대로 afplay
+│ 단일 소비자 → 직렬 재생       │
+└──────────────────────────────┘
+
 ┌──────────────────┐    ┌──────────────────────────────┐
 │ Supertonic TTS   │    │ MLX TTS 상주 서버             │
 │ (포트 7788)      │    │ (포트 7777)                   │
@@ -47,7 +55,34 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 └──────────────────┘    └──────────────────────────────┘
 ```
 
-### 주 에이전트 TTS 폴백 체인 (`speak()`)
+### 리더(Stop hook) TTS 경로 (`speakHook()`)
+
+```
+1. EdgeTTS → ko-KR-HyunsuMultilingualNeural MP3 생성 (10초 타임아웃)
+   ↓ 성공
+   /tmp/tts-spool/<epoch_ms>.mp3 기록 → 즉시 반환
+   ↓ EdgeTTS 실패
+speakInner() 직접 재생 폴백 (Edge → MLX 서버 → subprocess → say)
+```
+
+### 서브에이전트 TTS 경로 (`speakAgent()`)
+
+```
+agentType → getAgentLabel() → "리뷰어" / "플래너" / "빌더" / "탐색기"
+agentType → voice-map.json → Supertonic voice ID
+extractOneLiner() → 25자 이내 한 줄 요약 → sanitizeForSpeech() 특수문자 제거
+발화 텍스트: "${label}입니다. ${oneLiner}"
+
+Supertonic 생존 확인 (localhost:7788/v1/health)
+  ↓ 살아있음
+WAV 생성 → /tmp/tts-spool/<epoch_ms>.wav 기록 → 즉시 반환
+  ↓ 실패 또는 서버 없음
+speakInner() 직접 재생 폴백
+
+TTS Player 데몬이 스풀을 0.3초마다 폴링 → epoch_ms 오름차순 순차 재생
+```
+
+### MCP 도구 TTS 경로 (`speak()`)
 
 ```
 1. Edge TTS      — Microsoft 온라인 TTS, 한영 혼합 최적
@@ -57,23 +92,6 @@ Claude Code의 응답이 끝날 때 자동으로 요약해서 음성으로 읽�
 3. MLX subprocess — tts-venv/bin/python3 -m mlx_audio.tts.generate
    ↓ 실패
 4. macOS say     — 최후 폴백, 네트워크 불필요
-```
-
-### 서브에이전트 TTS (`speakAgent()`)
-
-```
-agentType → getAgentLabel() → "리뷰어" / "플래너" / "빌더" / "탐색기"
-agentType → voice-map.json → Supertonic voice ID
-extractOneLiner() → 25자 이내 한 줄 요약 → sanitizeForSpeech() 특수문자 제거
-발화 텍스트: "${label}입니다. ${oneLiner}"
-
-withTTSLock 획득 (/tmp/siren-tts.lock — 리더와 동시 발화 방지)
-  ↓
-Supertonic 서버 생존 확인 (localhost:7788)
-  ↓ 살아있음
-WAV 생성 → afplay (에이전트별 다성)
-  ↓ 실패 또는 서버 없음
-speak() 폴백 체인으로 전환
 ```
 
 ---
@@ -183,7 +201,7 @@ Claude Code의 `claude_desktop_config.json`에 추가:
 ```json
 {
   "autoSpeak": true,
-  "minChars": 200,
+  "minChars": 50,
   "voice": "Sohee",
   "summaryModel": "gpt-4o",
   "ttsSpeed": 1.2,
@@ -195,7 +213,7 @@ Claude Code의 `claude_desktop_config.json`에 추가:
 | 키 | 기본값 | 설명 |
 |----|--------|------|
 | `autoSpeak` | `true` | hook 모드 자동 재생 여부 |
-| `minChars` | `200` | 이 글자 수 이하면 TTS 건너뜀 |
+| `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `voice` | `"Sohee"` | MLX 스피커 ID 또는 macOS TTS 음성명 |
 | `summaryModel` | `"gpt-5.4"` | LLM 요약에 사용할 모델 |
 | `ttsSpeed` | `1.2` | 재생 속도 (`afplay -r`) |
@@ -216,8 +234,8 @@ Claude Code의 `claude_desktop_config.json`에 추가:
 
 ### Edge TTS 음성 (온라인)
 
-`voice` 설정값이 Edge TTS 매핑에 있으면 Microsoft Edge TTS를 사용합니다.  
-기본 매핑: `Sohee` → `ko-KR-SunHiNeural`, 미매핑 시 `ko-KR-HyunsuMultilingualNeural`
+`voice` 설정값에 관계없이 리더(Stop hook) 발화는 항상 `ko-KR-HyunsuMultilingualNeural`을 사용합니다.  
+한영 혼합 발음에 최적화된 Microsoft 다국어 TTS 모델입니다.
 
 ### 에이전트별 Supertonic 음성 (다성 TTS)
 
@@ -302,6 +320,7 @@ tts_server/
   start.sh / stop.sh    # MLX 서버 시작/종료
   supertonic_start.sh   # Supertonic 서버 시작 (포트 7788)
   supertonic_stop.sh    # Supertonic 서버 종료
+  tts_player.sh         # 스풀 소비자 데몬 — /tmp/tts-spool/ 순차 재생
 
 hooks/
   stop.sh               # Claude Stop 이벤트 → hook 모드
@@ -394,12 +413,13 @@ curl http://localhost:7788/health
 ./tts_server/supertonic_start.sh
 ```
 
-### 리더와 팀원 목소리가 겹침
+### TTS Player 데몬이 중지됨
 
-`/tmp/siren-tts.lock` 파일이 남아 있으면 잠금이 해제되지 않은 것입니다.
+리더·팀원 오디오가 스풀에 쌓이지만 재생되지 않으면 데몬이 죽은 것입니다.
 
 ```bash
-rm -f /tmp/siren-tts.lock
+./server.sh status        # TTS Player 상태 확인
+./server.sh start         # 데몬 재시작
 ```
 
 ### Hook이 동작하지 않음

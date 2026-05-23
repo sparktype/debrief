@@ -6,7 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG_PATH = join(__dirname, "..", ".siren.json");
 const DEFAULTS = {
     autoSpeak: true,
-    minChars: 200,
+    minChars: 50,
     voice: "Sohee",
     summaryModel: "gpt-5.4",
     ttsModel: "tts-1",

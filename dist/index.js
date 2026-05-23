@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig } from "./config.js";
 import { extractSummary, extractOneLiner } from "./summarizer.js";
-import { speak, speakAgent } from "./player.js";
+import { speak, speakAgent, speakHook } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
 let config = loadConfig();
@@ -28,7 +28,8 @@ if (process.argv[2] === "hook") {
     const text = await readStdin();
     if (text.length >= config.minChars) {
         const summary = await extractSummary(text, config.summaryModel);
-        await speak(summary, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => { }); // silent fail
+        // EdgeTTS(HyunsuMultilingualNeural) → 스풀 큐 → 데몬 순차 재생
+        await speakHook(summary, config.voice, config.ttsSpeed).catch(() => { });
     }
     process.exit(0);
 }

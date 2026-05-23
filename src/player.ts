@@ -1,21 +1,40 @@
 // EdgeTTS(온라인 우선) → HTTP TTS 서버 → MLX subprocess → macOS say 순서로 음성 재생
 import { spawn, SpawnOptions } from "child_process";
-import { existsSync, unlinkSync, writeFileSync, openSync, writeSync, closeSync, readFileSync } from "fs";
+import {
+  existsSync, unlinkSync, writeFileSync,
+  openSync, writeSync, closeSync, readFileSync,
+  mkdirSync, renameSync,
+} from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { saveLastMessage } from "./last-message-store.js";
 
-// 동시 발화 방지 — 프로세스 간 파일 기반 배타 잠금
+// ── 파일 스풀 ────────────────────────────────────────────────
+// 생성된 오디오 파일을 스풀에 이동 — 데몬이 epoch_ms 순서대로 재생
+const SPOOL_DIR = "/tmp/tts-spool";
+
+function ensureSpoolDir(): void {
+  mkdirSync(SPOOL_DIR, { recursive: true });
+}
+
+function enqueueSpool(tmpFile: string, speed: number): void {
+  const ts = Date.now();
+  const ext = tmpFile.split(".").pop() ?? "wav";
+  ensureSpoolDir();
+  renameSync(tmpFile, `${SPOOL_DIR}/${ts}.${ext}`);
+  writeFileSync(`${SPOOL_DIR}/${ts}.meta`, String(speed));
+}
+
+// ── 동시 발화 방지 (speak() 직접 재생 경로 전용) ────────────
 const TTS_LOCK_FILE = "/tmp/siren-tts.lock";
 const LOCK_STALE_MS = 30_000;
 const LOCK_WAIT_MS  = 25_000;
 
-async function withTTSLock<T>(fn: () => Promise<T>): Promise<T> {
+async function withTTSLock<T>(fn: () => Promise<T>): Promise<T | undefined> {
   const deadline = Date.now() + LOCK_WAIT_MS;
   let acquired = false;
   while (!acquired) {
     try {
-      // O_CREAT|O_EXCL — 원자적 배타 생성
       const fd = openSync(TTS_LOCK_FILE, "wx");
       writeSync(fd, String(Date.now()));
       closeSync(fd);
@@ -25,17 +44,16 @@ async function withTTSLock<T>(fn: () => Promise<T>): Promise<T> {
         const t = parseInt(readFileSync(TTS_LOCK_FILE, "utf-8"), 10);
         if (isNaN(t) || Date.now() - t > LOCK_STALE_MS) {
           unlinkSync(TTS_LOCK_FILE);
-          continue;
         }
-      } catch { break; }
-      if (Date.now() > deadline) break;
+      } catch { /* ENOENT: 다음 루프에서 openSync 재시도 */ }
+      if (Date.now() > deadline) return undefined; // 타임아웃 — 스킵
       await new Promise(r => setTimeout(r, 300));
     }
   }
   try {
     return await fn();
   } finally {
-    if (acquired) try { unlinkSync(TTS_LOCK_FILE); } catch { /* 무시 */ }
+    try { unlinkSync(TTS_LOCK_FILE); } catch { /* 무시 */ }
   }
 }
 
@@ -48,14 +66,13 @@ const HEALTH_TIMEOUT_MS = 500;
 const SPEAK_TIMEOUT_MS = 10000;
 const EDGE_TIMEOUT_MS = 10000;
 
-// CustomVoice 모델에 내장된 스피커 목록
 const MLX_SPEAKERS = new Set([
   "Sohee", "Vivian", "Serena", "Uncle_Fu",
   "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna",
 ]);
 
 // 한영 혼합 발음을 위해 전체 HyunsuMultilingualNeural 통일
-// <lang xml:lang="en-US"> 태그는 Multilingual 음성에서만 동작
+// SSL 검증 비활성화: HMG 사내 프록시가 자체 CA로 TLS를 인터셉트하기 때문에 certifi 번들 검증 실패
 const EDGE_VOICE_MAP: Record<string, string> = {
   Sohee:    "ko-KR-HyunsuMultilingualNeural",
   Vivian:   "ko-KR-HyunsuMultilingualNeural",
@@ -68,10 +85,6 @@ const EDGE_VOICE_MAP: Record<string, string> = {
   Aiden:    "ko-KR-HyunsuMultilingualNeural",
 };
 
-// edge-tts Python API를 argv로 호출 — 쉘 이스케이프 없이 텍스트 전달
-// SSL 검증 비활성화: HMG 사내 프록시가 자체 CA로 TLS를 인터셉트하기 때문에 certifi 번들 검증 실패
-// 한영 혼합 발음: Microsoft 무료 TTS 엔드포인트는 prosody body 내 SSML 태그를 지원하지 않으므로
-// HyunsuMultilingualNeural 음성의 자동 언어 감지 기능에 의존
 const EDGE_SCRIPT =
   "import asyncio, edge_tts, edge_tts.communicate as ec, ssl, sys; " +
   "ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; ec._SSL_CTX=ctx; " +
@@ -99,9 +112,7 @@ async function speakHTTP(text: string, voice: string, speed: number, instruct: s
       body: JSON.stringify({ text, voice, lang_code: "korean", speed, instruct }),
       signal: ctrl.signal,
     });
-    if (res.status === 429) {
-      return; // 이미 재생 중 — 스킵
-    }
+    if (res.status === 429) return;
     if (!res.ok) throw new Error(`TTS 서버 응답 오류: ${res.status}`);
   } finally {
     clearTimeout(timer);
@@ -153,10 +164,10 @@ function spawnPromise(cmd: string, args: string[], opts?: SpawnOptions): Promise
   });
 }
 
-async function speakEdge(text: string, voice: string, speed: number): Promise<void> {
+// EdgeTTS로 MP3 파일 생성 — 재생하지 않고 파일 경로 반환
+async function generateEdge(text: string, voice: string): Promise<string> {
   const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-HyunsuMultilingualNeural";
   const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
-  // proc을 outer scope에 선언해 타임아웃 시 kill 가능하도록
   let proc: ReturnType<typeof spawn> | undefined;
   const edgePromise = new Promise<void>((resolve, reject) => {
     proc = spawn(MLX_PYTHON, ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
@@ -171,16 +182,20 @@ async function speakEdge(text: string, voice: string, speed: number): Promise<vo
       ),
     ]);
   } catch (e) {
-    // 타임아웃 또는 오류 시 orphan 프로세스 종료 + 임시 파일 삭제
     proc?.kill();
     try { unlinkSync(outFile); } catch { /* 무시 */ }
     throw e;
   }
-  // 재생은 완료까지 기다림
+  return outFile;
+}
+
+// EdgeTTS 생성 + 즉시 재생 (speak() 직접 재생 경로용)
+async function speakEdge(text: string, voice: string, speed: number): Promise<void> {
+  const outFile = await generateEdge(text, voice);
   try {
     await spawnPromise("afplay", ["-r", String(speed), outFile]);
   } finally {
-    try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
+    try { unlinkSync(outFile); } catch { /* 무시 */ }
   }
 }
 
@@ -207,16 +222,13 @@ async function isSupertonicAlive(port: number): Promise<boolean> {
 type LangSegment = { text: string; lang: "ko" | "en" };
 
 // 영문자 연속 구간을 "en", 나머지를 "ko"로 분리
-// 공백·구두점은 앞 구간에 붙여 구간 경계에서 끊김 방지
 export function splitByLanguage(text: string): LangSegment[] {
-  // 영문자로 시작하는 단어 기준 분리 (하이픈·언더스코어·점 포함: gpt-5.4, my_func)
   const parts = text.split(/([A-Za-z][A-Za-z0-9\-_.]*)/);
   const segs: LangSegment[] = [];
   for (let i = 0; i < parts.length; i++) {
     if (!parts[i]) continue;
     const lang: "ko" | "en" = i % 2 === 1 ? "en" : "ko";
     if (!parts[i].trim()) {
-      // 공백만 있는 구간 — 이전 구간에 붙임 (자연스러운 경계 유지)
       if (segs.length > 0) segs[segs.length - 1].text += parts[i];
     } else if (segs.length > 0 && segs[segs.length - 1].lang === lang) {
       segs[segs.length - 1].text += parts[i];
@@ -244,20 +256,18 @@ export function mergeWavBuffers(buffers: Buffer[]): Buffer {
   const pcms = buffers.map((b, i) => b.slice(offsets[i] + 8));
   const pcm = Buffer.concat(pcms);
   const header = Buffer.from(buffers[0].slice(0, offsets[0] + 8));
-  header.writeUInt32LE(pcm.length, offsets[0] + 4);         // data 청크 크기 갱신
-  header.writeUInt32LE(header.length + pcm.length - 8, 4);  // RIFF 청크 크기 갱신
+  header.writeUInt32LE(pcm.length, offsets[0] + 4);
+  header.writeUInt32LE(header.length + pcm.length - 8, 4);
   return Buffer.concat([header, pcm]);
 }
 
-async function speakSupertonic(text: string, voice: string, port: number, speed: number): Promise<void> {
+// Supertonic WAV 생성 (재생 없음) — 에이전트 스풀 경로용
+async function generateSupertonic(text: string, voice: string, port: number): Promise<Buffer> {
   const segments = splitByLanguage(text);
-  const outFile = `/tmp/siren_supertonic_${Date.now()}.wav`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
-    let audioBuf: Buffer;
     if (segments.length <= 1) {
-      // 단일 언어 — /v1/audio/speech
       const lang = segments[0]?.lang ?? "ko";
       const res = await fetch(`http://localhost:${port}/v1/audio/speech`, {
         method: "POST",
@@ -266,9 +276,8 @@ async function speakSupertonic(text: string, voice: string, port: number, speed:
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`Supertonic 응답 오류: ${res.status}`);
-      audioBuf = Buffer.from(await res.arrayBuffer());
+      return Buffer.from(await res.arrayBuffer());
     } else {
-      // 혼합 언어 — /v1/tts/batch (구간별 lang 지정)
       const res = await fetch(`http://localhost:${port}/v1/tts/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -280,63 +289,74 @@ async function speakSupertonic(text: string, voice: string, port: number, speed:
       });
       if (!res.ok) throw new Error(`Supertonic batch 오류: ${res.status}`);
       const { items } = await res.json() as { items: { audio_base64: string }[] };
-      audioBuf = mergeWavBuffers(items.map(it => Buffer.from(it.audio_base64, "base64")));
+      return mergeWavBuffers(items.map(it => Buffer.from(it.audio_base64, "base64")));
     }
-    writeFileSync(outFile, audioBuf);
-    await spawnPromise("afplay", ["-r", String(speed), outFile]);
   } finally {
     clearTimeout(timer);
-    try { unlinkSync(outFile); } catch { /* 임시 파일 정리 실패 무시 */ }
   }
 }
 
+// ── 리더(hook) 발화: EdgeTTS MP3 생성 → 스풀 → 즉시 반환 ──
+// voice: config.voice (예: "Sohee") → EDGE_VOICE_MAP → HyunsuMultilingualNeural
+export async function speakHook(text: string, voice = "Sohee", speed = 1.2): Promise<void> {
+  const skipEdge = process.env.SIREN_OFFLINE === "1";
+  if (!skipEdge && existsSync(MLX_PYTHON)) {
+    try {
+      const mp3 = await generateEdge(text, voice);
+      enqueueSpool(mp3, speed);
+      saveLastMessage(text);
+      return;
+    } catch {
+      // EdgeTTS 실패 시 직접 재생 폴백
+    }
+  }
+  await speakInner(text, voice, speed, "");
+}
+
+// ── 에이전트(subagent-stop) 발화: Supertonic WAV → 스풀 → 즉시 반환 ──
+// withTTSLock 불필요 — 데몬 단일 소비자가 직렬화
 export async function speakAgent(
   text: string,
   supertonicVoice: string,
   port: number,
   speed: number,
 ): Promise<void> {
-  return withTTSLock(async () => {
-    if (await isSupertonicAlive(port)) {
-      try {
-        await speakSupertonic(text, supertonicVoice, port, speed);
-        saveLastMessage(text);
-        return;
-      } catch {
-        // Supertonic 실패 시 기존 체인으로 폴백
-      }
+  if (await isSupertonicAlive(port)) {
+    try {
+      const wav = await generateSupertonic(text, supertonicVoice, port);
+      const tmp = `/tmp/siren_st_${Date.now()}.wav`;
+      writeFileSync(tmp, wav);
+      enqueueSpool(tmp, speed);
+      saveLastMessage(text);
+      return;
+    } catch {
+      // Supertonic 실패 시 직접 재생 폴백
     }
-    await speakInner(text, "", speed, "");
-  });
+  }
+  await speakInner(text, "", speed, "");
 }
 
+// ── MCP 도구·hook-suggest 전용 직접 재생 경로 ──
 export async function speak(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
-  return withTTSLock(() => speakInner(text, voice, speed, instruct));
+  await withTTSLock(() => speakInner(text, voice, speed, instruct));
 }
 
 async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
-  // 1. EdgeTTS (온라인 우선, tts-venv에 edge-tts 설치 필요, SIREN_OFFLINE=1이면 건너뜀)
   const skipEdge = process.env.SIREN_OFFLINE === "1";
   if (!skipEdge && existsSync(MLX_PYTHON)) {
     try {
       await speakEdge(text, voice, speed);
       saveLastMessage(text);
       return;
-    } catch {
-      // 네트워크 오류 또는 타임아웃 시 폴백
-    }
+    } catch { /* 폴백 */ }
   }
-  // 2. HTTP TTS 서버 (MLX 상주 서버가 기동 중인 경우)
   if (await isTTSServerAlive()) {
     try {
       await speakHTTP(text, voice, speed, instruct);
       saveLastMessage(text);
       return;
-    } catch {
-      // 서버 응답 실패 시 폴백
-    }
+    } catch { /* 폴백 */ }
   }
-  // 3. MLX subprocess → 4. macOS say
   await speakSubprocess(text, voice, speed, instruct);
   saveLastMessage(text);
 }

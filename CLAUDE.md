@@ -57,11 +57,10 @@ Claude 응답 완료
   → Stop hook (hooks/stop.sh)
     → node dist/index.js hook  # stdin으로 텍스트 전달
       → extractSummary() (summarizer.ts)  # HMG LLM API → 규칙 기반 폴백
-      → speak() (player.ts)
-          ├─ Edge TTS: edge-tts Python → /tmp/siren_edge_*.mp3 (온라인, 10초 타임아웃)
-          ├─ HTTP: http://localhost:7777/speak  ← TTS 상주 서버
-          ├─ MLX subprocess: tts-venv/bin/python3 -m mlx_audio.tts.generate
-          └─ macOS say: 최후 폴백
+      → speakHook() (player.ts)
+          ├─ EdgeTTS → ko-KR-HyunsuMultilingualNeural MP3 생성
+          ├─ /tmp/tts-spool/<epoch_ms>.mp3 기록 → 즉시 반환
+          └─ EdgeTTS 실패 시 speakInner() 직접 재생 폴백
 
 서브에이전트 응답 완료
   → SubagentStop hook (hooks/subagent-stop.sh)
@@ -71,9 +70,12 @@ Claude 응답 완료
       → getAgentLabel(agentType) → "리뷰어" / "플래너" / "빌더" / "탐색기"
       → extractOneLiner() (summarizer.ts)  # 25자 이내 한 줄 요약 + 특수문자 제거
       → "${label}입니다. ${oneLiner}" → speakAgent() (player.ts)
-          ├─ withTTSLock 획득 (/tmp/siren-tts.lock — 리더와 동시 발화 방지)
-          ├─ Supertonic: localhost:7788 → WAV → afplay (에이전트별 다성)
-          └─ 실패 시 speak() 폴백 체인
+          ├─ Supertonic: localhost:7788/v1/health 확인 → WAV 생성
+          ├─ /tmp/tts-spool/<epoch_ms>.wav 기록 → 즉시 반환
+          └─ 실패 시 speakInner() 직접 재생 폴백
+
+TTS Player 데몬 (tts_server/tts_player.sh)
+  → /tmp/tts-spool/ 0.3초 폴링 → epoch_ms 오름차순 afplay 순차 재생
 
 세션 시작 / 프롬프트 입력
   → SessionStart / UserPromptSubmit hook
@@ -95,6 +97,7 @@ Claude 응답 완료
 | `src/last-message-store.ts` | 마지막 TTS 텍스트 파일 영속화 (`speak_last` 지원) |
 | `src/llm-client.ts` | HMG Hub LLM 클라이언트 공통 모듈 |
 | `tts_server/server.py` | FastAPI TTS 서버 — 단일 워커 스레드로 MLX 모델 실행 |
+| `tts_server/tts_player.sh` | 스풀 소비자 데몬 — `/tmp/tts-spool/` 순차 재생 |
 
 ### TTS 서버 설계 포인트
 
@@ -102,7 +105,8 @@ Claude 응답 완료
 - `/speak` 요청은 즉시 202 반환, 큐 크기 1 (현재 재생 중이면 429)
 - `afplay -r <speed>` 로 재생 속도 후처리 — Qwen3-TTS는 `speed!=1.0` 시 최적화 경로가 비활성화됨
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
-- `speak()` · `speakAgent()` 모두 `/tmp/siren-tts.lock` 파일 잠금으로 직렬화 — 리더·팀원 동시 발화 방지
+- **파일 스풀 직렬화**: hook(`speakHook`)·서브에이전트(`speakAgent`) 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
+- MCP 도구 `speak()`만 `/tmp/siren-tts.lock` 파일 잠금 사용 (직접 재생 경로)
 - 서브에이전트 발화: `"${role}입니다. ${oneLiner}"` 형식, `sanitizeForSpeech()`로 특수문자·유니코드 기호 제거
 
 ### 설정 (`src/config.ts` 기본값)
@@ -110,7 +114,7 @@ Claude 응답 완료
 | 키 | 기본값 | 설명 |
 |----|--------|------|
 | `autoSpeak` | `true` | hook 모드 자동 재생 여부 |
-| `minChars` | `200` | 이 글자 수 이하면 TTS 건너뜀 |
+| `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `voice` | `Sohee` | MLX 스피커 또는 macOS voice |
 | `summaryModel` | `gpt-5.4` | HMG Hub LLM 모델 |
 | `ttsSpeed` | `1.2` | afplay -r 배속 |
