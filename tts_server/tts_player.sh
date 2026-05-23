@@ -30,8 +30,8 @@ _cleanup_stale() {
   find "$SPOOL" -name "*.meta" -mmin +$(( MAX_AGE_SECS / 60 )) -delete 2>/dev/null || true
 
   # 파일 수 제한
-  local files
-  files=($(ls -1 "$SPOOL"/*.wav "$SPOOL"/*.mp3 2>/dev/null | sort || true))
+  local files=()
+  mapfile -t files < <(find "$SPOOL" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | sort)
   local count=${#files[@]}
   if (( count > MAX_FILES )); then
     local excess=$(( count - MAX_FILES ))
@@ -49,7 +49,7 @@ idle_count=0
 
 while true; do
   # epoch_ms 기준 오름차순 — 먼저 도착한 파일 먼저 재생
-  audio=$(ls -1 "$SPOOL"/*.wav "$SPOOL"/*.mp3 2>/dev/null | sort | head -1 || true)
+  audio=$(find "$SPOOL" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | sort | head -1 || true)
   if [[ -n "$audio" && -f "$audio" ]]; then
     idle_count=0  # 파일 발견 시 idle 카운터 초기화
     base="${audio%.*}"
