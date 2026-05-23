@@ -48,13 +48,17 @@ FastAPI 상주 서버(`tts_server/`)는 제거하지 않고 유지한다. 오프
 
 ### `speakEdge()` (`src/player.ts`)
 
-`tts-venv/bin/python3 -c` 로 인라인 Python async 스크립트를 실행한다. 별도 스크립트 파일 없이 edge-tts Python API를 호출하여 mp3를 생성하고, `afplay -r <speed>`로 재생한다.
+`tts-venv/bin/python3 -c` 로 인라인 Python async 스크립트를 실행한다. 텍스트는 쉘을 거치지 않고 `argv`로 전달 — 따옴표·특수문자 이스케이프 문제 없음.
 
 ```
 speakEdge(text, voice, speed):
   edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-SunHiNeural"
   outFile = /tmp/siren_edge_<timestamp>.mp3
-  python3 -c "edge_tts.Communicate(text, edgeVoice).save(outFile)"
+
+  // spawn(python3, ['-c', '<script>', text, edgeVoice, outFile], {shell: false})
+  // 스크립트: import asyncio, edge_tts, sys
+  //           asyncio.run(edge_tts.Communicate(sys.argv[1], sys.argv[2]).save(sys.argv[3]))
+
   afplay -r speed outFile
   unlink(outFile)
 ```
@@ -71,6 +75,9 @@ speakEdge(text, voice, speed):
 | `Ryan` | `ko-KR-InJoonNeural` | 남성 |
 | `Aiden` | `ko-KR-HyunsuMultilingualNeural` | 다국어 남성 |
 | `Eric` | `ko-KR-InJoonNeural` | 남성 |
+| `Dylan` | `ko-KR-InJoonNeural` | 남성 |
+| `Uncle_Fu` | `ko-KR-SunHiNeural` | 기본 매핑 (원본은 중국어 화자) |
+| `Ono_Anna` | `ko-KR-SunHiNeural` | 기본 매핑 (원본은 일본어 화자) |
 | 그 외 | `ko-KR-SunHiNeural` | 기본 폴백 |
 
 ### instruct 파라미터 처리
