@@ -395,6 +395,18 @@ describe("splitByLanguage", () => {
   });
 });
 
+describe("generateEdge — EDGE_VOICE 상수", () => {
+  it("알 수 없는 voice 입력 시 HyunsuMultilingualNeural 사용", async () => {
+    mockSpawnSequence(0, 0); // python3(EdgeTTS) exit 0, afplay exit 0
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    mockFetchDead();
+    await speak("테스트", "UnknownVoice123", 1.0, "");
+    const spawnArgs = vi.mocked(cp.spawn).mock.calls[0];
+    const allArgs = spawnArgs?.flat().join(" ") ?? "";
+    expect(allArgs).toContain("HyunsuMultilingualNeural");
+  });
+});
+
 describe("mergeWavBuffers", () => {
   function makeWav(pcmBytes: number[]): Buffer {
     const pcm = Buffer.from(pcmBytes);

@@ -80,19 +80,9 @@ const MLX_SPEAKERS = new Set([
   "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna",
 ]);
 
-// 한영 혼합 발음을 위해 전체 HyunsuMultilingualNeural 통일
+// 한영 혼합 발음을 위해 항상 HyunsuMultilingualNeural 고정
 // SSL 검증 비활성화: HMG 사내 프록시가 자체 CA로 TLS를 인터셉트하기 때문에 certifi 번들 검증 실패
-const EDGE_VOICE_MAP: Record<string, string> = {
-  Sohee:    "ko-KR-HyunsuMultilingualNeural",
-  Vivian:   "ko-KR-HyunsuMultilingualNeural",
-  Serena:   "ko-KR-HyunsuMultilingualNeural",
-  Uncle_Fu: "ko-KR-HyunsuMultilingualNeural",
-  Ono_Anna: "ko-KR-HyunsuMultilingualNeural",
-  Ryan:     "ko-KR-HyunsuMultilingualNeural",
-  Eric:     "ko-KR-HyunsuMultilingualNeural",
-  Dylan:    "ko-KR-HyunsuMultilingualNeural",
-  Aiden:    "ko-KR-HyunsuMultilingualNeural",
-};
+const EDGE_VOICE = "ko-KR-HyunsuMultilingualNeural";
 
 const EDGE_SCRIPT =
   "import asyncio, edge_tts, edge_tts.communicate as ec, ssl, sys; " +
@@ -175,7 +165,7 @@ function spawnPromise(cmd: string, args: string[], opts?: SpawnOptions): Promise
 
 // EdgeTTS로 MP3 파일 생성 — 재생하지 않고 파일 경로 반환
 async function generateEdge(text: string, voice: string): Promise<string> {
-  const edgeVoice = EDGE_VOICE_MAP[voice] ?? "ko-KR-HyunsuMultilingualNeural";
+  const edgeVoice = EDGE_VOICE;
   const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
   let proc: ReturnType<typeof spawn> | undefined;
   const edgePromise = new Promise<void>((resolve, reject) => {
@@ -306,7 +296,7 @@ async function generateSupertonic(text: string, voice: string, port: number): Pr
 }
 
 // ── 리더(hook) 발화: EdgeTTS MP3 생성 → 스풀 → 즉시 반환 ──
-// voice: config.voice (예: "Sohee") → EDGE_VOICE_MAP → HyunsuMultilingualNeural
+// voice: config.voice 값 — EdgeTTS는 항상 EDGE_VOICE(HyunsuMultilingualNeural) 사용
 export async function speakHook(text: string, voice = "Sohee", speed = 1.2): Promise<void> {
   const skipEdge = process.env.SIREN_OFFLINE === "1";
   if (!skipEdge && existsSync(MLX_PYTHON)) {
