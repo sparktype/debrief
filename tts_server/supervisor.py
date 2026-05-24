@@ -80,7 +80,7 @@ async def player_loop(
         except Exception as e:
             log.error(f"[Player] 재생 오류: {e}")
             try:
-                if "audio" in dir() and Path(audio).exists():
+                if "audio" in locals() and Path(audio).exists():
                     Path(audio).unlink(missing_ok=True)
             except Exception:
                 pass
