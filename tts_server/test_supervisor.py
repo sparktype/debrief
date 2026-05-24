@@ -59,3 +59,109 @@ class TestDoCleanup:
 
         assert not old_wav.exists()
         assert not old_meta.exists()
+
+
+class TestPlayerLoop:
+    def test_plays_wav_with_default_speed(self, tmp_path):
+        """wav 파일이 있고 meta 없으면 speed=1.2로 afplay 호출한다."""
+        from unittest.mock import AsyncMock, patch
+
+        audio = tmp_path / "1000.wav"
+        audio.write_bytes(b"audio")
+
+        played = []
+        shutdown = asyncio.Event()
+
+        async def fake_exec(*args, **kwargs):
+            played.append(args)
+            shutdown.set()  # 1회 재생 후 종료
+            mock = AsyncMock()
+            mock.wait = AsyncMock(return_value=0)
+            return mock
+
+        async def run():
+            with patch("tts_server.supervisor.asyncio.create_subprocess_exec", side_effect=fake_exec):
+                from tts_server.supervisor import player_loop
+                await player_loop(spool=tmp_path, shutdown=shutdown)
+
+        asyncio.run(run())
+        assert len(played) == 1
+        assert played[0] == ("afplay", "-r", "1.2", str(audio))
+
+    def test_reads_speed_from_meta(self, tmp_path):
+        """.meta 파일이 있으면 그 값을 speed로 사용한다."""
+        from unittest.mock import AsyncMock, patch
+
+        audio = tmp_path / "2000.wav"
+        audio.write_bytes(b"audio")
+        (tmp_path / "2000.meta").write_text("1.5")
+
+        played = []
+        shutdown = asyncio.Event()
+
+        async def fake_exec(*args, **kwargs):
+            played.append(args)
+            shutdown.set()
+            mock = AsyncMock()
+            mock.wait = AsyncMock(return_value=0)
+            return mock
+
+        async def run():
+            with patch("tts_server.supervisor.asyncio.create_subprocess_exec", side_effect=fake_exec):
+                from tts_server.supervisor import player_loop
+                await player_loop(spool=tmp_path, shutdown=shutdown)
+
+        asyncio.run(run())
+        assert played[0][2] == "1.5"
+
+    def test_deletes_audio_after_play(self, tmp_path):
+        """재생 완료 후 오디오 파일이 삭제된다."""
+        from unittest.mock import AsyncMock, patch
+
+        audio = tmp_path / "3000.mp3"
+        audio.write_bytes(b"audio")
+
+        shutdown = asyncio.Event()
+
+        async def fake_exec(*args, **kwargs):
+            shutdown.set()
+            mock = AsyncMock()
+            mock.wait = AsyncMock(return_value=0)
+            return mock
+
+        async def run():
+            with patch("tts_server.supervisor.asyncio.create_subprocess_exec", side_effect=fake_exec):
+                from tts_server.supervisor import player_loop
+                await player_loop(spool=tmp_path, shutdown=shutdown)
+
+        asyncio.run(run())
+        assert not audio.exists(), "재생 후 파일이 삭제되어야 한다"
+
+    def test_epoch_ascending_order(self, tmp_path):
+        """여러 파일이 있으면 epoch_ms 오름차순(가장 오래된 것) 먼저 재생한다."""
+        from unittest.mock import AsyncMock, patch
+
+        (tmp_path / "9000.wav").write_bytes(b"later")
+        (tmp_path / "1000.wav").write_bytes(b"earlier")
+
+        played = []
+        call_count = 0
+        shutdown = asyncio.Event()
+
+        async def fake_exec(*args, **kwargs):
+            nonlocal call_count
+            played.append(Path(args[-1]).name)
+            call_count += 1
+            if call_count >= 2:
+                shutdown.set()
+            mock = AsyncMock()
+            mock.wait = AsyncMock(return_value=0)
+            return mock
+
+        async def run():
+            with patch("tts_server.supervisor.asyncio.create_subprocess_exec", side_effect=fake_exec):
+                from tts_server.supervisor import player_loop
+                await player_loop(spool=tmp_path, shutdown=shutdown)
+
+        asyncio.run(run())
+        assert played[0] == "1000.wav", "오래된 파일이 먼저 재생되어야 한다"
