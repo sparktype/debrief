@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>TypeScript → Python hook_voice 마이그레이션 코드 리뷰</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 2rem;
+      line-height: 1.7;
+    }
+    h1 {
+      font-size: 1.7rem;
+      color: #f0f6fc;
+      border-bottom: 2px solid #21262d;
+      padding-bottom: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      font-size: 1.2rem;
+      color: #79c0ff;
+      margin: 2rem 0 0.75rem;
+      padding-left: 0.5rem;
+      border-left: 3px solid #388bfd;
+    }
+    h3 {
+      font-size: 1rem;
+      color: #e3b341;
+      margin: 1.25rem 0 0.5rem;
+    }
+    section {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .verdict {
+      display: inline-block;
+      padding: 0.3rem 0.8rem;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+    .yes { background: #1f4f2d; color: #56d364; border: 1px solid #238636; }
+    .no { background: #4f1f1f; color: #f85149; border: 1px solid #da3633; }
+    .conditional { background: #3d2900; color: #e3b341; border: 1px solid #9e6a03; }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-right: 0.3rem;
+      vertical-align: middle;
+    }
+    .critical { background: #4f1f1f; color: #f85149; }
+    .important { background: #3d2900; color: #e3b341; }
+    .minor { background: #0d2137; color: #58a6ff; }
+    .good { background: #1f4f2d; color: #56d364; }
+    .issue-card {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      margin: 0.75rem 0;
+    }
+    .issue-card.critical-card { border-color: #da3633; }
+    .issue-card.important-card { border-color: #9e6a03; }
+    .issue-card.minor-card { border-color: #388bfd; }
+    .issue-title {
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 0.4rem;
+    }
+    .file-ref {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    p { margin: 0.4rem 0; }
+    ul { margin: 0.4rem 0 0.4rem 1.5rem; }
+    li { margin: 0.2rem 0; }
+    pre {
+      margin: 0.6rem 0;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.82rem;
+    }
+    code.inline {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: #21262d;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #e6edf3;
+    }
+    .strength-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #21262d;
+    }
+    .strength-item:last-child { border-bottom: none; }
+    .strength-num {
+      background: #1f4f2d;
+      color: #56d364;
+      border-radius: 50%;
+      width: 1.5rem;
+      height: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 0.2rem;
+    }
+    .meta-row {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .meta-item { color: #8b949e; font-size: 0.88rem; }
+    .meta-item strong { color: #c9d1d9; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin: 0.75rem 0;
+    }
+    th {
+      background: #21262d;
+      color: #8b949e;
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      font-weight: 600;
+    }
+    td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid #21262d;
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    .pass { color: #56d364; }
+    .warn { color: #e3b341; }
+    .fail { color: #f85149; }
+  </style>
+</head>
+<body>
+
+<h1>hook_voice — TypeScript → Python 마이그레이션 코드 리뷰</h1>
+
+<div class="meta-row">
+  <div class="meta-item"><strong>리뷰 대상</strong> commits d0f8135 ~ 670758c (12 commits)</div>
+  <div class="meta-item"><strong>테스트</strong> 80 passed / 0 failed (0.55s)</div>
+  <div class="meta-item"><strong>Python</strong> 3.13.13 · pytest-asyncio 1.3.0</div>
+  <div class="meta-item"><strong>리뷰어</strong> Claude Sonnet 4.6</div>
+</div>
+
+<!-- ────────────── 강점 ────────────── -->
+<h2>Strengths</h2>
+<section>
+  <div class="strength-item">
+    <div class="strength-num">1</div>
+    <div>
+      <strong>클린한 모듈 분리</strong><br>
+      <code class="inline">config.py</code>, <code class="inline">llm_client.py</code>, <code class="inline">summarizer.py</code>, <code class="inline">voice_router.py</code>, <code class="inline">player.py</code>, <code class="inline">hook_handlers.py</code>가 각각 단일 책임을 유지. TypeScript의 <code class="inline">index.ts</code>에 혼재했던 MCP 서버 코드를 제거하고 hook CLI만 남겨 복잡도가 크게 줄었다.
+    </div>
+  </div>
+  <div class="strength-item">
+    <div class="strength-num">2</div>
+    <div>
+      <strong>타입 안전성 — dataclass + TypedDict 일관 사용</strong><br>
+      <code class="inline">Config</code> (dataclass), <code class="inline">VoiceMap</code>, <code class="inline">SkillEntry</code>, <code class="inline">Recommendation</code> (TypedDict) 로 구조체화. TypeScript 대비 런타임 타입 검증이 오히려 더 명시적이다. <code class="inline">config.py:26-37</code>
+    </div>
+  </div>
+  <div class="strength-item">
+    <div class="strength-num">3</div>
+    <div>
+      <strong>방어적 오류 처리 일관성</strong><br>
+      모든 I/O 경계 (파일 읽기, JSON 파싱, HTTP 호출) 에서 <code class="inline">except Exception: return default</code> 패턴 적용. 단일 hook 실패가 전체 흐름을 막지 않는다.
+    </div>
+  </div>
+  <div class="strength-item">
+    <div class="strength-num">4</div>
+    <div>
+      <strong>SSL 우회 패치 — 올바른 접근</strong><br>
+      <code class="inline">player.py:19-21</code>에서 edge_tts 내부 <code class="inline">_SSL_CTX</code>를 모듈 임포트 시점에 교체. CERT_NONE 컨텍스트 생성 후 monkey-patch하는 방식이 HMG 사내 CA 환경에서 검증된 패턴과 일치한다. (<code class="inline">tts-venv/bin/python3 -c "import edge_tts.communicate as ec; print(hasattr(ec, '_SSL_CTX'))"</code> → True 확인)
+    </div>
+  </div>
+  <div class="strength-item">
+    <div class="strength-num">5</div>
+    <div>
+      <strong>파일 스풀 명명 충돌 방지</strong><br>
+      <code class="inline">_enqueue_spool</code>에서 <code class="inline">{epoch_ms}_{5자 random suffix}</code> 조합 사용. 같은 밀리초에 두 hook이 실행되더라도 충돌 확률 1/60,466,176 — 실용적으로 무시 가능.
+    </div>
+  </div>
+  <div class="strength-item">
+    <div class="strength-num">6</div>
+    <div>
+      <strong>순수 함수 분리로 테스트 용이성 확보</strong><br>
+      <code class="inline">classify_pre_tool_bash</code>, <code class="inline">classify_post_tool_bash</code>, <code class="inline">strip_markdown</code>, <code class="inline">sanitize_for_speech</code>, <code class="inline">is_in_cooldown</code>, <code class="inline">parse_recommendation</code> 등이 모두 순수 함수로 분리되어 mock 없이 단위 테스트 가능.
+    </div>
+  </div>
+  <div class="strength-item">
+    <div class="strength-num">7</div>
+    <div>
+      <strong>4단계 TTS 폴백 체인 — 설계 충실히 구현</strong><br>
+      EdgeTTS → spool enqueue → HTTP TTS 서버 → MLX subprocess → <code class="inline">say</code> 순서가 <code class="inline">player.py</code>에서 명확히 구현됨. 각 단계가 독립적으로 실패할 수 있고 다음 단계로 넘어간다.
+    </div>
+  </div>
+</section>
+
+<!-- ────────────── Issues ────────────── -->
+<h2>Issues</h2>
+
+<h3><span class="badge critical">Critical</span> 버그 / 기능 손실</h3>
+
+<div class="issue-card critical-card">
+  <div class="issue-title">C-1: pre-tool-bash.sh / post-tool-bash.sh — stdin 완전 유실로 hook 동작 불가</div>
+  <div class="file-ref">hooks/pre-tool-bash.sh · hooks/post-tool-bash.sh · hook_voice/hook_handlers.py:167-193</div>
+  <p>Claude Code PreToolUse/PostToolUse hook은 stdin으로 JSON (<code class="inline">{"tool_input": {"command": "..."}, "tool_response": {...}}</code>)을 전달한다. 두 hook 스크립트 모두 <code class="inline">nohup</code> 백그라운드로 실행하면서 stdin을 파이프하지 않아 <code class="inline">raw=""</code>이 되고, <code class="inline">json.loads("")</code> → Exception → 즉시 <code class="inline">return</code>. 결과적으로 이 두 hook은 아무 소리도 내지 않는다.</p>
+  <p><strong>영향:</strong> 빌드 착수 / 테스트 실행 / 파괴적 명령 경고가 실제로는 동작하지 않는다.</p>
+  <pre><code class="language-bash"># 현재 (동작 안 함)
+nohup "$VENV_PY" -m hook_voice pre-tool-bash > /dev/null 2>&1 &
+
+# 수정 (notification.sh 패턴 따르기)
+PAYLOAD=$(cat)
+echo "$PAYLOAD" | nohup "$VENV_PY" -m hook_voice pre-tool-bash > /dev/null 2>&1 &</code></pre>
+  <p>TypeScript 원본도 동일 버그였으므로 마이그레이션 중 기존 버그를 그대로 이식한 것이다.</p>
+</div>
+
+<div class="issue-card critical-card">
+  <div class="issue-title">C-2: subagent-stop.sh — stdin 유실로 transcript_path 미전달, agent_type 추출 실패 위험</div>
+  <div class="file-ref">hooks/subagent-stop.sh · hook_voice/hook_handlers.py:126-143</div>
+  <p>Claude Code SubagentStop hook stdin JSON에는 <code class="inline">transcript_path</code>가 포함된다 (실제 notification 로그로 확인: <code class="inline">"transcript_path": "/Users/.../xxxx.jsonl"</code>). 현재 스크립트는 stdin을 pipe하지 않아 <code class="inline">handle_subagent_stop</code>이 <code class="inline">data.get("transcript_path", "")</code>를 얻지 못한다.</p>
+  <p>결과적으로 <code class="inline">_extract_agent_type_from_transcript()</code>가 호출되지 않아 <code class="inline">agent_type=""</code>이 되고, 모든 서브에이전트가 <code class="inline">default</code> voice (<code class="inline">F1</code>)를 사용한다. 역할별 다성 TTS가 실질적으로 비활성화된 상태다.</p>
+  <pre><code class="language-bash"># 수정
+PAYLOAD=$(cat)
+echo "$PAYLOAD" | nohup "$VENV_PY" -m hook_voice subagent-stop > /dev/null 2>&1 &</code></pre>
+</div>
+
+<h3><span class="badge important">Important</span> 아키텍처 / 테스트 gap</h3>
+
+<div class="issue-card important-card">
+  <div class="issue-title">I-1: stop.sh — stdin 미전달로 transcript fallback에만 의존</div>
+  <div class="file-ref">hooks/stop.sh · hook_voice/hook_handlers.py:100-113</div>
+  <p>Stop hook stdin JSON에도 <code class="inline">transcript_path</code>가 있지만 stop.sh가 pipe하지 않는다. <code class="inline">handle_hook</code>은 <code class="inline">CLAUDE_CODE_SESSION_ID</code> + <code class="inline">CLAUDE_PROJECT_DIR</code> 환경변수로 path를 재구성하는 fallback을 갖고 있어 기능은 동작하지만, 환경변수가 없는 상황에서 text가 비어 TTS가 실행되지 않을 수 있다.</p>
+  <pre><code class="language-bash"># 수정 (notification.sh와 동일한 패턴)
+PAYLOAD=$(cat)
+echo "$PAYLOAD" | nohup "$VENV_PY" -m hook_voice hook >> /tmp/voice-notification-debug.log 2>&1 &</code></pre>
+</div>
+
+<div class="issue-card important-card">
+  <div class="issue-title">I-2: config의 edge_timeout_ms / supertonic_timeout_ms가 player.py에서 사용되지 않음</div>
+  <div class="file-ref">hook_voice/config.py:36-37 · hook_voice/player.py:105, 140</div>
+  <p>Config에 <code class="inline">edge_timeout_ms=10000</code>, <code class="inline">supertonic_timeout_ms=20000</code> 필드가 있지만 player.py는 <code class="inline">asyncio.wait_for(..., timeout=10.0)</code>, <code class="inline">timeout=20.0</code>으로 하드코딩. 사용자가 <code class="inline">.voice-persona.json</code>에서 설정해도 무시된다.</p>
+  <p>설정 필드가 존재하지만 동작하지 않는 데드 설정 — API 계약 위반이다. <code class="inline">speak_hook</code>, <code class="inline">speak_agent</code>에 <code class="inline">config</code>를 주입하거나, caller인 <code class="inline">hook_handlers.py</code>에서 timeout 값을 계산해 넘겨야 한다.</p>
+</div>
+
+<div class="issue-card important-card">
+  <div class="issue-title">I-3: handle_subagent_stop, handle_hook_suggest 테스트 없음</div>
+  <div class="file-ref">tests/test_hook_handlers.py</div>
+  <p>두 handler가 테스트되지 않았다. 특히 <code class="inline">handle_subagent_stop</code>은 <code class="inline">load_voice_map</code> → <code class="inline">resolve_voice</code> → <code class="inline">extract_one_liner</code> → <code class="inline">speak_agent</code> 연쇄 호출로 가장 복잡한 경로다. <code class="inline">handle_hook</code>의 transcript fallback 경로(<code class="inline">_derive_transcript_path</code> → <code class="inline">_extract_last_assistant_text</code>)도 테스트 없다.</p>
+</div>
+
+<div class="issue-card important-card">
+  <div class="issue-title">I-4: _transcript_cache — 프로세스간 공유 불가 (in-memory)</div>
+  <div class="file-ref">hook_voice/skill_recommender.py:14, 81-103</div>
+  <p>모듈 레벨 dict으로 TTL 60초 캐시를 구현했지만, 각 hook 호출이 독립 Python 프로세스이므로 캐시가 항상 cold start다. 코드 복잡도만 늘리고 실제 효과가 없다. 제거하거나 파일 기반 캐시 (mtime 비교)로 교체하는 것이 정직하다.</p>
+</div>
+
+<h3><span class="badge minor">Minor</span> 스타일 / 최적화</h3>
+
+<div class="issue-card minor-card">
+  <div class="issue-title">M-1: tempfile.mktemp 사용 — deprecated, 이론적 race condition</div>
+  <div class="file-ref">hook_voice/player.py:45, 141</div>
+  <p><code class="inline">tempfile.mktemp()</code>는 파일 이름만 반환하고 생성하지 않아 이름 획득과 생성 사이에 race condition이 있다. Python 3에서 공식 deprecated.</p>
+  <pre><code class="language-python"># 수정
+import tempfile
+with tempfile.NamedTemporaryFile(suffix=".mp3", prefix="vp_edge_", delete=False) as f:
+    out = Path(f.name)</code></pre>
+</div>
+
+<div class="issue-card minor-card">
+  <div class="issue-title">M-2: stop hook 처리 결과 로깅 없음 — 디버깅 가시성 저하</div>
+  <div class="file-ref">hooks/stop.sh · hook_voice/__main__.py</div>
+  <p>Python 버전에서 "<code class="inline">[stop] fired</code>" 같은 처리 시작 로그가 사라졌다. 실제 로그 파일에는 TypeScript 시절 남긴 항목만 남아 있어 Python 버전의 동작 여부를 로그로 확인하기 어렵다. <code class="inline">__main__.py</code>나 <code class="inline">hook_handlers.py</code>에 구조화 로그 1줄 추가를 권장.</p>
+</div>
+
+<div class="issue-card minor-card">
+  <div class="issue-title">M-3: _speak_http에서 config.tts_instruct 미전달</div>
+  <div class="file-ref">hook_voice/player.py:64</div>
+  <p><code class="inline">_speak_http</code> 호출 시 <code class="inline">"instruct": ""</code>로 하드코딩. config의 <code class="inline">tts_instruct</code>가 HTTP TTS 서버 경로에서는 무시된다. EdgeTTS/Supertonic 경로는 instruct 미지원이지만 /speak 경로는 해당 필드를 지원한다.</p>
+</div>
+
+<div class="issue-card minor-card">
+  <div class="issue-title">M-4: llm_client.py — 예외 silencing이 너무 광범위</div>
+  <div class="file-ref">hook_voice/llm_client.py:36-38</div>
+  <p><code class="inline">except Exception: return ""</code>가 HTTP 상태 에러, JSON 파싱 에러, 키 누락 에러를 모두 동일하게 처리한다. 적어도 <code class="inline">httpx.HTTPStatusError</code>와 <code class="inline">KeyError</code>를 개별 <code class="inline">except</code>로 분리하면 디버깅이 쉬워진다. 현재는 API 키 오류와 네트워크 오류를 구분할 수 없다.</p>
+</div>
+
+<!-- ────────────── 테스트 커버리지 표 ────────────── -->
+<h2>테스트 커버리지 요약</h2>
+<section>
+<table>
+  <thead>
+    <tr><th>모듈</th><th>테스트 파일</th><th>커버 경로</th><th>미커버 경로</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>config.py</td>
+      <td>test_config.py (4)</td>
+      <td class="pass">전체 키 매핑, 파싱 실패, 기본값</td>
+      <td class="pass">없음</td>
+    </tr>
+    <tr>
+      <td>llm_client.py</td>
+      <td>test_llm_client.py (2)</td>
+      <td class="pass">정상, 네트워크 오류</td>
+      <td class="warn">HTTP 4xx/5xx 응답</td>
+    </tr>
+    <tr>
+      <td>last_message.py</td>
+      <td>test_last_message.py (3)</td>
+      <td class="pass">저장/로드/덮어쓰기</td>
+      <td class="pass">없음</td>
+    </tr>
+    <tr>
+      <td>summarizer.py</td>
+      <td>test_summarizer.py (6)</td>
+      <td class="pass">strip_markdown, fallback, 빈 입력</td>
+      <td class="warn">_fallback sentence_count=1 단독 경로</td>
+    </tr>
+    <tr>
+      <td>voice_router.py</td>
+      <td>test_voice_router.py (6)</td>
+      <td class="pass">load, resolve, label</td>
+      <td class="warn">voice_map 필드 부분 누락 시 fallback</td>
+    </tr>
+    <tr>
+      <td>skill_recommender.py</td>
+      <td>test_skill_recommender.py (9)</td>
+      <td class="pass">catalog 파싱, cooldown, recommend</td>
+      <td class="warn">transcript 파싱 실제 JSONL 시나리오</td>
+    </tr>
+    <tr>
+      <td>player.py</td>
+      <td>test_player.py (5)</td>
+      <td class="pass">spool, edge success/fail, supertonic, empty</td>
+      <td class="warn">_speak_without_edge 직접 경로</td>
+    </tr>
+    <tr>
+      <td>hook_handlers.py</td>
+      <td>test_hook_handlers.py (16)</td>
+      <td class="pass">classify 함수, pre/post/notification/hook(짧음)</td>
+      <td class="fail">handle_subagent_stop, handle_hook_suggest, transcript fallback</td>
+    </tr>
+    <tr>
+      <td>__main__.py</td>
+      <td>test_main.py (6)</td>
+      <td class="pass">모든 subcommand dispatch, 오류 종료</td>
+      <td class="warn">stdin 없을 때(isatty=True) 경로</td>
+    </tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ────────────── 최종 판정 ────────────── -->
+<h2>최종 판정</h2>
+<section>
+  <p style="margin-bottom: 1rem;">
+    <strong>Ship 가능 여부:</strong>
+    <span class="verdict conditional">수정 후 가능 (With fixes)</span>
+  </p>
+
+  <h3>근거</h3>
+  <ul>
+    <li>전체 80 테스트 통과, 코드 구조·타입·폴백 설계 모두 우수하다.</li>
+    <li>그러나 <strong>C-1</strong>: pre/post-tool-bash hook이 실제로 동작하지 않고, <strong>C-2</strong>: subagent-stop이 stdin 없이 실행되어 다성 TTS(역할별 음성)가 비활성화 상태다. 두 이슈 모두 각 .sh 파일 1줄 수정으로 해결된다.</li>
+    <li>C-1, C-2를 수정하고 (I-2) config timeout 불일치와 (I-3) 누락된 handler 테스트를 보완하면 전 기능이 의도대로 동작하며 ship 가능하다.</li>
+  </ul>
+
+  <h3 style="margin-top:1rem;">우선순위별 수정 체크리스트</h3>
+  <table>
+    <thead>
+      <tr><th>#</th><th>수정 항목</th><th>난이도</th><th>우선순위</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>pre-tool-bash.sh / post-tool-bash.sh에 <code class="inline">PAYLOAD=$(cat)</code> + pipe 추가</td><td>1줄</td><td class="fail">Critical</td></tr>
+      <tr><td>2</td><td>subagent-stop.sh에 stdin pipe 추가</td><td>1줄</td><td class="fail">Critical</td></tr>
+      <tr><td>3</td><td>stop.sh에 stdin pipe 추가 (transcript_path 직접 사용)</td><td>1줄</td><td class="warn">Important</td></tr>
+      <tr><td>4</td><td>player.py speak_hook/speak_agent에 config timeout 파라미터 연결</td><td>소형</td><td class="warn">Important</td></tr>
+      <tr><td>5</td><td>handle_subagent_stop / handle_hook_suggest 테스트 추가</td><td>소형</td><td class="warn">Important</td></tr>
+      <tr><td>6</td><td>tempfile.mktemp → NamedTemporaryFile(delete=False)로 교체</td><td>2줄</td><td class="pass">Minor</td></tr>
+      <tr><td>7</td><td>_transcript_cache 제거 또는 파일 기반으로 교체</td><td>소형</td><td class="pass">Minor</td></tr>
+      <tr><td>8</td><td>stop hook 처리 로그 1줄 추가</td><td>1줄</td><td class="pass">Minor</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>hljs.highlightAll();</script>
+</body>
+</html>
