@@ -34,6 +34,40 @@ async function readStdin(): Promise<string> {
   });
 }
 
+// Claude Code transcript.jsonl에서 마지막 어시스턴트 텍스트 메시지 추출
+function extractLastAssistantText(transcriptPath: string): string {
+  try {
+    if (!existsSync(transcriptPath)) return "";
+    const lines = readFileSync(transcriptPath, "utf-8").split("\n").filter(Boolean).reverse();
+    for (const line of lines) {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      const msg = (entry.message ?? entry) as Record<string, unknown>;
+      if (msg.role !== "assistant") continue;
+      const content = msg.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          const b = block as Record<string, unknown>;
+          if (b.type === "text" && typeof b.text === "string" && b.text.length >= 20) {
+            return b.text;
+          }
+        }
+      }
+    }
+  } catch { /* 무시 */ }
+  return "";
+}
+
+// CLAUDE_CODE_SESSION_ID + CLAUDE_PROJECT_DIR → transcript.jsonl 경로 파생
+function deriveTranscriptPath(): string {
+  const sessionId = process.env.CLAUDE_CODE_SESSION_ID ?? "";
+  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? "";
+  if (!sessionId || !projectDir) return "";
+  const slug = projectDir.replace(/\//g, "-");  // /Users/... → -Users-...
+  const claudeDir = process.env.HOME ? `${process.env.HOME}/.claude` : "";
+  if (!claudeDir) return "";
+  return `${claudeDir}/projects/${slug}/${sessionId}.jsonl`;
+}
+
 // transcript.jsonl에서 가장 최근 Agent 툴 호출의 subagent_type 추출
 function extractAgentTypeFromTranscript(path: string): string {
   try {
@@ -61,14 +95,19 @@ function extractAgentTypeFromTranscript(path: string): string {
 }
 
 // ── hook CLI 모드 ──────────────────────────────────────────
-// 사용 예: node dist/index.js hook  (stdin으로 raw JSON 수신)
+// Stop hook은 stdin을 보내지 않으므로 transcript에서 직접 읽음
 if (process.argv[2] === "hook") {
   const raw = await readStdin();
-  let text = raw;
+  let text = "";
   try {
     const data = JSON.parse(raw) as Record<string, unknown>;
-    text = (data.last_assistant_message as string) ?? raw;
-  } catch { /* raw 텍스트면 그대로 사용 */ }
+    text = (data.last_assistant_message as string) ?? "";
+  } catch { /* 무시 */ }
+  // stdin에 텍스트가 없으면 transcript에서 마지막 어시스턴트 메시지 추출
+  if (!text) {
+    const transcriptPath = deriveTranscriptPath();
+    if (transcriptPath) text = extractLastAssistantText(transcriptPath);
+  }
   if (config.autoSpeak && text.length >= config.minChars) {
     const summary = await extractSummary(text, config.summaryModel);
     await speakHook(summary, config.voice, config.ttsSpeed).catch(() => {});
