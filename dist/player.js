@@ -316,9 +316,7 @@ export async function speakHook(text, voice = "Sohee", speed = 1.2) {
             saveLastMessage(text);
             return;
         }
-        catch {
-            // EdgeTTS 실패 — HTTP→Subprocess 폴백 (EdgeTTS 재시도 없음)
-        }
+        catch { /* EdgeTTS 실패 시 직접 재생 폴백 */ }
     }
     await speakWithoutEdge(text, voice, speed, "");
 }

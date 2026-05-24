@@ -314,9 +314,7 @@ export async function speakHook(text: string, voice = "Sohee", speed = 1.2): Pro
       enqueueSpool(mp3, speed);
       saveLastMessage(text);
       return;
-    } catch {
-      // EdgeTTS 실패 — HTTP→Subprocess 폴백 (EdgeTTS 재시도 없음)
-    }
+    } catch { /* EdgeTTS 실패 시 직접 재생 폴백 */ }
   }
   await speakWithoutEdge(text, voice, speed, "");
 }

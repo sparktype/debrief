@@ -156,7 +156,7 @@ if (process.argv[2] === "hook-suggest") {
     const rec = await recommendSkill(context, false, config.skillCooldownMinutes, config.summaryModel);
     if (rec) {
         const msg = `지금 상황엔 ${rec.skill} 스킬이 유용할 것 같아요`;
-        await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => { });
+        await speakHook(msg, config.voice, config.ttsSpeed).catch(() => { });
         saveCooldown(rec.skill);
     }
     process.exit(0);
