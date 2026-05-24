@@ -1,0 +1,53 @@
+# hook_voice/__main__.py
+# python -m hook_voice <subcommand> 진입점
+import asyncio
+import sys
+
+from .config import load_config
+from .hook_handlers import (
+    handle_hook,
+    handle_notification,
+    handle_subagent_stop,
+    handle_hook_suggest,
+    handle_pre_tool_bash,
+    handle_post_tool_bash,
+)
+
+
+async def _read_stdin() -> str:
+    if sys.stdin.isatty():
+        return ""
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, sys.stdin.buffer.read)
+    return data.decode("utf-8").strip()
+
+
+async def main() -> None:
+    if len(sys.argv) < 2:
+        print("Usage: python -m hook_voice <subcommand>", file=sys.stderr)
+        sys.exit(1)
+
+    subcommand = sys.argv[1]
+    config = load_config()
+    raw = await _read_stdin()
+
+    if subcommand == "hook":
+        await handle_hook(raw, config)
+    elif subcommand == "notification":
+        await handle_notification(raw, config)
+    elif subcommand == "subagent-stop":
+        agent_type = sys.argv[2] if len(sys.argv) > 2 else ""
+        await handle_subagent_stop(raw, agent_type, config)
+    elif subcommand == "hook-suggest":
+        await handle_hook_suggest(raw, config)
+    elif subcommand == "pre-tool-bash":
+        await handle_pre_tool_bash(raw, config)
+    elif subcommand == "post-tool-bash":
+        await handle_post_tool_bash(raw, config)
+    else:
+        print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
