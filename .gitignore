@@ -7,6 +7,8 @@ tts-venv/
 .tts_server.pid
 .supertonic.pid
 tts_server/__pycache__/
+hook_voice/__pycache__/
+tests/__pycache__/
 .claude/
 !.claude/agents/
 !.claude/agents/*.md

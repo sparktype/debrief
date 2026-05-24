@@ -9,7 +9,6 @@ Claude Code가 응답을 완료하면 자동으로 요약해서 읽어줍니다.
 
 - macOS + Apple Silicon (M1/M2/M3/M4)
 - [Claude Code CLI](https://claude.ai/code)
-- Node.js 18+
 - Python 3.11+
 
 ## 설치
@@ -88,8 +87,8 @@ Supertonic TTS 서버는 supervisor가 자동으로 기동합니다 — `./serve
 # TTS 플레이어 데몬 상태 확인
 launchctl list | grep voice-persona
 
-# 수동 테스트
-node ~/.local/share/voice-persona/dist/index.js test
+# 서버 상태 확인
+./server.sh status
 ```
 
 **"Edge TTS timeout" 오류**
@@ -124,8 +123,8 @@ bash ~/.local/share/voice-persona/uninstall.sh
 
 두 개의 주요 프로세스로 구성됩니다.
 
-**MCP 서버** (Node.js/TypeScript) — `src/`
-Claude Code Stop hook에서 호출되거나 MCP tool로 사용합니다.
+**hook_voice** (Python 패키지) — `hook_voice/`
+Claude Code hook에서 `python -m hook_voice <subcommand>`로 호출됩니다.
 Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 
 **TTS Supervisor** (Python, `tts_server/supervisor.py`) — launchd가 단일 프로세스로 관리
@@ -133,12 +132,12 @@ Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 - supertonic (포트 7788) — 다성 TTS
 - TTS Player Loop — `/tmp/tts-spool/` 폴링 후 epoch_ms 오름차순 순차 재생
 
-### 빌드 및 테스트
+### 테스트
 
 ```bash
-npm run build    # TypeScript → dist/ 컴파일
-npm test         # vitest (전체 테스트)
-npm run dev      # tsx로 직접 실행
+tts-venv/bin/pytest tests/ -v                       # hook_voice 테스트
+tts-venv/bin/pytest tts_server/ -v                  # TTS 서버 테스트
+tts-venv/bin/pytest tests/ tts_server/ -v           # 전체
 ```
 
 ### 서버 관리
@@ -164,11 +163,12 @@ npm run dev      # tsx로 직접 실행
 
 | 파일 | 역할 |
 |------|------|
-| `src/index.ts` | MCP 서버 진입점 + hook CLI 분기 |
-| `src/config.ts` | `.voice-persona.json` 로더 |
-| `src/player.ts` | TTS 재생 폴백 체인 |
-| `src/summarizer.ts` | LLM 요약 + 규칙 기반 폴백 |
-| `src/voice-router.ts` | agentType → voice ID 변환 |
+| `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
+| `hook_voice/config.py` | `.voice-persona.json` 로더 |
+| `hook_voice/player.py` | EdgeTTS spool + TTS 재생 폴백 체인 |
+| `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
+| `hook_voice/voice_router.py` | agentType → voice ID 변환 |
+| `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
 | `tts_server/server.py` | FastAPI MLX TTS 서버 |
 | `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
 

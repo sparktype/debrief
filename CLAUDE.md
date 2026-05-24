@@ -16,30 +16,24 @@ HMG 사내 AI에서 Opus 모델은 지원되지 않으며, Agent 파라미터 `m
 
 ## 프로젝트 개요
 
-Claude Code의 응답을 자동으로 음성으로 읽어주는 MCP 서버. 두 개의 주요 프로세스로 구성된다.
+Claude Code의 응답을 자동으로 음성으로 읽어주는 hook 기반 시스템. 두 개의 주요 프로세스로 구성된다.
 
-- **MCP 서버** (Node.js/TypeScript): Claude Code Stop hook에서 호출되거나 MCP tool로 사용
+- **hook_voice** (Python 패키지): `python -m hook_voice <subcommand>` — Claude Code hook에서 호출
 - **TTS Supervisor** (`tts_server/supervisor.py`): launchd가 단일 프로세스로 관리 — uvicorn(포트 7777)·supertonic(포트 7788)·TTS Player 루프를 포함
 
 ## 명령어
 
 ```bash
-# 빌드
-npm run build         # TypeScript → dist/ 컴파일
-
-# 개발 (빌드 없이 실행)
-npm run dev           # tsx로 src/index.ts 직접 실행
-
 # 테스트
-npm test              # vitest run (단일 실행)
-npm run test:watch    # vitest watch 모드
-npx vitest run tests/player.test.ts  # 파일 단위 실행
+tts-venv/bin/pytest tests/ -v                        # hook_voice 테스트
+tts-venv/bin/pytest tts_server/test_server.py -v    # TTS 서버 테스트
+tts-venv/bin/pytest tests/ tts_server/test_server.py tts_server/test_supervisor.py -v  # 전체
 
 # TTS 서버 관리 (통합 스크립트)
 ./server.sh start     # 수동 시작
 ./server.sh stop      # 종료
-./server.sh restart   # 빌드 + 재시작
-./server.sh status    # 상태 확인 (빌드·TTS 서버·hook 등록 여부)
+./server.sh restart   # 재시작
+./server.sh status    # 상태 확인 (TTS 서버·hook 등록 여부)
 ./server.sh logs [N]  # 마지막 N줄 로그 (기본 50)
 ./server.sh install   # Stop hook + launchd LaunchAgent 등록 (권장)
 ./server.sh uninstall # 완전 제거
@@ -55,47 +49,47 @@ npx vitest run tests/player.test.ts  # 파일 단위 실행
 ```
 Claude 응답 완료
   → Stop hook (hooks/stop.sh)
-    → node dist/index.js hook  # stdin으로 텍스트 전달
-      → extractSummary() (summarizer.ts)  # HMG LLM API → 규칙 기반 폴백
-      → speakHook() (player.ts)
+    → python -m hook_voice hook
+      → extract_summary() (hook_voice/summarizer.py)  # HMG LLM API → 규칙 기반 폴백
+      → speak_hook() (hook_voice/player.py)
           ├─ EdgeTTS → ko-KR-HyunsuMultilingualNeural MP3 생성
-          ├─ /tmp/tts-spool/<epoch_ms>.mp3 기록 → 즉시 반환
-          └─ EdgeTTS 실패 시 speakInner() 직접 재생 폴백
+          ├─ /tmp/tts-spool/<ts>_<rand>.mp3 기록 → 즉시 반환
+          └─ EdgeTTS 실패 시 HTTP(7777) → subprocess 폴백
 
 서브에이전트 응답 완료
   → SubagentStop hook (hooks/subagent-stop.sh)
-    → transcript.jsonl 역방향 파싱 → subagent_type 추출
-    → node dist/index.js subagent-stop  # stdin + agentType 인수
-      → resolveVoice(agentType) (voice-router.ts)  # voice-map.json → voice ID
-      → getAgentLabel(agentType) → "리뷰어" / "플래너" / "빌더" / "탐색기"
-      → extractOneLiner() (summarizer.ts)  # 25자 이내 한 줄 요약 + 특수문자 제거
-      → "${label}입니다. ${oneLiner}" → speakAgent() (player.ts)
+    → python -m hook_voice subagent-stop [agentType]
+      → resolve_voice(agentType) (hook_voice/voice_router.py)  # voice-map.json → voice ID
+      → get_agent_label(agentType) → "리뷰어" / "플래너" / "빌더" / "탐색기"
+      → extract_one_liner() (hook_voice/summarizer.py)  # 25자 이내 한 줄 요약 + 특수문자 제거
+      → f"{label}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
           ├─ Supertonic: localhost:7788/v1/health 확인 → WAV 생성
-          ├─ /tmp/tts-spool/<epoch_ms>.wav 기록 → 즉시 반환
-          └─ 실패 시 speakInner() 직접 재생 폴백
+          ├─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
+          └─ 실패 시 HTTP(7777) → subprocess 폴백
 
 TTS Player Loop (supervisor.py 내 asyncio Task)
-  → /tmp/tts-spool/ 폴링 → epoch_ms 오름차순 afplay 순차 재생
+  → /tmp/tts-spool/ 폴링 → ts 오름차순 afplay 순차 재생
 
 세션 시작 / 프롬프트 입력
   → SessionStart / UserPromptSubmit hook
-    → node dist/index.js hook-suggest
-      → readRecentTranscripts() → recommendSkill() (skill-recommender.ts)
-      → speak() 로 스킬 음성 추천
+    → python -m hook_voice hook-suggest
+      → read_recent_transcripts() → recommend_skill() (hook_voice/skill_recommender.py)
+      → speak_hook() 로 스킬 음성 추천
 ```
 
 ### 파일별 역할
 
 | 파일 | 역할 |
 |------|------|
-| `src/index.ts` | MCP 서버 진입점 + hook / subagent-stop / hook-suggest CLI 분기 |
-| `src/config.ts` | `.voice-persona.json` 로더, 기본값 관리 |
-| `src/player.ts` | 4단계 폴백 TTS 재생 (Edge TTS → HTTP → MLX → say) |
-| `src/summarizer.ts` | LLM 요약 (HMG Hub API) + 규칙 기반 폴백 |
-| `src/voice-router.ts` | agentType → 카테고리 → Supertonic voice ID 변환 |
-| `src/skill-recommender.ts` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
-| `src/last-message-store.ts` | 마지막 TTS 텍스트 파일 영속화 (`speak_last` 지원) |
-| `src/llm-client.ts` | HMG Hub LLM 클라이언트 공통 모듈 |
+| `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
+| `hook_voice/config.py` | `.voice-persona.json` 로더, 기본값 관리 |
+| `hook_voice/llm_client.py` | HMG Hub LLM 클라이언트 (httpx AsyncClient) |
+| `hook_voice/last_message.py` | 마지막 TTS 텍스트 파일 영속화 |
+| `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
+| `hook_voice/voice_router.py` | agentType → 카테고리 → Supertonic voice ID 변환 |
+| `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
+| `hook_voice/player.py` | EdgeTTS spool enqueue, speak_hook/speak_agent + 폴백 |
+| `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
 | `tts_server/server.py` | FastAPI TTS 서버 — 단일 워커 스레드로 MLX 모델 실행 |
 | `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
 
@@ -105,11 +99,11 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 - `/speak` 요청은 즉시 202 반환, 큐 크기 1 (현재 재생 중이면 429)
 - `afplay -r <speed>` 로 재생 속도 후처리 — Qwen3-TTS는 `speed!=1.0` 시 최적화 경로가 비활성화됨
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
-- **파일 스풀 직렬화**: hook(`speakHook`)·서브에이전트(`speakAgent`) 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
-- MCP 도구 `speak()`만 `/tmp/voice-persona.lock` 파일 잠금 사용 (직접 재생 경로)
-- 서브에이전트 발화: `"${role}입니다. ${oneLiner}"` 형식, `sanitizeForSpeech()`로 특수문자·유니코드 기호 제거
+- **파일 스풀 직렬화**: hook·서브에이전트 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
+- 서브에이전트 발화: `f"{role}입니다. {one_liner}"` 형식, `sanitize_for_speech()`로 특수문자·유니코드 기호 제거
+- **HMG SSL 프록시 우회**: `edge_tts.communicate._SSL_CTX`를 `CERT_NONE` 컨텍스트로 모듈 임포트 시점에 교체
 
-### 설정 (`src/config.ts` 기본값)
+### 설정 (`hook_voice/config.py` 기본값)
 
 | 키 | 기본값 | 설명 |
 |----|--------|------|
@@ -139,16 +133,6 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 
 이 목록에 없는 voice는 macOS `say -v <voice>` 로 라우팅됨.
 
-## MCP 도구
-
-| 도구 | 설명 |
-|------|------|
-| `speak_text` | 텍스트를 그대로 음성 재생 |
-| `summarize_and_speak` | LLM 요약 후 음성 재생 |
-| `speak_last` | 마지막으로 재생한 텍스트 다시 재생 |
-| `set_config` | 런타임 설정 변경 (`autoSpeak`, `minChars`, `ttsInstruct`) |
-| `suggest_skill` | 대화 맥락 분석 후 적합한 스킬 음성 추천 (쿨다운 무시) |
-
 ## Claude Code 연동 (`.claude/settings.json`)
 
 ```json
@@ -166,7 +150,8 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 
 ## 테스트 전략
 
-- HTTP 서버 경로 / MLX subprocess 경로 / macOS say 경로를 `fetch`·`spawn`·`existsSync` mock으로 분리 테스트
-- `openai` 모듈 전체를 mock — 실제 LLM 호출 없음
-- `config.test.ts`: 파일 존재/파싱 실패/병합 케이스를 임시 파일(`/tmp/test-voice-persona.json`)로 테스트
-- `player.test.ts`: `fs` mock에 `openSync`·`writeSync`·`closeSync`·`readFileSync` 포함 필수 — 미포함 시 `withTTSLock`이 실제 파일을 생성해 테스트 간 데드락 발생
+- `pytest` + `pytest-asyncio` (`asyncio_mode = auto`)로 async 함수 테스트
+- `httpx.AsyncMock` / `unittest.mock.AsyncMock`으로 LLM·TTS HTTP 호출 mock
+- `edge_tts.Communicate.save()`는 `AsyncMock`으로 대체
+- 분류 함수(`classify_pre_tool_bash`, `classify_post_tool_bash`)는 순수 함수 — mock 불필요
+- 파일 I/O 테스트: `tmp_path` fixture (pytest 내장) 활용
