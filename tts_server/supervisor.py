@@ -125,6 +125,7 @@ def _start_uvicorn() -> subprocess.Popen:
     proc = subprocess.Popen(
         [str(VENV_BIN / "uvicorn"), "tts_server.server:app",
          "--host", "127.0.0.1", "--port", "7777"],
+        cwd=str(PROJECT_DIR),
         env={**os.environ, "HF_HUB_OFFLINE": "1"},
         stdout=log_fd,
         stderr=log_fd,
