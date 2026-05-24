@@ -475,7 +475,7 @@ describe("speakHook — EdgeTTS 성공 시 speakInner 경로 미진입", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env.SIREN_OFFLINE;
+    delete process.env.VOICE_PERSONA_OFFLINE;
   });
 
   it("EdgeTTS spawn 성공 시 HTTP fetch 미호출", async () => {
@@ -483,7 +483,7 @@ describe("speakHook — EdgeTTS 성공 시 speakInner 경로 미진입", () => {
     mockSpawnSequence(0, 0);
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    delete process.env.SIREN_OFFLINE;
+    delete process.env.VOICE_PERSONA_OFFLINE;
 
     await speakHook("테스트 텍스트", "Sohee", 1.2);
 
@@ -500,7 +500,7 @@ describe("speakHook — EdgeTTS 성공 시 speakInner 경로 미진입", () => {
         .mockResolvedValueOnce({ ok: true, status: 200 })  // health
         .mockResolvedValueOnce({ ok: true, status: 200 })  // speak
     );
-    delete process.env.SIREN_OFFLINE;
+    delete process.env.VOICE_PERSONA_OFFLINE;
 
     await speakHook("테스트 텍스트", "Sohee", 1.2);
 
@@ -512,12 +512,12 @@ describe("speakHook — EdgeTTS 성공 시 speakInner 경로 미진입", () => {
 
 describe("MLX_PYTHON — 환경변수 우선 사용", () => {
   afterEach(() => {
-    delete process.env.SIREN_VENV_PYTHON;
+    delete process.env.VOICE_PERSONA_VENV_PYTHON;
     vi.unstubAllGlobals();
   });
 
-  it("SIREN_VENV_PYTHON 설정 시 해당 경로 사용", async () => {
-    process.env.SIREN_VENV_PYTHON = "/custom/path/python3";
+  it("VOICE_PERSONA_VENV_PYTHON 설정 시 해당 경로 사용", async () => {
+    process.env.VOICE_PERSONA_VENV_PYTHON = "/custom/path/python3";
     vi.mocked(fs.existsSync).mockImplementation(
       (p) => String(p) === "/custom/path/python3"
     );

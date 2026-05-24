@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { writeFileSync, unlinkSync, existsSync } from "fs";
 import { loadConfig } from "../src/config.js";
 
-const TMP = "/tmp/test-siren.json";
+const TMP = "/tmp/test-voice-persona.json";
 
 afterEach(() => { if (existsSync(TMP)) unlinkSync(TMP); });
 
@@ -47,7 +47,7 @@ describe("loadConfig", () => {
   });
 });
 
-describe("SirenConfig — 미사용 필드 제거", () => {
+describe("VoicePersonaConfig — 미사용 필드 제거", () => {
   it("기본 설정에 ttsModel 없음", () => {
     const c = loadConfig("/nonexistent/should-not-exist.json");
     expect((c as Record<string, unknown>).ttsModel).toBeUndefined();

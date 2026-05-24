@@ -3,13 +3,13 @@ import { existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const DATA_DIR = join(homedir(), ".local", "share", "summary-voice-mcp-test");
+const DATA_DIR = join(homedir(), ".local", "share", "voice-persona-test");
 
 import { saveLastMessage, loadLastMessage } from "../src/last-message-store.js";
 
 beforeEach(() => {
   // 테스트 간 환경변수 격리 — afterEach에서 vi.unstubAllEnvs()로 복원
-  vi.stubEnv("SIREN_DATA_DIR", DATA_DIR);
+  vi.stubEnv("VOICE_PERSONA_DATA_DIR", DATA_DIR);
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 });
 

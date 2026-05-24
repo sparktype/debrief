@@ -5,7 +5,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { loadConfig, SirenConfig } from "./config.js";
+import { readFileSync, existsSync } from "fs";
+import { loadConfig, VoicePersonaConfig } from "./config.js";
 import { extractSummary, extractOneLiner } from "./summarizer.js";
 import { speak, speakAgent, speakHook, configureTimes } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
@@ -14,7 +15,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
 
-let config: SirenConfig = loadConfig();
+let config: VoicePersonaConfig = loadConfig();
 configureTimes(config.edgeTimeoutMs, config.supertonicTimeoutMs);
 
 // stdin 전체를 읽어 문자열로 반환 — Command Injection 방지용 텍스트 수신 헬퍼
@@ -32,22 +33,60 @@ async function readStdin(): Promise<string> {
   });
 }
 
+// transcript.jsonl에서 가장 최근 Agent 툴 호출의 subagent_type 추출
+function extractAgentTypeFromTranscript(path: string): string {
+  try {
+    if (!existsSync(path)) return "";
+    const lines = readFileSync(path, "utf-8").split("\n").filter(Boolean).reverse();
+    for (const line of lines) {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      const content = entry.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (
+            typeof block === "object" && block !== null &&
+            (block as Record<string, unknown>).type === "tool_use" &&
+            (block as Record<string, unknown>).name === "Agent"
+          ) {
+            const input = (block as Record<string, unknown>).input as Record<string, unknown>;
+            const t = input?.subagent_type as string;
+            if (t) return t;
+          }
+        }
+      }
+    }
+  } catch { /* 무시 */ }
+  return "";
+}
+
 // ── hook CLI 모드 ──────────────────────────────────────────
-// 사용 예: printf '%s' "$TEXT" | node dist/index.js hook
+// 사용 예: node dist/index.js hook  (stdin으로 raw JSON 수신)
 if (process.argv[2] === "hook") {
-  const text = await readStdin();
+  const raw = await readStdin();
+  let text = raw;
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    text = (data.last_assistant_message as string) ?? raw;
+  } catch { /* raw 텍스트면 그대로 사용 */ }
   if (config.autoSpeak && text.length >= config.minChars) {
     const summary = await extractSummary(text, config.summaryModel);
-    // EdgeTTS(HyunsuMultilingualNeural) → 스풀 큐 → 데몬 순차 재생
     await speakHook(summary, config.voice, config.ttsSpeed).catch(() => {});
   }
   process.exit(0);
 }
 
 if (process.argv[2] === "subagent-stop") {
-  // TEXT: stdin으로 수신, AGENT_TYPE: argv[3] (특수문자 없는 타입명)
-  const text = await readStdin();
-  const agentType = process.argv[3] ?? "";
+  const raw = await readStdin();
+  let text = raw;
+  let agentType = process.argv[3] ?? "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    text = (data.last_assistant_message as string) ?? raw;
+    if (!agentType) {
+      const transcriptPath = (data.transcript_path as string) ?? "";
+      if (transcriptPath) agentType = extractAgentTypeFromTranscript(transcriptPath);
+    }
+  } catch { /* raw 텍스트면 그대로 */ }
   if (text.length >= config.minChars) {
     const { loadVoiceMap, resolveVoice, getAgentLabel } = await import("./voice-router.js");
     const voiceMap = loadVoiceMap();
@@ -61,10 +100,17 @@ if (process.argv[2] === "subagent-stop") {
 }
 
 if (process.argv[2] === "hook-suggest") {
+  const raw = await readStdin();
+  let promptHint = "";
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const prompt = (data.prompt as string) ?? "";
+    if (prompt.length >= 10) promptHint = `\n[현재 입력]: ${prompt.slice(0, 200)}`;
+  } catch {
+    // argv[3] fallback (이전 호환)
+    promptHint = process.argv[3] ? `\n[현재 입력]: ${String(process.argv[3]).slice(0, 200)}` : "";
+  }
   const transcripts = readRecentTranscripts();
-  const promptHint = process.argv[3]
-    ? `\n[현재 입력]: ${String(process.argv[3]).slice(0, 200)}`
-    : "";
   const context = transcripts + promptHint;
   const rec = await recommendSkill(context, false, config.skillCooldownMinutes, config.summaryModel);
   if (rec) {
@@ -77,7 +123,7 @@ if (process.argv[2] === "hook-suggest") {
 
 // ── MCP 서버 모드 ──────────────────────────────────────────
 const server = new Server(
-  { name: "summary-voice-mcp", version },
+  { name: "voice-persona", version },
   { capabilities: { tools: {} } }
 );
 
@@ -107,7 +153,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "set_config",
-      description: "summary-voice-mcp 설정을 런타임에 변경합니다.",
+      description: "voice-persona 설정을 런타임에 변경합니다.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -144,7 +190,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       return { content: [{ type: "text" as const, text: `요약 재생: ${summary}` }] };
     }
     if (name === "set_config") {
-      const ALLOWED_CONFIG_KEYS: (keyof SirenConfig)[] = ["autoSpeak", "minChars", "ttsInstruct"];
+      const ALLOWED_CONFIG_KEYS: (keyof VoicePersonaConfig)[] = ["autoSpeak", "minChars", "ttsInstruct"];
       const patch = Object.fromEntries(
         ALLOWED_CONFIG_KEYS
           .filter(k => k in (args ?? {}))

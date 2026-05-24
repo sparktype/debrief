@@ -18,12 +18,12 @@ error() { echo -e "  ${RED}✗${NC}  ${1}" >&2; exit 1; }
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${PROJECT_DIR}/tts-venv"
 START_SH="${PROJECT_DIR}/tts_server/start.sh"
-PLIST_PATH="${HOME}/Library/LaunchAgents/com.summary-voice-mcp.tts-server.plist"
+PLIST_PATH="${HOME}/Library/LaunchAgents/com.voice-persona.tts-server.plist"
 MODEL_ID="mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
-LABEL="com.summary-voice-mcp.tts-server"
+LABEL="com.voice-persona.tts-server"
 
 echo "======================================================"
-echo " summary-voice-mcp TTS 설치 스크립트"
+echo " voice-persona TTS 설치 스크립트"
 echo " 프로젝트 경로: ${PROJECT_DIR}"
 echo "======================================================"
 
@@ -143,10 +143,10 @@ cat > "${PLIST_PATH}" << PLIST_EOF
   <false/>
 
   <key>StandardOutPath</key>
-  <string>/tmp/summary-voice-mcp-tts.log</string>
+  <string>/tmp/voice-persona-tts.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/tmp/summary-voice-mcp-tts.log</string>
+  <string>/tmp/voice-persona-tts.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>
@@ -189,13 +189,13 @@ fi
 # ── 완료 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "======================================================"
-echo -e " ${GREEN}✓ summary-voice-mcp TTS 설치가 완료되었습니다${NC}"
+echo -e " ${GREEN}✓ voice-persona TTS 설치가 완료되었습니다${NC}"
 echo "======================================================"
 echo ""
 echo "  모델   : ${MODEL_ID}"
 echo "  venv   : ${VENV_DIR}"
 echo "  plist  : ${PLIST_PATH}"
-echo "  로그   : /tmp/summary-voice-mcp-tts.log"
+echo "  로그   : /tmp/voice-persona-tts.log"
 echo ""
-echo "  서버 로그 확인: tail -f /tmp/summary-voice-mcp-tts.log"
+echo "  서버 로그 확인: tail -f /tmp/voice-persona-tts.log"
 echo ""

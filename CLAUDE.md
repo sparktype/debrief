@@ -89,7 +89,7 @@ TTS Player 데몬 (tts_server/tts_player.sh)
 | 파일 | 역할 |
 |------|------|
 | `src/index.ts` | MCP 서버 진입점 + hook / subagent-stop / hook-suggest CLI 분기 |
-| `src/config.ts` | `.siren.json` 로더, 기본값 관리 |
+| `src/config.ts` | `.voice-persona.json` 로더, 기본값 관리 |
 | `src/player.ts` | 4단계 폴백 TTS 재생 (Edge TTS → HTTP → MLX → say) |
 | `src/summarizer.ts` | LLM 요약 (HMG Hub API) + 규칙 기반 폴백 |
 | `src/voice-router.ts` | agentType → 카테고리 → Supertonic voice ID 변환 |
@@ -106,7 +106,7 @@ TTS Player 데몬 (tts_server/tts_player.sh)
 - `afplay -r <speed>` 로 재생 속도 후처리 — Qwen3-TTS는 `speed!=1.0` 시 최적화 경로가 비활성화됨
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
 - **파일 스풀 직렬화**: hook(`speakHook`)·서브에이전트(`speakAgent`) 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
-- MCP 도구 `speak()`만 `/tmp/siren-tts.lock` 파일 잠금 사용 (직접 재생 경로)
+- MCP 도구 `speak()`만 `/tmp/voice-persona.lock` 파일 잠금 사용 (직접 재생 경로)
 - 서브에이전트 발화: `"${role}입니다. ${oneLiner}"` 형식, `sanitizeForSpeech()`로 특수문자·유니코드 기호 제거
 
 ### 설정 (`src/config.ts` 기본값)
@@ -120,7 +120,7 @@ TTS Player 데몬 (tts_server/tts_player.sh)
 | `ttsSpeed` | `1.2` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | Qwen3-TTS instruct 파라미터 |
 
-프로젝트 루트의 `.siren.json` 으로 개별 오버라이드 가능.
+프로젝트 루트의 `.voice-persona.json` 으로 개별 오버라이드 가능.
 
 ### 환경변수
 
@@ -130,8 +130,8 @@ TTS Player 데몬 (tts_server/tts_player.sh)
 | `HUB_API_KEY` | HMG Hub API 키 |
 | `HUB_PROJECT_ID` | Hub 프로젝트 ID (X-Project-Id 헤더) |
 | `HF_HUB_OFFLINE` | `1` 고정 — 런타임 HuggingFace 다운로드 차단 |
-| `SIREN_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: `~/.local/share/summary-voice-mcp`) |
-| `SIREN_OFFLINE` | `1` 설정 시 Edge TTS 건너뛰고 MLX 서버부터 시도 |
+| `VOICE_PERSONA_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: `~/.local/share/voice-persona`) |
+| `VOICE_PERSONA_OFFLINE` | `1` 설정 시 Edge TTS 건너뛰고 MLX 서버부터 시도 |
 
 ### MLX 내장 스피커
 
@@ -168,5 +168,5 @@ TTS Player 데몬 (tts_server/tts_player.sh)
 
 - HTTP 서버 경로 / MLX subprocess 경로 / macOS say 경로를 `fetch`·`spawn`·`existsSync` mock으로 분리 테스트
 - `openai` 모듈 전체를 mock — 실제 LLM 호출 없음
-- `config.test.ts`: 파일 존재/파싱 실패/병합 케이스를 임시 파일(`/tmp/test-siren.json`)로 테스트
+- `config.test.ts`: 파일 존재/파싱 실패/병합 케이스를 임시 파일(`/tmp/test-voice-persona.json`)로 테스트
 - `player.test.ts`: `fs` mock에 `openSync`·`writeSync`·`closeSync`·`readFileSync` 포함 필수 — 미포함 시 `withTTSLock`이 실제 파일을 생성해 테스트 간 데드락 발생

@@ -11,8 +11,8 @@ HOOK_CMD="$SCRIPT_DIR/hooks/stop.sh"
 
 # ── launchd 서비스 설정 (macOS) ────────────────────────────
 LAUNCHD_PLIST_DIR="$HOME/Library/LaunchAgents"
-LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/com.summary-voice-mcp.tts-server.plist"
-LAUNCHD_LABEL="com.summary-voice-mcp.tts-server"
+LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/com.voice-persona.tts-server.plist"
+LAUNCHD_LABEL="com.voice-persona.tts-server"
 
 # ── TTS 서버 설정 ──────────────────────────────────────────
 TTS_PORT=7777
@@ -177,7 +177,7 @@ do_restart() {
 }
 
 do_status() {
-  echo "● summary-voice-mcp 상태"
+  echo "● voice-persona 상태"
 
   # 빌드 확인
   if [[ -f "$SCRIPT_DIR/dist/index.js" ]]; then
@@ -402,8 +402,8 @@ PYEOF
     <string>${HUB_API_KEY:-}</string>
     <key>HUB_PROJECT_ID</key>
     <string>${HUB_PROJECT_ID:-}</string>
-    <key>SIREN_VENV_PYTHON</key>
-    <string>${SIREN_VENV_PYTHON:-}</string>
+    <key>VOICE_PERSONA_VENV_PYTHON</key>
+    <string>${VOICE_PERSONA_VENV_PYTHON:-}</string>
   </dict>
 </dict>
 </plist>
@@ -423,7 +423,7 @@ PLIST_EOF
   done
 
   echo ""
-  echo "✓ summary-voice-mcp 설치 완료"
+  echo "✓ voice-persona 설치 완료"
   echo ""
   echo "  Stop hook: Claude 응답 완료 시 자동 TTS 실행"
   echo "  TTS 서버:  로그인 시 자동 시작 + 크래시 후 자동 재시작"
@@ -498,7 +498,7 @@ PYEOF
   fi
 
   echo ""
-  echo "✓ summary-voice-mcp 제거 완료"
+  echo "✓ voice-persona 제거 완료"
   echo "  수동 실행: $(basename "$0") start"
 }
 

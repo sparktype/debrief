@@ -4,7 +4,7 @@ import { homedir } from "os";
 import { join } from "path";
 
 function getDataDir(): string {
-  return process.env.SIREN_DATA_DIR ?? join(homedir(), ".local", "share", "summary-voice-mcp");
+  return process.env.VOICE_PERSONA_DATA_DIR ?? join(homedir(), ".local", "share", "voice-persona");
 }
 
 function getLastMsgFile(): string {

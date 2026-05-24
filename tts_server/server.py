@@ -160,7 +160,7 @@ def _tts_worker() -> None:
                 _log("INFO", f"발음 보정: {text[:60]!r} → {processed[:60]!r}")
             text = processed
 
-        tmpdir = tempfile.mkdtemp(prefix="siren_tts_")
+        tmpdir = tempfile.mkdtemp(prefix="vp_tts_")
         try:
             _log("INFO", f"재생 시작: {text[:40]!r} (speed={speed}x)")
             # speed=1.0 고정 — Qwen3-TTS는 speed!=1.0 시 최적화 경로가 꺼짐

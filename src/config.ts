@@ -4,9 +4,9 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CONFIG_PATH = join(__dirname, "..", ".siren.json");
+const DEFAULT_CONFIG_PATH = join(__dirname, "..", ".voice-persona.json");
 
-export interface SirenConfig {
+export interface VoicePersonaConfig {
   autoSpeak: boolean;
   minChars: number;
   voice: string;
@@ -19,7 +19,7 @@ export interface SirenConfig {
   supertonicTimeoutMs: number;
 }
 
-const DEFAULTS: SirenConfig = {
+const DEFAULTS: VoicePersonaConfig = {
   autoSpeak: true,
   minChars: 50,
   voice: "Sohee",
@@ -32,7 +32,7 @@ const DEFAULTS: SirenConfig = {
   supertonicTimeoutMs: 20000,
 };
 
-export function loadConfig(path?: string): SirenConfig {
+export function loadConfig(path?: string): VoicePersonaConfig {
   const target = path ?? DEFAULT_CONFIG_PATH;
   if (!existsSync(target)) return { ...DEFAULTS };
   try {

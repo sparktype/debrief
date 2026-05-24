@@ -28,7 +28,7 @@ function enqueueSpool(tmpFile: string, speed: number): void {
 }
 
 // ── 동시 발화 방지 (speak() 직접 재생 경로 전용) ────────────
-const TTS_LOCK_FILE = "/tmp/siren-tts.lock";
+const TTS_LOCK_FILE = "/tmp/voice-persona.lock";
 const LOCK_STALE_MS = 30_000;
 const LOCK_WAIT_MS  = 25_000;
 
@@ -64,7 +64,7 @@ async function withTTSLock<T>(fn: () => Promise<T>): Promise<T | undefined> {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function resolveMLXPython(): string {
-  if (process.env.SIREN_VENV_PYTHON) return process.env.SIREN_VENV_PYTHON;
+  if (process.env.VOICE_PERSONA_VENV_PYTHON) return process.env.VOICE_PERSONA_VENV_PYTHON;
   return join(__dirname, "..", "tts-venv", "bin", "python3");
 }
 const MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit";
@@ -174,7 +174,7 @@ function spawnPromise(cmd: string, args: string[], opts?: SpawnOptions): Promise
 // EdgeTTS로 MP3 파일 생성 — 재생하지 않고 파일 경로 반환
 async function generateEdge(text: string, voice: string): Promise<string> {
   const edgeVoice = EDGE_VOICE;
-  const outFile = `/tmp/siren_edge_${Date.now()}.mp3`;
+  const outFile = `/tmp/vp_edge_${Date.now()}.mp3`;
   let proc: ReturnType<typeof spawn> | undefined;
   const edgePromise = new Promise<void>((resolve, reject) => {
     proc = spawn(resolveMLXPython(), ["-c", EDGE_SCRIPT, text, edgeVoice, outFile]);
@@ -307,7 +307,7 @@ async function generateSupertonic(text: string, voice: string, port: number): Pr
 // ── 리더(hook) 발화: EdgeTTS MP3 생성 → 스풀 → 즉시 반환 ──
 // voice: config.voice 값 — EdgeTTS는 항상 EDGE_VOICE(HyunsuMultilingualNeural) 사용
 export async function speakHook(text: string, voice = "Sohee", speed = 1.2): Promise<void> {
-  const skipEdge = process.env.SIREN_OFFLINE === "1";
+  const skipEdge = process.env.VOICE_PERSONA_OFFLINE === "1";
   if (!skipEdge && existsSync(resolveMLXPython())) {
     try {
       const mp3 = await generateEdge(text, voice);
@@ -334,7 +334,7 @@ export async function speakAgent(
   if (await isSupertonicAlive(port)) {
     try {
       const wav = await generateSupertonic(text, supertonicVoice, port);
-      const tmp = `/tmp/siren_st_${Date.now()}.wav`;
+      const tmp = `/tmp/vp_st_${Date.now()}.wav`;
       writeFileSync(tmp, wav);
       enqueueSpool(tmp, speed);
       saveLastMessage(text);
@@ -365,7 +365,7 @@ async function speakWithoutEdge(text: string, voice: string, speed: number, inst
 }
 
 async function speakInner(text: string, voice = "", speed = 1.2, instruct = ""): Promise<void> {
-  const skipEdge = process.env.SIREN_OFFLINE === "1";
+  const skipEdge = process.env.VOICE_PERSONA_OFFLINE === "1";
   if (!skipEdge && existsSync(resolveMLXPython())) {
     try {
       await speakEdge(text, voice, speed);
