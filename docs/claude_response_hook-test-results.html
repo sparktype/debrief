@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hook 테스트 결과</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 24px; }
+    h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 12px; }
+    h2 { color: #79c0ff; margin-top: 32px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; }
+    .card.pass { border-left: 4px solid #3fb950; }
+    .card.warn { border-left: 4px solid #d29922; }
+    .badge { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+    .badge.ok { background: #1a4b2e; color: #3fb950; }
+    .badge.info { background: #1c3a5e; color: #58a6ff; }
+    .tag { font-size: 11px; background: #21262d; padding: 2px 6px; border-radius: 4px; color: #8b949e; margin-right: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th { background: #21262d; color: #8b949e; font-size: 12px; text-align: left; padding: 8px 12px; }
+    td { border-top: 1px solid #21262d; padding: 10px 12px; vertical-align: top; }
+    .mono { font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+    .msg { color: #ffa657; font-style: italic; }
+    .spool { color: #3fb950; font-weight: 600; }
+    .summary { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-top: 24px; }
+    .summary h3 { margin: 0 0 12px; color: #58a6ff; }
+    ul { margin: 0; padding-left: 20px; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <h1>후크(Hook) 테스트 결과</h1>
+  <p style="color:#8b949e">테스트 일시: 2026-05-24 &nbsp;|&nbsp; 빌드: <code>npm run build</code> 후 진행</p>
+
+  <h2>1. PreToolUse — <code>pre-tool-bash</code></h2>
+  <div class="grid">
+    <div class="card pass">
+      <span class="badge ok">PASS</span>&nbsp;
+      <strong>rm -rf 경고</strong>
+      <p class="msg">"주의: 되돌릴 수 없는 작업입니다."</p>
+      <span class="tag">스풀 +1</span><span class="tag">exit 0</span>
+    </div>
+    <div class="card pass">
+      <span class="badge ok">PASS</span>&nbsp;
+      <strong>npm run build 착수</strong>
+      <p class="msg">"빌드를 시작합니다."</p>
+      <span class="tag">스풀 +1</span><span class="tag">exit 0</span>
+    </div>
+    <div class="card pass">
+      <span class="badge ok">PASS</span>&nbsp;
+      <strong>vitest 착수</strong>
+      <p class="msg">"테스트를 실행합니다."</p>
+      <span class="tag">스풀 +1</span><span class="tag">exit 0</span>
+    </div>
+  </div>
+
+  <h2>2. PostToolUse — <code>post-tool-bash</code></h2>
+  <div class="grid">
+    <div class="card pass">
+      <span class="badge ok">PASS</span>&nbsp;
+      <strong>빌드 성공</strong>
+      <p class="msg">"빌드 완료."</p>
+      <span class="tag">exitCode 0</span><span class="tag">스풀 +1</span>
+    </div>
+    <div class="card pass">
+      <span class="badge ok">PASS</span>&nbsp;
+      <strong>테스트 실패</strong>
+      <p class="msg">"테스트 2개 실패, 3개 통과."</p>
+      <span class="tag">exitCode 1</span><span class="tag">스풀 +1</span>
+    </div>
+    <div class="card pass">
+      <span class="badge ok">PASS</span>&nbsp;
+      <strong>일반 명령 실패</strong>
+      <p class="msg">"명령 실패: git push origin."</p>
+      <span class="tag">exitCode 1</span><span class="tag">스풀 +1</span>
+    </div>
+  </div>
+
+  <h2>3. Notification</h2>
+  <div class="card pass" style="max-width:420px">
+    <span class="badge ok">PASS</span>&nbsp;
+    <strong>알림 메시지 낭독</strong>
+    <p class="msg">"장기 실행 작업이 끝났습니다"</p>
+    <span class="tag">스풀 +1</span><span class="tag">exit 0</span>
+  </div>
+
+  <h2>4. Stop hook — <code>hook</code> (요약 TTS)</h2>
+  <div class="card pass" style="max-width:420px">
+    <span class="badge ok">PASS</span>&nbsp;
+    <strong>LLM 요약 후 EdgeTTS 발화</strong>
+    <p class="msg">last_assistant_message → 요약 → 스풀 기록</p>
+    <span class="tag">스풀 +1</span><span class="tag">exit 0</span>
+  </div>
+
+  <h2>5. SubagentStop — <code>subagent-stop</code></h2>
+  <div class="card pass" style="max-width:420px">
+    <span class="badge ok">PASS</span>&nbsp;
+    <strong>code-reviewer 에이전트 발화</strong>
+    <p class="msg">"리뷰어입니다. &lt;한 줄 요약&gt;"</p>
+    <span class="tag">Supertonic 경로</span><span class="tag">스풀 +1</span><span class="tag">exit 0</span>
+  </div>
+
+  <h2>6. SessionStart / UserPromptSubmit — <code>hook-suggest</code></h2>
+  <div class="card warn" style="max-width:420px">
+    <span class="badge info">SKIP (정상)</span>&nbsp;
+    <strong>스킬 추천 없음</strong>
+    <p style="color:#8b949e;margin:8px 0">쿨다운 또는 transcript 미비로 LLM이 추천 불필요 판단.<br>exit 0 — 기대 동작.</p>
+    <span class="tag">스풀 +0</span><span class="tag">exit 0</span>
+  </div>
+
+  <div class="summary">
+    <h3>최종 요약</h3>
+    <table>
+      <tr>
+        <th>후크</th><th>트리거</th><th>발화 결과</th><th>판정</th>
+      </tr>
+      <tr><td>PreToolUse (rm -rf)</td><td>파괴적 명령 감지</td><td class="msg mono">주의: 되돌릴 수 없는 작업</td><td>✅</td></tr>
+      <tr><td>PreToolUse (build)</td><td>빌드 명령</td><td class="msg mono">빌드를 시작합니다</td><td>✅</td></tr>
+      <tr><td>PreToolUse (test)</td><td>테스트 명령</td><td class="msg mono">테스트를 실행합니다</td><td>✅</td></tr>
+      <tr><td>PostToolUse (build ok)</td><td>빌드 성공</td><td class="msg mono">빌드 완료</td><td>✅</td></tr>
+      <tr><td>PostToolUse (test fail)</td><td>테스트 실패</td><td class="msg mono">테스트 2개 실패, 3개 통과</td><td>✅</td></tr>
+      <tr><td>PostToolUse (cmd fail)</td><td>일반 명령 실패</td><td class="msg mono">명령 실패: git push origin</td><td>✅</td></tr>
+      <tr><td>Notification</td><td>알림 메시지</td><td class="msg mono">장기 실행 작업이 끝났습니다</td><td>✅</td></tr>
+      <tr><td>Stop</td><td>응답 완료</td><td class="msg mono">LLM 요약 → EdgeTTS</td><td>✅</td></tr>
+      <tr><td>SubagentStop</td><td>서브에이전트 완료</td><td class="msg mono">리뷰어입니다. &lt;요약&gt;</td><td>✅</td></tr>
+      <tr><td>SessionStart</td><td>세션 시작</td><td class="msg mono">쿨다운 — 추천 없음</td><td>✅</td></tr>
+      <tr><td>UserPromptSubmit</td><td>프롬프트 입력</td><td class="msg mono">쿨다운 — 추천 없음</td><td>✅</td></tr>
+    </table>
+    <ul style="margin-top:16px">
+      <li>스풀 파일 총 9개 생성 → 플레이어 데몬이 전부 소비 (재생 완료)</li>
+      <li>모든 후크 exit 0 — 블로킹 없음</li>
+      <li>발견된 이슈: <strong>hook-handlers.js가 dist/에 빠져 있었음</strong> → <code>npm run build</code>로 해결</li>
+    </ul>
+  </div>
+</body>
+<script>hljs.highlightAll();</script>
+</html>
