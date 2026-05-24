@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code Hook 전체 분석 — Voice 트리거 설계</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117; color: #e6edf3; line-height: 1.7;
+      padding: 40px 24px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 1.75rem; font-weight: 700; color: #f0f6fc; margin-bottom: 6px; }
+    .subtitle { color: #8b949e; font-size: 0.93rem; margin-bottom: 40px; }
+    h2 {
+      font-size: 1.15rem; font-weight: 600; color: #58a6ff;
+      margin: 44px 0 14px; padding-bottom: 8px;
+      border-bottom: 1px solid #21262d;
+    }
+    h3 { font-size: 0.95rem; font-weight: 600; color: #e6edf3; margin: 18px 0 8px; }
+    p { color: #c9d1d9; margin-bottom: 12px; font-size: 0.93rem; }
+    section { margin-bottom: 56px; }
+    pre {
+      background: #161b22 !important;
+      border: 1px solid #30363d; border-radius: 8px;
+      padding: 16px 18px; overflow-x: auto;
+      margin: 10px 0 16px; font-size: 0.82rem; line-height: 1.65;
+    }
+    code:not(pre code) {
+      background: #21262d; color: #e6edf3;
+      padding: 1px 6px; border-radius: 4px;
+      font-size: 0.88em; font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .file-label {
+      display: inline-block; background: #21262d; color: #8b949e;
+      font-family: "SF Mono", monospace; font-size: 0.78rem;
+      padding: 4px 12px; border-radius: 6px 6px 0 0;
+      border: 1px solid #30363d; border-bottom: none; margin-bottom: -1px;
+    }
+    table {
+      width: 100%; border-collapse: collapse;
+      margin: 10px 0 18px; font-size: 0.87rem;
+    }
+    th {
+      background: #21262d; color: #8b949e; font-weight: 600;
+      text-align: left; padding: 9px 13px; border: 1px solid #30363d;
+    }
+    td { padding: 8px 13px; border: 1px solid #30363d; color: #c9d1d9; vertical-align: top; }
+    tr:nth-child(even) td { background: #161b22; }
+    .tip {
+      background: #0d2a1f; border-left: 3px solid #3fb950;
+      border-radius: 0 8px 8px 0; padding: 12px 16px;
+      margin: 14px 0; font-size: 0.9rem; color: #c9d1d9;
+    }
+    .warn {
+      background: #2b1d0e; border-left: 3px solid #d29922;
+      border-radius: 0 8px 8px 0; padding: 12px 16px;
+      margin: 14px 0; font-size: 0.9rem; color: #c9d1d9;
+    }
+    .info {
+      background: #0a1628; border-left: 3px solid #58a6ff;
+      border-radius: 0 8px 8px 0; padding: 12px 16px;
+      margin: 14px 0; font-size: 0.9rem; color: #c9d1d9;
+    }
+
+    /* 훅 카드 */
+    .hook-card {
+      border: 1px solid #30363d; border-radius: 12px;
+      overflow: hidden; margin-bottom: 24px;
+    }
+    .hook-header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 20px; border-bottom: 1px solid #30363d;
+    }
+    .hook-name {
+      font-family: "SF Mono", monospace; font-size: 1rem;
+      font-weight: 700; color: #f0f6fc;
+    }
+    .hook-body { padding: 16px 20px; background: #161b22; }
+    .hook-meta {
+      display: flex; gap: 24px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .hook-meta-item { font-size: 0.82rem; color: #8b949e; }
+    .hook-meta-item strong { color: #c9d1d9; }
+
+    /* 상태 배지 */
+    .status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.75rem; font-weight: 700; padding: 3px 10px;
+      border-radius: 20px; text-transform: uppercase; letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .status.done    { background: #0d3a1a; color: #3fb950; border: 1px solid #238636; }
+    .status.partial { background: #2b1d0e; color: #e3b341; border: 1px solid #9e6a03; }
+    .status.new     { background: #0a1628; color: #58a6ff; border: 1px solid #1f6feb; }
+    .status.none    { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; }
+
+    /* 트리거 아이템 */
+    .trigger-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .trigger-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      background: #0d1117; border: 1px solid #21262d;
+      border-radius: 8px; padding: 10px 14px;
+    }
+    .trigger-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+    .trigger-body { flex: 1; }
+    .trigger-condition {
+      font-family: "SF Mono", monospace; font-size: 0.78rem;
+      color: #e3b341; margin-bottom: 3px;
+    }
+    .trigger-speech {
+      font-size: 0.82rem; color: #3fb950;
+      margin-bottom: 3px;
+    }
+    .trigger-speech::before { content: "🔊 "; }
+    .trigger-note { font-size: 0.78rem; color: #8b949e; }
+
+    /* 우선순위 배지 */
+    .pri {
+      display: inline-block; font-size: 0.68rem; font-weight: 700;
+      padding: 1px 7px; border-radius: 10px; margin-left: 6px;
+      text-transform: uppercase;
+    }
+    .pri.high   { background: #4a1515; color: #f85149; }
+    .pri.mid    { background: #2b2308; color: #e3b341; }
+    .pri.low    { background: #1c2128; color: #8b949e; }
+
+    /* 전체 매핑 표 */
+    .voice-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: #21262d; border: 1px solid #30363d;
+      border-radius: 16px; padding: 2px 10px;
+      font-size: 0.78rem; color: #c9d1d9;
+    }
+    .dot-blue   { width:7px;height:7px;border-radius:50%;background:#58a6ff;display:inline-block; }
+    .dot-green  { width:7px;height:7px;border-radius:50%;background:#3fb950;display:inline-block; }
+    .dot-yellow { width:7px;height:7px;border-radius:50%;background:#e3b341;display:inline-block; }
+    .dot-red    { width:7px;height:7px;border-radius:50%;background:#f85149;display:inline-block; }
+    .dot-purple { width:7px;height:7px;border-radius:50%;background:#bc8cff;display:inline-block; }
+    .dot-orange { width:7px;height:7px;border-radius:50%;background:#ffa657;display:inline-block; }
+    .dot-teal   { width:7px;height:7px;border-radius:50%;background:#39d353;display:inline-block; }
+
+    .signal-row {
+      display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0;
+    }
+    .signal-tag {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 12px;
+      font-size: 0.8rem; color: #c9d1d9;
+    }
+    .signal-tag code { font-size: 0.76rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Claude Code Hook 전체 분석 — Voice 트리거 설계</h1>
+  <p class="subtitle">
+    7개 훅 이벤트의 페이로드·타이밍 분석과 voice-persona 연동 신규 트리거 권고안
+  </p>
+
+  <!-- 개요 매트릭스 -->
+  <section>
+    <h2>현황 매트릭스</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>훅</th>
+          <th>발화 시점</th>
+          <th>stdin 주요 데이터</th>
+          <th>현재 voice 구현</th>
+          <th>신규 기회</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Stop</code></td>
+          <td>Claude 응답 완료</td>
+          <td>last_assistant_message, transcript_path</td>
+          <td><span class="status done"><span class="dot" style="background:#3fb950"></span>구현됨</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>SubagentStop</code></td>
+          <td>서브에이전트 완료</td>
+          <td>transcript_path, last_assistant_message</td>
+          <td><span class="status done"><span class="dot" style="background:#3fb950"></span>구현됨</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>UserPromptSubmit</code></td>
+          <td>사용자 메시지 전송</td>
+          <td>prompt (사용자 입력 텍스트)</td>
+          <td><span class="status done"><span class="dot" style="background:#3fb950"></span>스킬 추천</span></td>
+          <td>키워드 감지 반응</td>
+        </tr>
+        <tr>
+          <td><code>SessionStart</code></td>
+          <td>새 세션 시작</td>
+          <td>—</td>
+          <td><span class="status done"><span class="dot" style="background:#3fb950"></span>스킬 추천</span></td>
+          <td>브리핑 모드</td>
+        </tr>
+        <tr>
+          <td><code>PreToolUse</code></td>
+          <td>도구 실행 직전</td>
+          <td>tool_name, tool_input (도구별 파라미터)</td>
+          <td><span class="status partial"><span class="dot" style="background:#e3b341"></span>경고문만 (비voice)</span></td>
+          <td><strong>착수 알림</strong> (고우선순위)</td>
+        </tr>
+        <tr>
+          <td><code>PostToolUse</code></td>
+          <td>도구 실행 직후</td>
+          <td>tool_name, tool_input, tool_response (출력+exitCode)</td>
+          <td><span class="status partial"><span class="dot" style="background:#e3b341"></span>GitNexus만 (비voice)</span></td>
+          <td><strong>결과 낭독</strong> (고우선순위)</td>
+        </tr>
+        <tr>
+          <td><code>Notification</code></td>
+          <td>Claude가 알림 전송 시</td>
+          <td>title, message</td>
+          <td><span class="status none">미구현</span></td>
+          <td><strong>알림 음성 낭독</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Stop -->
+  <section>
+    <h2>① Stop — 응답 완료</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#0d2a1f;">
+        <span class="hook-name">Stop</span>
+        <span class="status done"><span class="dot" style="background:#3fb950"></span>구현 완료</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> Claude가 한 턴의 응답을 마쳤을 때</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> JSON — last_assistant_message, transcript_path</div>
+          <div class="hook-meta-item"><strong>제어 가능:</strong> 실행 후 알림만 (블로킹 불가)</div>
+        </div>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">✅</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">항상 — 마지막 응답 텍스트 추출</div>
+              <div class="trigger-speech">"[LLM 요약 또는 규칙 기반 폴백]" (기본 voice)</div>
+              <div class="trigger-note">현재 구현: Edge TTS → Supertonic → MLX → say 폴백 체인</div>
+            </div>
+          </div>
+        </div>
+        <div class="tip" style="margin-top:12px;">
+          <strong>개선 여지:</strong> 응답 길이·내용 유형(코드 변경 / 설명 / 질문)을 분류해
+          유형별 요약 전략을 달리하면 더 자연스럽습니다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SubagentStop -->
+  <section>
+    <h2>② SubagentStop — 서브에이전트 완료</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#0d2a1f;">
+        <span class="hook-name">SubagentStop</span>
+        <span class="status done"><span class="dot" style="background:#3fb950"></span>구현 완료</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> Agent 툴로 spawn된 에이전트가 작업 종료 시</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> JSON — transcript_path (JSONL 역방향 파싱으로 subagent_type 추출)</div>
+        </div>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">✅</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">subagent_type → voice-map.json → 카테고리 voice</div>
+              <div class="trigger-speech">"[역할]입니다. [25자 한 줄 요약]" (역할별 목소리)</div>
+              <div class="trigger-note">리뷰어=Eric, 플래너=M1, 빌더=M4, 테스터=F2, 탐색기=F3</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- UserPromptSubmit -->
+  <section>
+    <h2>③ UserPromptSubmit — 사용자 입력 전송</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#0a1c38;">
+        <span class="hook-name">UserPromptSubmit</span>
+        <span class="status partial"><span class="dot" style="background:#e3b341"></span>스킬 추천 구현 — 확장 가능</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> 사용자가 Enter를 누른 직후, Claude가 처리 시작 전</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> JSON — <code>prompt</code> (사용자 입력 원문)</div>
+          <div class="hook-meta-item"><strong>제어 가능:</strong> 출력문을 Claude 컨텍스트에 주입 가능</div>
+        </div>
+
+        <h3>현재</h3>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">✅</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">최근 transcript 분석 → 적합한 스킬 추천</div>
+              <div class="trigger-speech">"[스킬명] 사용을 권장합니다."</div>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="margin-top:14px;">신규 트리거 추천</h3>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">🆕</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">prompt에 "팀" / "에이전트" / "병렬" 키워드 포함</div>
+              <div class="trigger-speech">"팀 작업을 시작합니다. 모델은 Sonnet만 사용합니다."</div>
+              <div class="trigger-note">HMG 제약 조건을 사용자에게 remind <span class="pri mid">중간</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">🆕</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">prompt 길이 > 500자 (복잡한 작업 감지)</div>
+              <div class="trigger-speech">"복잡한 작업입니다. 잠시 분석 중입니다."</div>
+              <div class="trigger-note">사용자가 자리를 뜨기 전에 인지시킴 <span class="pri low">낮음</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SessionStart -->
+  <section>
+    <h2>④ SessionStart — 세션 시작</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#0a1c38;">
+        <span class="hook-name">SessionStart</span>
+        <span class="status partial"><span class="dot" style="background:#e3b341"></span>스킬 추천 구현 — 확장 가능</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> Claude Code가 새 세션을 열었을 때 (최초 1회)</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> 거의 비어 있음 (세션 메타 없음)</div>
+        </div>
+
+        <h3>신규 트리거 추천</h3>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">🆕</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">마지막 Stop 이후 시간이 1시간 이상 경과</div>
+              <div class="trigger-speech">"N시간 만에 돌아왔군요. 지난 작업을 이어갑니다."</div>
+              <div class="trigger-note">
+                구현: <code>stat ~/.claude/last_stop_ts</code> 파일로 경과 시간 계산
+                <span class="pri low">낮음</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PreToolUse -->
+  <section>
+    <h2>⑤ PreToolUse — 도구 실행 직전 ★ 핵심 신규 기회</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#1c1a0a;">
+        <span class="hook-name">PreToolUse</span>
+        <span class="status new"><span class="dot" style="background:#58a6ff"></span>Voice 미연결 — 신규 구현 권고</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> Claude가 도구를 실행하려는 순간 (실행 전)</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> JSON — <code>tool_name</code>, <code>tool_input</code> (도구별 파라미터)</div>
+          <div class="hook-meta-item"><strong>블로킹 가능:</strong> exit 2 + stdout에 사유 → 도구 실행 취소</div>
+          <div class="hook-meta-item"><strong>matcher:</strong> 도구 이름 또는 정규식으로 필터링</div>
+        </div>
+
+        <div class="file-label">stdin 페이로드 예시 (Bash)</div>
+        <pre><code class="language-json">{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm run build",
+    "description": "TypeScript 빌드"
+  }
+}</code></pre>
+
+        <h3>신규 트리거 추천</h3>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">🔨</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + command 에 <code>npm run build</code> / <code>tsc</code> / <code>cargo build</code></div>
+              <div class="trigger-speech">"빌드를 시작합니다."</div>
+              <div class="trigger-note">builder 카테고리 voice — 자리 비워도 됨을 알림 <span class="pri high">높음</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">🧪</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + command 에 <code>npm test</code> / <code>pytest</code> / <code>cargo test</code> / <code>go test</code></div>
+              <div class="trigger-speech">"테스트를 실행합니다."</div>
+              <div class="trigger-note">tester 카테고리 voice — 완료까지 자리 비울 수 있음 <span class="pri high">높음</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">📦</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + command 에 <code>npm install</code> / <code>npm ci</code> / <code>pip install</code> / <code>uv sync</code></div>
+              <div class="trigger-speech">"패키지를 설치합니다. 시간이 걸릴 수 있습니다."</div>
+              <div class="trigger-note">기본 voice — 장시간 작업 예고 <span class="pri mid">중간</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">🚀</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + command 에 <code>git push</code></div>
+              <div class="trigger-speech">"원격 저장소에 푸시합니다."</div>
+              <div class="trigger-note">현재 텍스트 경고만 — voice로 전환 권고 <span class="pri mid">중간</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">🤖</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Agent 도구 실행 (tool_name = "Agent")</div>
+              <div class="trigger-speech">"에이전트를 파견합니다. [description]"</div>
+              <div class="trigger-note">팀 작업 착수를 음성으로 알림 — description 필드 활용 <span class="pri mid">중간</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">⚠️</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + command 에 <code>rm -rf</code> / <code>DROP TABLE</code> / <code>git reset --hard</code></div>
+              <div class="trigger-speech">"주의: 되돌릴 수 없는 삭제 작업입니다."</div>
+              <div class="trigger-note">경고 voice — 사용자 주의 환기. exit 0이면 실행 허용 <span class="pri high">높음</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PostToolUse -->
+  <section>
+    <h2>⑥ PostToolUse — 도구 실행 직후 ★ 핵심 신규 기회</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#1c1a0a;">
+        <span class="hook-name">PostToolUse</span>
+        <span class="status new"><span class="dot" style="background:#58a6ff"></span>Voice 미연결 — 신규 구현 권고</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> 도구 실행 완료 직후 (Claude가 결과를 보기 전)</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> JSON — <code>tool_name</code>, <code>tool_input</code>, <code>tool_response</code> (출력+exitCode)</div>
+          <div class="hook-meta-item"><strong>블로킹:</strong> 불가 (이미 실행됨)</div>
+        </div>
+
+        <div class="file-label">stdin 페이로드 예시 (Bash — 테스트 실패)</div>
+        <pre><code class="language-json">{
+  "tool_name": "Bash",
+  "tool_input": { "command": "npm test" },
+  "tool_response": {
+    "output": "Tests: 3 failed, 72 passed\nFailed: player.test.ts > ...",
+    "exitCode": 1
+  }
+}</code></pre>
+
+        <h3>신규 트리거 추천</h3>
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">❌</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + exitCode != 0 (명령 실패)</div>
+              <div class="trigger-speech">"명령 실패: [앞 30자]. 에러를 확인하세요."</div>
+              <div class="trigger-note">
+                가장 높은 가치 — 자리 비운 사이 실패 즉시 인지 가능.
+                command에서 의미 있는 서술어만 추출 (npm, git, python 등)
+                <span class="pri high">높음</span>
+              </div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">🧪</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + npm test / pytest 실행 후 output 파싱</div>
+              <div class="trigger-speech">"테스트 N개 통과, M개 실패." 또는 "전체 N개 통과."</div>
+              <div class="trigger-note">
+                output에서 <code>(\d+) passed</code>, <code>(\d+) failed</code> 정규식으로 추출.
+                실패 0이면 성공 voice, 1 이상이면 경고 voice
+                <span class="pri high">높음</span>
+              </div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">🏗️</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + npm run build / tsc 성공 (exitCode = 0)</div>
+              <div class="trigger-speech">"빌드 완료."</div>
+              <div class="trigger-note">PreToolUse "빌드 시작"과 쌍을 이루는 완료 알림 <span class="pri high">높음</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">📝</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Bash + git commit 성공</div>
+              <div class="trigger-speech">"커밋 완료." (commit message 앞 20자 포함 가능)</div>
+              <div class="trigger-note">output에서 commit hash + message 추출 <span class="pri mid">중간</span></div>
+            </div>
+          </div>
+          <div class="trigger-item">
+            <div class="trigger-icon">✍️</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">Write 도구 완료 (신규 파일 생성)</div>
+              <div class="trigger-speech">"[파일명] 작성 완료."</div>
+              <div class="trigger-note">
+                tool_input.file_path에서 파일명만 추출.
+                Edit(수정)은 너무 잦아 생략 권고
+                <span class="pri low">낮음</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Notification -->
+  <section>
+    <h2>⑦ Notification — Claude 알림</h2>
+    <div class="hook-card">
+      <div class="hook-header" style="background:#1c1228;">
+        <span class="hook-name">Notification</span>
+        <span class="status none">미구현 — 검토 필요</span>
+      </div>
+      <div class="hook-body">
+        <div class="hook-meta">
+          <div class="hook-meta-item"><strong>발화 시점:</strong> Claude가 사용자에게 데스크톱 알림을 보낼 때</div>
+          <div class="hook-meta-item"><strong>stdin:</strong> JSON — <code>title</code>, <code>message</code></div>
+        </div>
+
+        <div class="file-label">stdin 페이로드 예시</div>
+        <pre><code class="language-json">{
+  "title": "작업 완료",
+  "message": "빌드 및 테스트 완료. 검토가 필요합니다."
+}</code></pre>
+
+        <div class="trigger-list">
+          <div class="trigger-item">
+            <div class="trigger-icon">🔔</div>
+            <div class="trigger-body">
+              <div class="trigger-condition">모든 Notification</div>
+              <div class="trigger-speech">"[message 원문 낭독]"</div>
+              <div class="trigger-note">
+                화면을 보지 않아도 알림 내용을 즉시 인지.
+                가장 자연스러운 voice 연동 지점.
+                <span class="pri high">높음</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info" style="margin-top:12px;">
+          <strong>설정 방법 (확인 필요):</strong><br>
+          <code>~/.claude/settings.json</code>의 <code>hooks.Notification</code>에 등록하면 됩니다.
+          Stop과 동일한 방식으로 voice-persona의 <code>node dist/index.js notification</code>을 호출하면 됩니다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 구현 설계 -->
+  <section>
+    <h2>구현 설계 — PostToolUse Bash 핸들러</h2>
+    <p>
+      우선순위 1순위인 PostToolUse Bash(빌드·테스트 결과 알림)의 구현 스케치입니다.
+    </p>
+
+    <div class="file-label">hooks/post-tool-bash.sh (신규)</div>
+    <pre><code class="language-bash">#!/usr/bin/env bash
+# PostToolUse Bash hook — 빌드·테스트 결과를 voice로 알림
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+nohup node "$SCRIPT_DIR/../dist/index.js" post-tool-bash > /dev/null 2>&1 &
+disown $!; exit 0</code></pre>
+
+    <div class="file-label">src/index.ts — post-tool-bash 분기 (신규 추가)</div>
+    <pre><code class="language-typescript">if (process.argv[2] === "post-tool-bash") {
+  const raw = await readStdin();
+  try {
+    const data = JSON.parse(raw) as {
+      tool_name: string;
+      tool_input: { command?: string };
+      tool_response: { output?: string; exitCode?: number };
+    };
+    const cmd = data.tool_input.command ?? "";
+    const out = data.tool_response.output ?? "";
+    const code = data.tool_response.exitCode ?? 0;
+
+    // 빌드 명령
+    if (/npm run build|tsc\b|cargo build|go build/.test(cmd)) {
+      const msg = code === 0 ? "빌드 완료." : "빌드 실패. 에러를 확인하세요.";
+      await speakHook(msg, cfg);
+      return;
+    }
+
+    // 테스트 — pass/fail 파싱
+    if (/npm test|pytest|cargo test|go test/.test(cmd)) {
+      const passed = out.match(/(\d+)\s*(passed|passing)/)?.[1];
+      const failed = out.match(/(\d+)\s*(failed|failing)/)?.[1];
+      let msg = "";
+      if (failed && parseInt(failed) > 0) {
+        msg = `테스트 ${failed}개 실패${passed ? `, ${passed}개 통과` : ""}.`;
+      } else if (passed) {
+        msg = `전체 ${passed}개 통과.`;
+      }
+      if (msg) await speakHook(msg, cfg);
+      return;
+    }
+
+    // 명령 실패 (catch-all)
+    if (code !== 0) {
+      const snippet = cmd.split(" ").slice(0, 3).join(" ");
+      await speakHook(`명령 실패: ${snippet}.`, cfg);
+    }
+  } catch { /* JSON 파싱 실패 시 무시 */ }
+  process.exit(0);
+}</code></pre>
+
+    <div class="file-label">settings.json — 훅 등록</div>
+    <pre><code class="language-json">"PostToolUse": [
+  {
+    "matcher": "Bash",
+    "hooks": [{
+      "type": "command",
+      "command": "/path/to/voice-persona/hooks/post-tool-bash.sh",
+      "timeout": 15
+    }]
+  }
+],
+"PreToolUse": [
+  {
+    "matcher": "Bash",
+    "hooks": [{
+      "type": "command",
+      "command": "/path/to/voice-persona/hooks/pre-tool-bash.sh",
+      "timeout": 5
+    }]
+  }
+]</code></pre>
+  </section>
+
+  <!-- 우선순위 로드맵 -->
+  <section>
+    <h2>구현 우선순위 로드맵</h2>
+    <table>
+      <thead>
+        <tr><th>순위</th><th>훅 + 조건</th><th>발화 예</th><th>가치</th><th>복잡도</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td>PostToolUse Bash exitCode ≠ 0</td>
+          <td>"명령 실패: npm run build."</td>
+          <td>🔴 즉시 인지</td>
+          <td>낮음</td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td>PostToolUse Bash 테스트 결과 파싱</td>
+          <td>"테스트 3개 실패, 72개 통과."</td>
+          <td>🔴 정량 피드백</td>
+          <td>낮음</td>
+        </tr>
+        <tr>
+          <td><strong>3</strong></td>
+          <td>PostToolUse Bash 빌드 성공</td>
+          <td>"빌드 완료."</td>
+          <td>🟠 완료 확인</td>
+          <td>매우 낮음</td>
+        </tr>
+        <tr>
+          <td><strong>4</strong></td>
+          <td>Notification 훅 연동</td>
+          <td>알림 메시지 원문 낭독</td>
+          <td>🟠 화면 불필요</td>
+          <td>낮음</td>
+        </tr>
+        <tr>
+          <td><strong>5</strong></td>
+          <td>PreToolUse Bash 빌드·테스트 착수</td>
+          <td>"빌드를 시작합니다."</td>
+          <td>🟡 예고 UX</td>
+          <td>낮음</td>
+        </tr>
+        <tr>
+          <td><strong>6</strong></td>
+          <td>PreToolUse Bash 파괴적 명령 경고</td>
+          <td>"되돌릴 수 없는 삭제 작업입니다."</td>
+          <td>🟡 안전 경고</td>
+          <td>낮음</td>
+        </tr>
+        <tr>
+          <td><strong>7</strong></td>
+          <td>PostToolUse Bash git commit</td>
+          <td>"커밋 완료."</td>
+          <td>🟢 진행 추적</td>
+          <td>낮음</td>
+        </tr>
+        <tr>
+          <td><strong>8</strong></td>
+          <td>PreToolUse Agent 파견 알림</td>
+          <td>"에이전트를 파견합니다."</td>
+          <td>🟢 팀 가시성</td>
+          <td>낮음</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="tip">
+      <strong>소음 방지 원칙:</strong><br>
+      Read, Edit(소규모), Glob, Grep 같이 <strong>빈번하고 짧게 끝나는 도구는 voice 대상에서 제외</strong>합니다.
+      "결과가 없으면 말하지 않는다" — 빌드 성공·테스트 전부 통과처럼 명확한 신호가 있을 때만 발화합니다.
+    </div>
+  </section>
+
+</div>
+<script>hljs.highlightAll();</script>
+</body>
+</html>

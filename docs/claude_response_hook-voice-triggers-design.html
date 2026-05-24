@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Hook Voice Triggers — 설계 청사진 (Task #1)</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: 'Pretendard', -apple-system, sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 24px; line-height: 1.7; }
+    h1 { color: #e6edf3; border-bottom: 2px solid #30363d; padding-bottom: 12px; }
+    h2 { color: #58a6ff; margin-top: 2em; border-left: 4px solid #58a6ff; padding-left: 12px; }
+    h3 { color: #79c0ff; }
+    section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th { background: #21262d; color: #e6edf3; padding: 8px 12px; text-align: left; border: 1px solid #30363d; }
+    td { padding: 8px 12px; border: 1px solid #30363d; vertical-align: top; }
+    tr:hover { background: #1c2128; }
+    code.inline { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #ff7b72; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+    .badge-blue { background: #1f6feb; color: #fff; }
+    .badge-green { background: #238636; color: #fff; }
+    .badge-orange { background: #9e6a03; color: #fff; }
+    .badge-red { background: #b62324; color: #fff; }
+    .reason { color: #8b949e; font-size: 0.88em; font-style: italic; margin-left: 8px; }
+    pre { margin: 0; }
+    .flow { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; white-space: pre; font-family: 'Fira Code', monospace; font-size: 0.85em; color: #c9d1d9; overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<h1>🎙️ Hook Voice Triggers — 설계 청사진</h1>
+<p style="color:#8b949e">Task #1 · 아키텍처 설계 · 2026-05-24</p>
+
+<!-- ── 1. 개요 ── -->
+<section>
+  <h2>1. 신규 CLI 커맨드 3종</h2>
+  <p>기존 패턴(<code class="inline">hook</code> / <code class="inline">subagent-stop</code> / <code class="inline">hook-suggest</code>)을 그대로 따른다. 모두 stdin으로 Claude Code 훅 JSON을 받아 즉시 파싱 후 TTS 처리.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>커맨드명</th>
+        <th>대응 훅 이벤트</th>
+        <th>stdin 최상위 키</th>
+        <th>TTS 함수</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code class="inline">pre-tool-bash</code></td>
+        <td>PreToolUse (Bash)</td>
+        <td><code class="inline">tool_input.command</code></td>
+        <td><code class="inline">speakHook()</code></td>
+      </tr>
+      <tr>
+        <td><code class="inline">post-tool-bash</code></td>
+        <td>PostToolUse (Bash)</td>
+        <td><code class="inline">tool_input.command</code>, <code class="inline">tool_response.output</code>, <code class="inline">tool_response.exit_code</code></td>
+        <td><code class="inline">speakHook()</code></td>
+      </tr>
+      <tr>
+        <td><code class="inline">notification</code></td>
+        <td>Notification</td>
+        <td><code class="inline">message</code></td>
+        <td><code class="inline">speak()</code> (직접 재생 — 짧은 메시지이므로 LLM 요약 불필요)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>stdin JSON 구조 (Claude Code 실제 페이로드)</h3>
+  <pre><code class="language-json">// PreToolUse
+{
+  "session_id": "...",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": { "command": "npm test", "description": "Run tests" }
+}
+
+// PostToolUse
+{
+  "session_id": "...",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": { "command": "npm test" },
+  "tool_response": {
+    "output": "Tests  5 passed (5)\n",
+    "error": "",
+    "exit_code": 0,
+    "interrupted": false
+  }
+}
+
+// Notification
+{
+  "session_id": "...",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input"
+}</code></pre>
+</section>
+
+<!-- ── 2. Bash 명령 분류 ── -->
+<section>
+  <h2>2. Bash 명령 분류 패턴</h2>
+  <p>
+    <span class="reason">이유: 한 정규식 집합을 PreToolUse·PostToolUse 양쪽에서 공유해야 메시지 일관성이 보장됨.
+    별도 유틸 함수 <code class="inline">classifyBashCommand(cmd)</code>로 분리 → index.ts 내부에 정의.</span>
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>카테고리</th><th>정규식 (case-insensitive)</th><th>매칭 예시</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-green">TEST</span></td>
+        <td><div class="flow">/^(npm\s+(run\s+)?test|npx\s+vitest|bun\s+test|pytest|cargo\s+test|go\s+test|yarn\s+test|jest)\b/i</div></td>
+        <td>npm test, npx vitest run, pytest, cargo test</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">BUILD</span></td>
+        <td><div class="flow">/^(npm\s+run\s+(build|dev|compile)|tsc\b|cargo\s+build|go\s+build|bun\s+build|make\b|gradle\b|mvn\b)/i</div></td>
+        <td>npm run build, tsc, cargo build, make</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-orange">INSTALL</span></td>
+        <td><div class="flow">/^(npm\s+(install|i)\b|pip\s+install|cargo\s+add|bun\s+install|yarn\s+add|brew\s+install|apt\s+install)/i</div></td>
+        <td>npm install, pip install, brew install</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-orange">GIT</span></td>
+        <td><div class="flow">/^git\b/i</div></td>
+        <td>git commit, git push, git diff</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-red">DOCKER</span></td>
+        <td><div class="flow">/^(docker|docker-compose|kubectl)\b/i</div></td>
+        <td>docker build, kubectl apply</td>
+      </tr>
+      <tr>
+        <td>DEFAULT</td>
+        <td>(위 패턴에 모두 미해당)</td>
+        <td>ls, cat, curl, sed ...</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre><code class="language-typescript">type BashCategory = "TEST" | "BUILD" | "INSTALL" | "GIT" | "DOCKER" | "DEFAULT";
+
+function classifyBashCommand(cmd: string): BashCategory {
+  if (/^(npm\s+(run\s+)?test|npx\s+vitest|bun\s+test|pytest|cargo\s+test|go\s+test|yarn\s+test|jest)\b/i.test(cmd)) return "TEST";
+  if (/^(npm\s+run\s+(build|dev|compile)|tsc\b|cargo\s+build|go\s+build|bun\s+build|make\b|gradle\b|mvn\b)/i.test(cmd)) return "BUILD";
+  if (/^(npm\s+(install|i)\b|pip\s+install|cargo\s+add|bun\s+install|yarn\s+add|brew\s+install|apt\s+install)/i.test(cmd)) return "INSTALL";
+  if (/^git\b/i.test(cmd)) return "GIT";
+  if (/^(docker|docker-compose|kubectl)\b/i.test(cmd)) return "DOCKER";
+  return "DEFAULT";
+}</code></pre>
+</section>
+
+<!-- ── 3. 테스트 결과 파싱 ── -->
+<section>
+  <h2>3. 테스트 결과 파싱 정규식</h2>
+  <p>
+    <span class="reason">이유: vitest / pytest / cargo test 세 도구 모두 "N passed" / "N failed" 형식을 공유하므로
+    단일 정규식으로 통합 처리 가능. cargo만 별도 패턴 추가 보완.</span>
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>도구</th><th>대표 출력 예시</th><th>파싱 정규식</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>vitest</td>
+        <td><code class="inline">Tests  5 passed (5)</code><br><code class="inline">Tests  3 failed | 2 passed (5)</code></td>
+        <td>
+          통과: <code class="inline">/(\d+)\s+passed/i</code><br>
+          실패: <code class="inline">/(\d+)\s+failed/i</code>
+        </td>
+      </tr>
+      <tr>
+        <td>pytest</td>
+        <td><code class="inline">5 passed, 1 failed in 0.42s</code></td>
+        <td>동일 패턴 적용</td>
+      </tr>
+      <tr>
+        <td>cargo test</td>
+        <td><code class="inline">test result: ok. 5 passed; 0 failed;</code></td>
+        <td>
+          전용: <code class="inline">/test result:\s*(ok|FAILED)\.\s*(\d+) passed;\s*(\d+) failed/</code><br>
+          (폴백으로 공통 패턴도 적용)
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <pre><code class="language-typescript">interface TestResult { passed: number; failed: number; }
+
+function parseTestOutput(output: string): TestResult | null {
+  // cargo test 전용 — 더 구체적인 패턴 먼저
+  const cargo = /test result:\s*(ok|FAILED)\.\s*(\d+) passed;\s*(\d+) failed/.exec(output);
+  if (cargo) return { passed: parseInt(cargo[2]), failed: parseInt(cargo[3]) };
+
+  // vitest / pytest 공통
+  const passedM = /(\d+)\s+passed/i.exec(output);
+  const failedM = /(\d+)\s+failed/i.exec(output);
+  if (!passedM && !failedM) return null;
+  return {
+    passed: passedM ? parseInt(passedM[1]) : 0,
+    failed: failedM ? parseInt(failedM[1]) : 0,
+  };
+}</code></pre>
+</section>
+
+<!-- ── 4. 쉘 스크립트 3종 ── -->
+<section>
+  <h2>4. 쉘 스크립트 3종 전체 코드</h2>
+  <p>
+    <span class="reason">이유: 기존 stop.sh의 <code class="inline">nohup ... &amp; disown $!; exit 0</code> 패턴을 그대로 따른다.
+    nohup 내에서 stdin이 파이프(TTY 아님)이므로 자식 node 프로세스가 부모 fd를 상속해 JSON을 정상 수신함.</span>
+  </p>
+
+  <h3>hooks/pre-tool-bash.sh</h3>
+  <pre><code class="language-bash">#!/usr/bin/env bash
+# Claude Code PreToolUse(Bash) hook — Bash 실행 직전 TTS 알림
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+nohup node "$SCRIPT_DIR/../dist/index.js" pre-tool-bash > /dev/null 2>&1 &
+disown $!; exit 0</code></pre>
+
+  <h3>hooks/post-tool-bash.sh</h3>
+  <pre><code class="language-bash">#!/usr/bin/env bash
+# Claude Code PostToolUse(Bash) hook — Bash 명령 완료 시 결과 TTS 알림
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+nohup node "$SCRIPT_DIR/../dist/index.js" post-tool-bash > /dev/null 2>&1 &
+disown $!; exit 0</code></pre>
+
+  <h3>hooks/notification.sh</h3>
+  <pre><code class="language-bash">#!/usr/bin/env bash
+# Claude Code Notification hook — 알림 메시지 TTS 발화
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+nohup node "$SCRIPT_DIR/../dist/index.js" notification > /dev/null 2>&1 &
+disown $!; exit 0</code></pre>
+</section>
+
+<!-- ── 5. src/index.ts 삽입 위치 ── -->
+<section>
+  <h2>5. src/index.ts 삽입 위치</h2>
+
+  <div class="flow">현재 index.ts 구조 (라인 기준):
+
+  62–76   : if (argv[2] === "hook")          { ... process.exit(0) }
+  78–100  : if (argv[2] === "subagent-stop") { ... process.exit(0) }
+  102–122 : if (argv[2] === "hook-suggest")  { ... process.exit(0) }
+  ────────────────────────────────────────────────────
+  ← 124번 줄부터 MCP 서버 모드 시작
+
+  ▶ 삽입 위치: 122번 줄 process.exit(0) 직후, 124번 줄 // ── MCP 서버 모드 직전
+  ▶ 헬퍼 함수 classifyBashCommand(), parseTestOutput() 는
+    extractAgentTypeFromTranscript() 함수(37–60번 줄) 블록 바로 아래에 추가</div>
+
+  <h3>삽입 코드 골격</h3>
+  <pre><code class="language-typescript">// classifyBashCommand(), parseTestOutput() 함수는 60번 줄 이후 삽입
+
+// ── pre-tool-bash CLI 모드 ─────────────────────────────────
+if (process.argv[2] === "pre-tool-bash") {
+  if (!config.speakPreTool) process.exit(0);
+  const raw = await readStdin();
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const input = data.tool_input as Record<string, unknown> | undefined;
+    const cmd = String(input?.command ?? "").trim();
+    if (cmd) {
+      const cat = classifyBashCommand(cmd);
+      const msg = PRE_TOOL_MSG[cat];          // 발화 메시지 맵 참조
+      await speakHook(msg, config.voice, config.ttsSpeed).catch(() => {});
+    }
+  } catch { /* 무시 */ }
+  process.exit(0);
+}
+
+// ── post-tool-bash CLI 모드 ────────────────────────────────
+if (process.argv[2] === "post-tool-bash") {
+  if (!config.speakPostTool) process.exit(0);
+  const raw = await readStdin();
+  try {
+    const data    = JSON.parse(raw) as Record<string, unknown>;
+    const input   = data.tool_input   as Record<string, unknown> | undefined;
+    const resp    = data.tool_response as Record<string, unknown> | undefined;
+    const cmd     = String(input?.command ?? "").trim();
+    const output  = String(resp?.output  ?? "");
+    const exitCode = typeof resp?.exit_code === "number" ? resp.exit_code : null;
+    const failed  = exitCode !== null ? exitCode !== 0 : String(resp?.error ?? "").length > 0;
+    const cat     = classifyBashCommand(cmd);
+    const msg     = buildPostToolMsg(cat, failed, output); // 메시지 생성 함수
+    await speakHook(msg, config.voice, config.ttsSpeed).catch(() => {});
+  } catch { /* 무시 */ }
+  process.exit(0);
+}
+
+// ── notification CLI 모드 ──────────────────────────────────
+if (process.argv[2] === "notification") {
+  if (!config.speakNotification) process.exit(0);
+  const raw = await readStdin();
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const msg  = String(data.message ?? "").trim();
+    if (msg) {
+      await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {});
+    }
+  } catch { /* 무시 */ }
+  process.exit(0);
+}</code></pre>
+</section>
+
+<!-- ── 6. 발화 메시지 최종안 ── -->
+<section>
+  <h2>6. 발화 메시지 문구 최종안</h2>
+
+  <h3>PreToolUse (PRE_TOOL_MSG 맵)</h3>
+  <table>
+    <thead><tr><th>카테고리</th><th>발화 문구</th></tr></thead>
+    <tbody>
+      <tr><td>TEST</td><td>"테스트 시작합니다"</td></tr>
+      <tr><td>BUILD</td><td>"빌드 시작합니다"</td></tr>
+      <tr><td>INSTALL</td><td>"패키지 설치 중입니다"</td></tr>
+      <tr><td>GIT</td><td>"깃 명령 실행합니다"</td></tr>
+      <tr><td>DOCKER</td><td>"컨테이너 명령 실행합니다"</td></tr>
+      <tr><td>DEFAULT</td><td>"명령 실행합니다"</td></tr>
+    </tbody>
+  </table>
+
+  <h3>PostToolUse (buildPostToolMsg 함수)</h3>
+  <table>
+    <thead><tr><th>카테고리</th><th>성공 (exit 0)</th><th>실패 (exit ≠ 0)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>TEST</td>
+        <td>
+          파싱 성공 &amp; failed=0: <strong>"테스트 {n}건 모두 통과했어요"</strong><br>
+          파싱 성공 &amp; failed&gt;0: <strong>"테스트 {pass}건 중 {fail}건 실패했어요"</strong><br>
+          파싱 실패: <strong>"테스트 완료했어요"</strong>
+        </td>
+        <td>"테스트가 실패했어요"</td>
+      </tr>
+      <tr><td>BUILD</td><td>"빌드 완료했어요"</td><td>"빌드에 실패했어요"</td></tr>
+      <tr><td>INSTALL</td><td>"패키지 설치 완료했어요"</td><td>"패키지 설치에 실패했어요"</td></tr>
+      <tr><td>GIT</td><td>"깃 명령 완료했어요"</td><td>"깃 명령에 실패했어요"</td></tr>
+      <tr><td>DOCKER</td><td>"컨테이너 명령 완료했어요"</td><td>"컨테이너 명령에 실패했어요"</td></tr>
+      <tr><td>DEFAULT</td><td>"완료했어요"</td><td>"명령이 실패했어요"</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Notification</h3>
+  <p>별도 문구 없음. <code class="inline">data.message</code> 값을 그대로 발화한다.
+  <span class="reason">이유: Notification 메시지는 Claude Code가 이미 사람이 읽을 수 있는 짧은 문장으로 생성하므로 LLM 요약 불필요.</span>
+  </p>
+</section>
+
+<!-- ── 7. Config 변경 ── -->
+<section>
+  <h2>7. Config 변경 사항 (src/config.ts)</h2>
+  <p>
+    <span class="reason">이유: PreToolUse는 명령어 실행마다 발화해 과도해질 수 있으므로 기본값 false.
+    PostToolUse·Notification은 유의미한 이벤트이므로 기본 on.</span>
+  </p>
+
+  <table>
+    <thead><tr><th>추가 키</th><th>타입</th><th>기본값</th><th>설명</th></tr></thead>
+    <tbody>
+      <tr><td><code class="inline">speakPreTool</code></td><td>boolean</td><td><strong>false</strong></td><td>PreToolUse 발화 여부</td></tr>
+      <tr><td><code class="inline">speakPostTool</code></td><td>boolean</td><td><strong>true</strong></td><td>PostToolUse 발화 여부</td></tr>
+      <tr><td><code class="inline">speakNotification</code></td><td>boolean</td><td><strong>true</strong></td><td>Notification 발화 여부</td></tr>
+    </tbody>
+  </table>
+
+  <pre><code class="language-typescript">// VoicePersonaConfig 인터페이스에 추가
+speakPreTool: boolean;
+speakPostTool: boolean;
+speakNotification: boolean;
+
+// DEFAULTS에 추가
+speakPreTool: false,
+speakPostTool: true,
+speakNotification: true,</code></pre>
+</section>
+
+<!-- ── 8. 실행 흐름 다이어그램 ── -->
+<section>
+  <h2>8. 전체 실행 흐름 (추가분)</h2>
+  <div class="flow">Bash 명령 실행 직전
+  → PreToolUse hook (hooks/pre-tool-bash.sh)
+    → node dist/index.js pre-tool-bash  [stdin: PreToolUse JSON]
+      → config.speakPreTool 체크 → false면 즉시 exit
+      → classifyBashCommand(tool_input.command)
+      → PRE_TOOL_MSG[category] 조회
+      → speakHook(msg)  → EdgeTTS MP3 → /tmp/tts-spool/ → 즉시 반환
+
+Bash 명령 완료
+  → PostToolUse hook (hooks/post-tool-bash.sh)
+    → node dist/index.js post-tool-bash  [stdin: PostToolUse JSON]
+      → config.speakPostTool 체크
+      → classifyBashCommand(tool_input.command)
+      → exit_code / error 필드로 성공 여부 판정
+      → category === TEST ? parseTestOutput(tool_response.output) : skip
+      → buildPostToolMsg(cat, failed, output)
+      → speakHook(msg) → EdgeTTS MP3 → /tmp/tts-spool/ → 즉시 반환
+
+Claude Code 알림 발생
+  → Notification hook (hooks/notification.sh)
+    → node dist/index.js notification  [stdin: Notification JSON]
+      → config.speakNotification 체크
+      → data.message 직접 speak()  [withTTSLock 경로 — 짧은 텍스트]
+      → 즉시 반환</div>
+</section>
+
+<!-- ── 9. .claude/settings.json 등록 패턴 ── -->
+<section>
+  <h2>9. .claude/settings.json 등록 패턴</h2>
+  <p>
+    <code class="inline">server.sh install</code> 이 자동 등록하므로, 스크립트에 아래 항목을 추가해야 함.
+  </p>
+  <pre><code class="language-json">{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Bash",
+      "hooks": [{"type": "command", "command": "&lt;PROJECT&gt;/hooks/pre-tool-bash.sh", "timeout": 10}]
+    }],
+    "PostToolUse": [{
+      "matcher": "Bash",
+      "hooks": [{"type": "command", "command": "&lt;PROJECT&gt;/hooks/post-tool-bash.sh", "timeout": 10}]
+    }],
+    "Notification": [{
+      "matcher": "",
+      "hooks": [{"type": "command", "command": "&lt;PROJECT&gt;/hooks/notification.sh", "timeout": 10}]
+    }]
+  }
+}</code></pre>
+  <p style="color:#8b949e; font-size:0.9em">
+    ※ PreToolUse timeout을 10초(Stop의 15초보다 짧게)로 설정하는 이유: Pre훅은 도구 실행을 블로킹하므로 최대한 짧아야 함.
+    nohup + disown 구조로 실제 node 프로세스는 즉시 백그라운드로 넘어가므로 스크립트 자체는 수십 ms 내 exit 0.
+  </p>
+</section>
+
+<script>hljs.highlightAll();</script>
+</body>
+</html>
