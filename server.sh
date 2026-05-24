@@ -62,7 +62,7 @@ _start_player() {
 
 _stop_player() {
   if ! _player_running; then return 0; fi
-  kill "$(cat "$PLAYER_PID_FILE")" 2>/dev/null || true
+  kill "$(cat "$PLAYER_PID_FILE" 2>/dev/null || pgrep -f "tts_player.sh" | head -1)" 2>/dev/null || true
   rm -f "$PLAYER_PID_FILE"
   echo "[TTS Player] 종료"
 }
@@ -205,7 +205,7 @@ do_status() {
   # TTS Player 데몬 확인
   if _player_running; then
     local pl_pid
-    pl_pid=$(cat "$PLAYER_PID_FILE")
+    pl_pid=$(cat "$PLAYER_PID_FILE" 2>/dev/null || pgrep -f "tts_player.sh" | head -1)
     local spool_count
     spool_count=$(find "$PLAYER_SPOOL" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
     echo "  TTS Player: ✓ 실행 중 (PID: $pl_pid, 스풀 대기: ${spool_count}개)"
