@@ -71,7 +71,16 @@ async def player_loop(
                 proc = await asyncio.create_subprocess_exec(
                     "afplay", "-r", speed, str(audio)
                 )
-                await proc.wait()
+                # shutdown 이벤트와 재생 완료를 동시에 대기
+                play_task = asyncio.ensure_future(proc.wait())
+                done, pending = await asyncio.wait(
+                    [play_task, asyncio.ensure_future(shutdown.wait())],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if shutdown.is_set() and proc.returncode is None:
+                    proc.terminate()
+                for t in pending:
+                    t.cancel()
                 audio.unlink(missing_ok=True)
                 idle = 0
             else:
@@ -121,31 +130,27 @@ async def monitor_children(
 
 def _start_uvicorn() -> subprocess.Popen:
     """uvicorn 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
-    log_fd = open(LOG_FILE, "a")
-    proc = subprocess.Popen(
-        [str(VENV_BIN / "uvicorn"), "tts_server.server:app",
-         "--host", "127.0.0.1", "--port", "7777"],
-        cwd=str(PROJECT_DIR),
-        env={**os.environ, "HF_HUB_OFFLINE": "1"},
-        stdout=log_fd,
-        stderr=log_fd,
-    )
-    log_fd.close()
-    return proc
+    with open(LOG_FILE, "a") as log_fd:
+        return subprocess.Popen(
+            [str(VENV_BIN / "uvicorn"), "tts_server.server:app",
+             "--host", "127.0.0.1", "--port", "7777"],
+            env={**os.environ, "HF_HUB_OFFLINE": "1"},
+            stdout=log_fd,
+            stderr=log_fd,
+            cwd=str(PROJECT_DIR),
+        )
 
 
 def _start_supertonic() -> subprocess.Popen:
     """supertonic 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
-    supertonic_log = open("/tmp/supertonic.log", "a")
-    proc = subprocess.Popen(
-        [str(VENV_BIN / "supertonic"), "serve",
-         "--host", "127.0.0.1", "--port", "7788"],
-        env={**os.environ, "HF_HUB_OFFLINE": "0"},
-        stdout=supertonic_log,
-        stderr=supertonic_log,
-    )
-    supertonic_log.close()
-    return proc
+    with open("/tmp/supertonic.log", "a") as supertonic_log:
+        return subprocess.Popen(
+            [str(VENV_BIN / "supertonic"), "serve",
+             "--host", "127.0.0.1", "--port", "7788"],
+            env={**os.environ, "HF_HUB_OFFLINE": "0"},
+            stdout=supertonic_log,
+            stderr=supertonic_log,
+        )
 
 
 async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
@@ -172,19 +177,21 @@ async def main() -> None:
     PID_FILE.write_text(str(os.getpid()))
     log.info(f"[Supervisor] 시작 (PID {os.getpid()})")
 
-    uvicorn_proc = _start_uvicorn()
-    log.info(f"[Supervisor] uvicorn 기동 (PID {uvicorn_proc.pid})")
-
-    supertonic_proc = _start_supertonic()
-    log.info(f"[Supervisor] supertonic 기동 (PID {supertonic_proc.pid})")
-
-    procs = [uvicorn_proc, supertonic_proc]
+    procs: list[subprocess.Popen] = []
     loop = asyncio.get_running_loop()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, _shutdown_event.set)
 
     try:
+        uvicorn_proc = _start_uvicorn()
+        procs.append(uvicorn_proc)
+        log.info(f"[Supervisor] uvicorn 기동 (PID {uvicorn_proc.pid})")
+
+        supertonic_proc = _start_supertonic()
+        procs.append(supertonic_proc)
+        log.info(f"[Supervisor] supertonic 기동 (PID {supertonic_proc.pid})")
+
         await asyncio.gather(
             player_loop(),
             cleanup_loop(),
