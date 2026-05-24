@@ -42,6 +42,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   reviewer: "리뷰어",
   planner:  "플래너",
   builder:  "빌더",
+  tester:   "테스터",
   explorer: "탐색기",
 };
 

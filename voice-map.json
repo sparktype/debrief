@@ -6,11 +6,13 @@
     "reviewer": "M2",
     "planner": "M1",
     "builder": "M4",
+    "tester": "F2",
     "explorer": "F3",
     "default": "F1"
   },
   "categories": {
     "reviewer": [
+      "feature-reviewer",
       "code-reviewer", "python-reviewer", "security-reviewer",
       "typescript-reviewer", "rust-reviewer", "go-reviewer",
       "kotlin-reviewer", "swift-reviewer", "cpp-reviewer",
@@ -19,14 +21,20 @@
       "pr-test-analyzer", "code-simplifier"
     ],
     "planner": [
+      "feature-architect",
       "planner", "architect", "code-architect", "a11y-architect",
       "plan", "feature-dev"
     ],
     "builder": [
+      "feature-builder",
       "build-error-resolver", "dart-build-resolver", "rust-build-resolver",
       "go-build-resolver", "kotlin-build-resolver", "swift-build-resolver",
-      "cpp-build-resolver", "java-build-resolver", "tdd-guide",
+      "cpp-build-resolver", "java-build-resolver",
       "gan-generator", "multi-execute", "doc-updater", "refactor-cleaner"
+    ],
+    "tester": [
+      "feature-tester",
+      "tdd-guide", "e2e-runner", "gan-evaluator"
     ],
     "explorer": [
       "Explore", "code-explorer", "general-purpose",

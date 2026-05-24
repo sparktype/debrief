@@ -9,11 +9,12 @@ const DEFAULTS = {
     minChars: 50,
     voice: "Sohee",
     summaryModel: "gpt-5.4",
-    ttsModel: "tts-1",
-    language: "ko",
     ttsSpeed: 1.2,
     ttsInstruct: "밝고 활기차게 말해주세요",
     skillCooldownMinutes: 30,
+    supertonicPort: 7788,
+    edgeTimeoutMs: 10000,
+    supertonicTimeoutMs: 20000,
 };
 export function loadConfig(path) {
     const target = path ?? DEFAULT_CONFIG_PATH;

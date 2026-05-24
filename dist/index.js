@@ -4,10 +4,14 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { loadConfig } from "./config.js";
 import { extractSummary, extractOneLiner } from "./summarizer.js";
-import { speak, speakAgent, speakHook } from "./player.js";
+import { speak, speakAgent, speakHook, configureTimes } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json");
 let config = loadConfig();
+configureTimes(config.edgeTimeoutMs, config.supertonicTimeoutMs);
 // stdin 전체를 읽어 문자열로 반환 — Command Injection 방지용 텍스트 수신 헬퍼
 async function readStdin() {
     return new Promise((resolve) => {
@@ -26,7 +30,7 @@ async function readStdin() {
 // 사용 예: printf '%s' "$TEXT" | node dist/index.js hook
 if (process.argv[2] === "hook") {
     const text = await readStdin();
-    if (text.length >= config.minChars) {
+    if (config.autoSpeak && text.length >= config.minChars) {
         const summary = await extractSummary(text, config.summaryModel);
         // EdgeTTS(HyunsuMultilingualNeural) → 스풀 큐 → 데몬 순차 재생
         await speakHook(summary, config.voice, config.ttsSpeed).catch(() => { });
@@ -44,12 +48,16 @@ if (process.argv[2] === "subagent-stop") {
         const label = getAgentLabel(agentType, voiceMap);
         const oneLiner = await extractOneLiner(text, config.summaryModel);
         const announcement = `${label}입니다. ${oneLiner}`;
-        await speakAgent(announcement, voice, voiceMap.supertonic.port, config.ttsSpeed).catch(() => { });
+        await speakAgent(announcement, voice, config.supertonicPort, config.ttsSpeed).catch(() => { });
     }
     process.exit(0);
 }
 if (process.argv[2] === "hook-suggest") {
-    const context = process.argv[3] ?? readRecentTranscripts();
+    const transcripts = readRecentTranscripts();
+    const promptHint = process.argv[3]
+        ? `\n[현재 입력]: ${String(process.argv[3]).slice(0, 200)}`
+        : "";
+    const context = transcripts + promptHint;
     const rec = await recommendSkill(context, false, config.skillCooldownMinutes, config.summaryModel);
     if (rec) {
         const msg = `지금 상황엔 ${rec.skill} 스킬이 유용할 것 같아요`;
@@ -59,7 +67,7 @@ if (process.argv[2] === "hook-suggest") {
     process.exit(0);
 }
 // ── MCP 서버 모드 ──────────────────────────────────────────
-const server = new Server({ name: "summary-voice-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "summary-voice-mcp", version }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
         {

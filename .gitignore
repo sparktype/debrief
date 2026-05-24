@@ -8,4 +8,6 @@ tts-venv/
 .supertonic.pid
 tts_server/__pycache__/
 .claude/
+!.claude/agents/
+!.claude/agents/*.md
 .superpowers/
