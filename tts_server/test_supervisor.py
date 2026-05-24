@@ -180,7 +180,7 @@ class TestMonitorChildren:
         shutdown = asyncio.Event()
 
         async def run():
-            await monitor_children([proc], shutdown=shutdown)
+            await monitor_children([proc], shutdown=shutdown, sleep_sec=0.01)
 
         asyncio.run(run())
         assert shutdown.is_set(), "자식 종료 시 shutdown 이벤트가 set되어야 한다"
@@ -206,7 +206,7 @@ class TestMonitorChildren:
                 return None
 
             proc.poll = patched_poll
-            await monitor_children([proc], shutdown=shutdown)
+            await monitor_children([proc], shutdown=shutdown, sleep_sec=0.01)
 
         asyncio.run(run())
         assert counter[0] >= 3

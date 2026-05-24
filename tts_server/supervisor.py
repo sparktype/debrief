@@ -104,6 +104,7 @@ async def cleanup_loop(
 async def monitor_children(
     procs: "list[subprocess.Popen]",
     shutdown: "asyncio.Event | None" = None,
+    sleep_sec: float = 1.0,
 ) -> None:
     """자식 프로세스를 1초 주기로 감시 — 비정상 종료 시 shutdown 이벤트 set."""
     if shutdown is None:
@@ -115,31 +116,35 @@ async def monitor_children(
                 log.error(f"[Monitor] 자식 PID {proc.pid} 비정상 종료 (returncode={rc})")
                 shutdown.set()
                 return
-        await asyncio.sleep(1)
+        await asyncio.sleep(sleep_sec)
 
 
 def _start_uvicorn() -> subprocess.Popen:
     """uvicorn 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
     log_fd = open(LOG_FILE, "a")
-    return subprocess.Popen(
+    proc = subprocess.Popen(
         [str(VENV_BIN / "uvicorn"), "tts_server.server:app",
          "--host", "127.0.0.1", "--port", "7777"],
         env={**os.environ, "HF_HUB_OFFLINE": "1"},
         stdout=log_fd,
         stderr=log_fd,
     )
+    log_fd.close()
+    return proc
 
 
 def _start_supertonic() -> subprocess.Popen:
     """supertonic 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
     supertonic_log = open("/tmp/supertonic.log", "a")
-    return subprocess.Popen(
+    proc = subprocess.Popen(
         [str(VENV_BIN / "supertonic"), "serve",
          "--host", "127.0.0.1", "--port", "7788"],
         env={**os.environ, "HF_HUB_OFFLINE": "0"},
         stdout=supertonic_log,
         stderr=supertonic_log,
     )
+    supertonic_log.close()
+    return proc
 
 
 async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
