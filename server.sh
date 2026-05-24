@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # summary-voice-mcp 실행·관리 스크립트
-# 사용법: ./server.sh [start|stop|restart|status|logs [줄수]|build|install|uninstall]
+# 사용법: ./server.sh [start|stop|restart|status|logs [줄수]|install|uninstall]
 set -euo pipefail
 
 # ── 경로 설정 ──────────────────────────────────────────────
@@ -22,7 +22,6 @@ PLAYER_SPOOL=/tmp/tts-spool
 
 # ── 환경변수 ───────────────────────────────────────────────
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
-export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-$HOME/.dot/cert/combined-ca.pem}"
 
 # HMG Hub 공용 엔드포인트 (LLM 요약)
 export HUB_BASE_URL="${HUB_BASE_URL:-https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3}"
@@ -67,26 +66,12 @@ _is_launchd_managed() {
 }
 
 _check_deps() {
-  if ! command -v node &>/dev/null; then
-    echo "오류: node 미설치." >&2; exit 1
-  fi
-  if [[ ! -f "$SCRIPT_DIR/dist/index.js" ]]; then
-    echo "경고: dist/index.js 없음 — 빌드 먼저 실행합니다." >&2
-    _do_build
-  fi
   if [[ ! -d "$SCRIPT_DIR/tts-venv" ]]; then
     echo "경고: tts-venv 없음 — setup-tts.sh를 먼저 실행하세요." >&2
   fi
   if [[ -z "${HUB_API_KEY:-}" ]]; then
     echo "경고: HUB_API_KEY 미설정 — LLM 요약이 폴백으로 동작합니다." >&2
   fi
-}
-
-_do_build() {
-  echo "TypeScript 빌드 중..."
-  cd "$SCRIPT_DIR"
-  npm run build
-  echo "✓ 빌드 완료"
 }
 
 # ── 수동 관리 명령 ─────────────────────────────────────────
@@ -181,21 +166,11 @@ do_stop() {
 
 do_restart() {
   do_stop
-  _do_build
   do_start
 }
 
 do_status() {
   echo "● voice-persona 상태"
-
-  # 빌드 확인
-  if [[ -f "$SCRIPT_DIR/dist/index.js" ]]; then
-    local mtime
-    mtime=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$SCRIPT_DIR/dist/index.js" 2>/dev/null || echo "알 수 없음")
-    echo "  빌드:      ✓ dist/index.js ($mtime)"
-  else
-    echo "  빌드:      ✗ 없음 — $(basename "$0") build 실행 필요"
-  fi
 
   # Supervisor 확인
   if _supervisor_running; then
@@ -500,11 +475,10 @@ case "$CMD" in
   restart)   do_restart ;;
   status)    do_status ;;
   logs)      do_logs "$@" ;;
-  build)     _do_build ;;
   install)   do_install ;;
   uninstall) do_uninstall ;;
   *)
-    echo "사용법: $(basename "$0") [start|stop|restart|status|logs [줄수]|build|install|uninstall]"
+    echo "사용법: $(basename "$0") [start|stop|restart|status|logs [줄수]|install|uninstall]"
     exit 1
     ;;
 esac
