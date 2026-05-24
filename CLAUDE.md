@@ -25,9 +25,9 @@ Claude Code의 응답을 자동으로 음성으로 읽어주는 hook 기반 시�
 
 ```bash
 # 테스트
-tts-venv/bin/pytest tests/ -v                        # hook_voice 테스트
-tts-venv/bin/pytest tts_server/test_server.py -v    # TTS 서버 테스트
-tts-venv/bin/pytest tests/ tts_server/test_server.py tts_server/test_supervisor.py -v  # 전체
+.venv/bin/pytest tests/ -v                        # hook_voice 테스트
+.venv/bin/pytest tts_server/test_server.py -v    # TTS 서버 테스트
+.venv/bin/pytest tests/ tts_server/test_server.py tts_server/test_supervisor.py -v  # 전체
 
 # TTS 서버 관리 (통합 스크립트)
 ./server.sh start     # 수동 시작
@@ -38,7 +38,7 @@ tts-venv/bin/pytest tests/ tts_server/test_server.py tts_server/test_supervisor.
 ./server.sh install   # Stop hook + launchd LaunchAgent 등록 (권장)
 ./server.sh uninstall # 완전 제거
 
-# 초기 설치 (tts-venv 생성 + 모델 다운로드)
+# 초기 설치 (.venv 생성 + 모델 다운로드)
 ./setup-tts.sh
 ```
 

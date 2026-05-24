@@ -16,7 +16,7 @@ error() { echo -e "  ${RED}✗${NC}  ${1}" >&2; exit 1; }
 
 # ── 경로 설정 ───────────────────────────────────────────────────────────────
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="${PROJECT_DIR}/tts-venv"
+VENV_DIR="${PROJECT_DIR}/.venv"
 SUPERVISOR_PY="${PROJECT_DIR}/tts_server/supervisor.py"
 PLIST_PATH="${HOME}/Library/LaunchAgents/com.voice-persona.tts-server.plist"
 MODEL_ID="mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
@@ -44,14 +44,14 @@ fi
 
 ok "Python ${PY_VERSION} 확인됨"
 
-# ── 2. tts-venv 생성 ────────────────────────────────────────────────────────
-step "가상환경(tts-venv) 준비"
+# ── 2. .venv 생성 ────────────────────────────────────────────────────────
+step "가상환경(.venv) 준비"
 
 if [[ -d "${VENV_DIR}" ]]; then
-  ok "tts-venv가 이미 존재합니다 — 스킵"
+  ok ".venv가 이미 존재합니다 — 스킵"
 else
   python3 -m venv "${VENV_DIR}"
-  ok "tts-venv 생성 완료"
+  ok ".venv 생성 완료"
 fi
 
 PIP="${VENV_DIR}/bin/pip"

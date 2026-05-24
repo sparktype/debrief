@@ -30,7 +30,7 @@ MLX_SPEAKERS = {"Sohee", "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan"
 
 def _venv_python() -> Path:
     env = os.environ.get("VOICE_PERSONA_VENV_PYTHON")
-    return Path(env) if env else Path(__file__).parent.parent / "tts-venv" / "bin" / "python3"
+    return Path(env) if env else Path(__file__).parent.parent / ".venv" / "bin" / "python3"
 
 
 def _enqueue_spool(audio_file: Path, speed: float) -> None:

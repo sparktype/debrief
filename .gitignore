@@ -2,7 +2,7 @@ node_modules/
 dist/
 *.mp3
 .siren.json
-tts-venv/
+.venv/
 *.wav
 .tts_server.pid
 .supertonic.pid

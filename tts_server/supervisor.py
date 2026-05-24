@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent
-VENV_BIN = PROJECT_DIR / "tts-venv" / "bin"
+VENV_BIN = PROJECT_DIR / ".venv" / "bin"
 PID_FILE = PROJECT_DIR / ".tts_server.pid"
 LOG_FILE = PROJECT_DIR / ".tts_server.log"
 SPOOL_DIR = Path("/tmp/tts-spool")

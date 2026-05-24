@@ -59,9 +59,9 @@ ok "저장소 준비 완료"
 echo ""
 info "[3/6] Python 가상환경 및 패키지 설치 중..."
 
-python3 -m venv tts-venv || err "Python venv 생성 실패."
-tts-venv/bin/pip install -q --upgrade pip
-tts-venv/bin/pip install -q mlx-audio edge-tts fastapi uvicorn 'supertonic[serve]' || \
+python3 -m venv .venv || err "Python venv 생성 실패."
+.venv/bin/pip install -q --upgrade pip
+.venv/bin/pip install -q mlx-audio edge-tts fastapi uvicorn 'supertonic[serve]' || \
   err "Python 패키지 설치 실패."
 ok "Python 환경 준비 완료"
 
@@ -79,7 +79,7 @@ if [[ "$SKIP_MODEL" == "false" ]]; then
   read -r -p "다운로드하시겠습니까? [Y/n] " REPLY
   REPLY="${REPLY:-Y}"
   if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-    tts-venv/bin/python3 -c "
+    .venv/bin/python3 -c "
 from mlx_audio.tts.utils import load_model
 load_model('mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
 print('모델 다운로드 완료')
@@ -153,7 +153,7 @@ cat > "$PLIST_FILE" << EOF
   <string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${INSTALL_DIR}/tts-venv/bin/python</string>
+    <string>${INSTALL_DIR}/.venv/bin/python</string>
     <string>${INSTALL_DIR}/tts_server/supervisor.py</string>
   </array>
   <key>RunAtLoad</key>
@@ -174,7 +174,7 @@ cat > "$PLIST_FILE" << EOF
     <key>HF_HUB_OFFLINE</key>
     <string>1</string>
     <key>PATH</key>
-    <string>${INSTALL_DIR}/tts-venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${INSTALL_DIR}/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
 </dict>
 </plist>

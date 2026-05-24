@@ -66,8 +66,8 @@ _is_launchd_managed() {
 }
 
 _check_deps() {
-  if [[ ! -d "$SCRIPT_DIR/tts-venv" ]]; then
-    echo "경고: tts-venv 없음 — setup-tts.sh를 먼저 실행하세요." >&2
+  if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
+    echo "경고: .venv 없음 — setup-tts.sh를 먼저 실행하세요." >&2
   fi
   if [[ -z "${HUB_API_KEY:-}" ]]; then
     echo "경고: HUB_API_KEY 미설정 — LLM 요약이 폴백으로 동작합니다." >&2
@@ -115,7 +115,7 @@ do_start() {
   fi
 
   echo "Supervisor 시작 중..."
-  nohup "$SCRIPT_DIR/tts-venv/bin/python" \
+  nohup "$SCRIPT_DIR/.venv/bin/python" \
       "$SCRIPT_DIR/tts_server/supervisor.py" \
       >> "$LOG_FILE" 2>&1 &
   disown $!
@@ -340,7 +340,7 @@ PYEOF
 
   <key>ProgramArguments</key>
   <array>
-    <string>${SCRIPT_DIR}/tts-venv/bin/python</string>
+    <string>${SCRIPT_DIR}/.venv/bin/python</string>
     <string>${SCRIPT_DIR}/tts_server/supervisor.py</string>
   </array>
 
@@ -369,7 +369,7 @@ PYEOF
     <key>HF_HUB_OFFLINE</key>
     <string>1</string>
     <key>PATH</key>
-    <string>${SCRIPT_DIR}/tts-venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${SCRIPT_DIR}/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HUB_BASE_URL</key>
     <string>${HUB_BASE_URL:-}</string>
     <key>HUB_API_KEY</key>

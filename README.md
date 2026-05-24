@@ -135,9 +135,9 @@ Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 ### 테스트
 
 ```bash
-tts-venv/bin/pytest tests/ -v                       # hook_voice 테스트
-tts-venv/bin/pytest tts_server/ -v                  # TTS 서버 테스트
-tts-venv/bin/pytest tests/ tts_server/ -v           # 전체
+.venv/bin/pytest tests/ -v                       # hook_voice 테스트
+.venv/bin/pytest tts_server/ -v                  # TTS 서버 테스트
+.venv/bin/pytest tests/ tts_server/ -v           # 전체
 ```
 
 ### 서버 관리
