@@ -49,22 +49,10 @@ _supertonic_running() {
   lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
 }
 
-_player_running() {
-  pgrep -f "tts_player.sh" > /dev/null 2>&1
-}
-
-_start_player() {
-  if _player_running; then return 0; fi
-  mkdir -p "$PLAYER_SPOOL"
-  nohup bash "$SCRIPT_DIR/tts_server/tts_player.sh" >> /tmp/tts-player.log 2>&1 &
-  echo "[TTS Player] 시작 (PID $!)"
-}
-
-_stop_player() {
-  if ! _player_running; then return 0; fi
-  kill "$(cat "$PLAYER_PID_FILE" 2>/dev/null || pgrep -f "tts_player.sh" | head -1)" 2>/dev/null || true
-  rm -f "$PLAYER_PID_FILE"
-  echo "[TTS Player] 종료"
+_supervisor_running() {
+  local pid
+  pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null) || return 1
+  kill -0 "$pid" 2>/dev/null
 }
 
 _check_health() {
@@ -107,31 +95,26 @@ do_start() {
   _check_deps
 
   if _is_launchd_managed; then
-    echo "launchd 서비스가 TTS 서버를 관리 중입니다."
+    echo "launchd 서비스가 supervisor를 관리 중입니다."
     echo "  일시 중지: launchctl stop  $LAUNCHD_LABEL"
     echo "  재시작:    launchctl start $LAUNCHD_LABEL"
     echo "  완전 제거: $(basename "$0") uninstall"
     return 0
   fi
 
-  if _tts_running; then
+  if _supervisor_running; then
     local pid
-    pid=$(lsof -iTCP:${TTS_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
-    echo "이미 실행 중 (TTS 서버 PID: $pid, 포트 ${TTS_PORT})"
+    pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null)
+    echo "이미 실행 중 (supervisor PID: $pid)"
     return 0
   fi
 
-  echo "TTS 서버 시작 중..."
-  bash "$SCRIPT_DIR/tts_server/start.sh"
-  _start_player
+  echo "Supervisor 시작 중..."
+  nohup "$SCRIPT_DIR/tts-venv/bin/python" \
+      "$SCRIPT_DIR/tts_server/supervisor.py" \
+      >> "$LOG_FILE" 2>&1 &
+  disown $!
 
-  # Supertonic 서버 자동 시작 (미실행 시에만)
-  if ! _supertonic_running; then
-    echo "Supertonic 서버 시작 중..."
-    bash "$SCRIPT_DIR/tts_server/supertonic_start.sh"
-  fi
-
-  # 최대 10초 대기하여 /health 응답 확인
   local i=0
   while (( i < 10 )); do
     if [[ "$(_check_health "$TTS_PORT")" == "200" ]]; then
@@ -141,33 +124,39 @@ do_start() {
     sleep 1
     i=$(( i + 1 ))
   done
-
-  echo "✓ TTS 서버 프로세스 기동됨 — 모델 로딩 중, 잠시 후 응답 예정"
+  echo "✓ Supervisor 기동됨 — 모델 로딩 중, 잠시 후 응답 예정"
 }
 
 do_stop() {
-  _stop_player
-  # Supertonic 서버 종료
-  if _supertonic_running; then
-    echo "Supertonic 서버 종료 중..."
-    bash "$SCRIPT_DIR/tts_server/supertonic_stop.sh"
-  fi
-  if ! _tts_running; then
-    echo "TTS 서버가 실행 중이지 않습니다."
-    return 0
-  fi
   if _is_launchd_managed; then
     echo "launchd 관리 서버 종료 중 (launchctl stop)..."
     launchctl stop "$LAUNCHD_LABEL"
     local i=0
     while (( i < 8 )); do
-      _tts_running || break
+      _supervisor_running || break
       sleep 1
       i=$(( i + 1 ))
     done
     return 0
   fi
-  bash "$SCRIPT_DIR/tts_server/stop.sh"
+
+  if ! _supervisor_running; then
+    echo "Supervisor가 실행 중이지 않습니다."
+    return 0
+  fi
+
+  local pid
+  pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null)
+  echo "Supervisor 종료 중 (PID $pid)..."
+  kill -TERM "$pid" 2>/dev/null || true
+  local i=0
+  while (( i < 8 )); do
+    _supervisor_running || break
+    sleep 1
+    i=$(( i + 1 ))
+  done
+  rm -f "$SCRIPT_DIR/.tts_server.pid"
+  echo "종료 완료"
 }
 
 do_restart() {
@@ -188,6 +177,15 @@ do_status() {
     echo "  빌드:      ✗ 없음 — $(basename "$0") build 실행 필요"
   fi
 
+  # Supervisor 확인
+  if _supervisor_running; then
+    local pid
+    pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null)
+    echo "  Supervisor: ✓ 실행 중 (PID: $pid)"
+  else
+    echo "  Supervisor: ✗ 중지됨"
+  fi
+
   # TTS 서버 확인
   if _tts_running; then
     local pid
@@ -200,17 +198,6 @@ do_status() {
     fi
   else
     echo "  TTS 서버:  ✗ 중지됨"
-  fi
-
-  # TTS Player 데몬 확인
-  if _player_running; then
-    local pl_pid
-    pl_pid=$(cat "$PLAYER_PID_FILE" 2>/dev/null || pgrep -f "tts_player.sh" | head -1)
-    local spool_count
-    spool_count=$(find "$PLAYER_SPOOL" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
-    echo "  TTS Player: ✓ 실행 중 (PID: $pl_pid, 스풀 대기: ${spool_count}개)"
-  else
-    echo "  TTS Player: ✗ 중지됨"
   fi
 
   # Supertonic 서버 확인
@@ -333,17 +320,9 @@ else:
     print("  ✓ SubagentStop hook 등록 완료")
 PYEOF
 
-  # 3. Supertonic 서버 시작
-  echo "Supertonic 서버 시작 중..."
-  bash "$SCRIPT_DIR/tts_server/supertonic_start.sh"
-
-  # 4. TTS Player 데몬 시작
-  echo "TTS Player 데몬 시작 중..."
-  _start_player
-
-  # 5. TTS LaunchAgent 등록 (수동 실행 서버 종료 후)
-  if _tts_running && ! _is_launchd_managed; then
-    echo "수동 실행 TTS 서버 종료 중..."
+  # 3. TTS LaunchAgent 등록 (수동 실행 supervisor 종료 후)
+  if _supervisor_running && ! _is_launchd_managed; then
+    echo "수동 실행 Supervisor 종료 중..."
     do_stop
   fi
 
@@ -366,8 +345,8 @@ PYEOF
 
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>${SCRIPT_DIR}/tts_server/start.sh</string>
+    <string>${SCRIPT_DIR}/tts-venv/bin/python</string>
+    <string>${SCRIPT_DIR}/tts_server/supervisor.py</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -477,19 +456,10 @@ else:
 PYEOF
   fi
 
-  # TTS Player 종료
-  _stop_player
-
-  # Supertonic 서버 종료
-  if _supertonic_running; then
-    echo "Supertonic 서버 종료 중..."
-    bash "$SCRIPT_DIR/tts_server/supertonic_stop.sh"
-  fi
-
-  # TTS 서버 종료 + LaunchAgent 제거
-  if _tts_running; then
-    echo "TTS 서버 종료 중..."
-    bash "$SCRIPT_DIR/tts_server/stop.sh" 2>/dev/null || true
+  # Supervisor 종료 + LaunchAgent 제거
+  if _supervisor_running; then
+    echo "Supervisor 종료 중..."
+    do_stop
   fi
   if [[ -f "$LAUNCHD_PLIST" ]]; then
     launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
