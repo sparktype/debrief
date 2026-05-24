@@ -42,8 +42,13 @@ def test_load_config_all_keys_mapped(tmp_path):
     cfg_file = tmp_path / "config.json"
     cfg_file.write_text(json.dumps(full))
     cfg = load_config(cfg_file)
+    assert cfg.auto_speak is False
+    assert cfg.min_chars == 99
     assert cfg.voice == "Eric"
+    assert cfg.summary_model == "gpt-4"
+    assert cfg.tts_speed == 0.9
+    assert cfg.tts_instruct == "천천히"
+    assert cfg.skill_cooldown_minutes == 10
     assert cfg.supertonic_port == 8888
     assert cfg.edge_timeout_ms == 5000
     assert cfg.supertonic_timeout_ms == 15000
-    assert cfg.skill_cooldown_minutes == 10
