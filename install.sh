@@ -4,7 +4,7 @@ set -euo pipefail
 INSTALL_DIR="${HOME}/.local/share/voice-persona"
 REPO_URL="https://github.com/sparktype/voice-persona"
 LAUNCHD_PLIST_DIR="${HOME}/Library/LaunchAgents"
-LAUNCHD_LABEL="com.voice-persona.tts-player"
+LAUNCHD_LABEL="com.voice-persona.tts-server"
 PLIST_FILE="${LAUNCHD_PLIST_DIR}/${LAUNCHD_LABEL}.plist"
 HOOKS_SETTINGS="${HOME}/.claude/settings.json"
 
@@ -75,7 +75,7 @@ info "[4/7] Python 가상환경 및 패키지 설치 중..."
 
 python3 -m venv tts-venv || err "Python venv 생성 실패."
 tts-venv/bin/pip install -q --upgrade pip
-tts-venv/bin/pip install -q mlx-audio edge-tts fastapi uvicorn || \
+tts-venv/bin/pip install -q mlx-audio edge-tts fastapi uvicorn 'supertonic[serve]' || \
   err "Python 패키지 설치 실패."
 ok "Python 환경 준비 완료"
 
@@ -148,9 +148,9 @@ console.log('hooks 등록 완료');
 register_hooks || warn "hooks 등록 실패. 수동 등록이 필요합니다."
 ok "Claude Code hooks 등록 완료"
 
-# ── [7/7] TTS Player LaunchAgent 등록 ────────────────────────────────────────
+# ── [7/7] TTS Supervisor LaunchAgent 등록 ────────────────────────────────────
 echo ""
-info "[7/7] TTS Player LaunchAgent 등록 중..."
+info "[7/7] TTS Supervisor LaunchAgent 등록 중..."
 
 mkdir -p "$LAUNCHD_PLIST_DIR"
 
@@ -163,24 +163,37 @@ cat > "$PLIST_FILE" << EOF
   <string>${LAUNCHD_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>${INSTALL_DIR}/tts_server/tts_player.sh</string>
+    <string>${INSTALL_DIR}/tts-venv/bin/python</string>
+    <string>${INSTALL_DIR}/tts_server/supervisor.py</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
   <key>StandardOutPath</key>
-  <string>/tmp/voice-persona-player.log</string>
+  <string>${INSTALL_DIR}/.tts_server.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/voice-persona-player.log</string>
+  <string>${INSTALL_DIR}/.tts_server.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HF_HUB_OFFLINE</key>
+    <string>1</string>
+    <key>PATH</key>
+    <string>${INSTALL_DIR}/tts-venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
 </dict>
 </plist>
 EOF
 
 launchctl unload "$PLIST_FILE" 2>/dev/null || true
-launchctl load "$PLIST_FILE" 2>/dev/null || warn "LaunchAgent 등록 실패. 수동 실행: bash ${INSTALL_DIR}/tts_server/tts_player.sh"
-ok "TTS Player LaunchAgent 등록 완료"
+launchctl load "$PLIST_FILE" 2>/dev/null || warn "LaunchAgent 등록 실패. 수동 실행: ${INSTALL_DIR}/server.sh start"
+launchctl start "${LAUNCHD_LABEL}" 2>/dev/null || true
+ok "TTS Supervisor LaunchAgent 등록 완료"
 
 # ── 완료 ─────────────────────────────────────────────────────────────────────
 echo ""
@@ -188,7 +201,8 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}✓ voice-persona 설치 완료${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "  작동 확인 : node ${INSTALL_DIR}/dist/index.js test"
+echo "  상태 확인 : ${INSTALL_DIR}/server.sh status"
+echo "  서버 로그 : tail -f ${INSTALL_DIR}/.tts_server.log"
 echo "  설정 파일 : ~/.voice-persona.json (없으면 기본값 사용)"
 echo "  제거      : bash ${INSTALL_DIR}/uninstall.sh"
 echo ""

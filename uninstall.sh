@@ -2,7 +2,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/share/voice-persona"
-LAUNCHD_LABEL="com.voice-persona.tts-player"
+LAUNCHD_LABEL="com.voice-persona.tts-server"
 PLIST_FILE="${HOME}/Library/LaunchAgents/${LAUNCHD_LABEL}.plist"
 HOOKS_SETTINGS="${HOME}/.claude/settings.json"
 
@@ -18,7 +18,7 @@ echo "  LaunchAgent 제거 완료"
 
 # 2. TTS 관련 임시 파일 정리
 echo "  임시 파일 정리 중..."
-rm -rf /tmp/tts-spool /tmp/voice-persona*.log /tmp/voice-persona.lock
+rm -rf /tmp/tts-spool /tmp/voice-persona*.log /tmp/supertonic.log /tmp/voice-persona.lock
 echo "  임시 파일 정리 완료"
 
 # 3. ~/.claude/settings.json에서 hooks 제거

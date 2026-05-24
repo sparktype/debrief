@@ -79,7 +79,7 @@ Claude Code 내에서 직접 호출할 수 있는 도구:
 멀티 에이전트 팀 작업 시 에이전트 타입별로 다른 목소리를 사용합니다.
 `voice-map.json`을 편집해 매핑을 변경할 수 있습니다 — 코드 수정 없이 JSON만 바꾸면 됩니다.
 
-Supertonic TTS 서버(`./tts_server/supertonic_start.sh`)를 실행하면 다성 TTS가 활성화됩니다.
+Supertonic TTS 서버는 supervisor가 자동으로 기동합니다 — `./server.sh status`로 확인할 수 있습니다.
 
 ## 문제 해결
 
@@ -97,7 +97,7 @@ node ~/.local/share/voice-persona/dist/index.js test
 - 오프라인 환경: `VOICE_PERSONA_OFFLINE=1` 환경변수 설정 시 MLX 서버 우선 사용
 
 **MLX 모델 로딩 실패**
-- MLX 서버 로그 확인: `tail -f /tmp/voice-persona-tts.log`
+- MLX 서버 로그 확인: `tail -f ~/.local/share/voice-persona/.tts_server.log`
 - Apple Silicon 확인: `uname -m` → `arm64` 이어야 함
 
 **Hook이 작동 안 할 때**
@@ -122,17 +122,16 @@ bash ~/.local/share/voice-persona/uninstall.sh
 
 ### 아키텍처
 
-두 개의 독립적인 프로세스로 구성됩니다.
+두 개의 주요 프로세스로 구성됩니다.
 
 **MCP 서버** (Node.js/TypeScript) — `src/`
 Claude Code Stop hook에서 호출되거나 MCP tool로 사용합니다.
 Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 
-**TTS 상주 서버** (Python/FastAPI, 포트 7777) — `tts_server/`
-MLX Metal GPU 스트림을 단일 워커 스레드에 고정해 모델을 메모리에 상주시킵니다.
-
-**TTS Player 데몬** — `tts_server/tts_player.sh`
-`/tmp/tts-spool/`을 폴링해 epoch_ms 오름차순으로 순차 재생합니다.
+**TTS Supervisor** (Python, `tts_server/supervisor.py`) — launchd가 단일 프로세스로 관리
+- uvicorn (포트 7777) — MLX Metal GPU TTS
+- supertonic (포트 7788) — 다성 TTS
+- TTS Player Loop — `/tmp/tts-spool/` 폴링 후 epoch_ms 오름차순 순차 재생
 
 ### 빌드 및 테스트
 
@@ -171,6 +170,6 @@ npm run dev      # tsx로 직접 실행
 | `src/summarizer.ts` | LLM 요약 + 규칙 기반 폴백 |
 | `src/voice-router.ts` | agentType → voice ID 변환 |
 | `tts_server/server.py` | FastAPI MLX TTS 서버 |
-| `tts_server/tts_player.sh` | 스풀 소비자 데몬 |
+| `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
 
 </details>

@@ -28,7 +28,7 @@ Top MCP Servers:
 
 ## Team Tips
 
-- Supertonic 서버를 항상 켜두세요 (`./tts_server/supertonic_start.sh`). 켜져 있으면 에이전트 타입별로 다른 목소리가 자동 배정됩니다 — 코드 리뷰어는 M2, 플래너는 M1, 빌더는 M4, 탐색기는 F3.
+- TTS Supervisor(`./server.sh status`)가 실행 중이면 Supertonic이 자동으로 켜져 에이전트 타입별로 다른 목소리가 배정됩니다 — 코드 리뷰어는 M2, 플래너는 M1, 빌더는 M4, 탐색기는 F3.
 - 에이전트를 병렬로 파견할 때 `subagent_type`을 명시하면 작업 완료 시 역할에 맞는 목소리로 결과를 읽어줍니다. 팀원은 완료 후 `"리뷰어입니다. [한 줄 요약]"` 형식으로 자기 소개와 함께 보고합니다.
 - 팀 구성 시 모델은 반드시 `model: "sonnet"`(Sonnet 4.6)으로 지정하세요. HMG 사내 AI에서 Opus 모델은 지원되지 않습니다.
 - 리더와 팀원의 발화가 겹치지 않도록 `/tmp/voice-persona.lock`으로 자동 직렬화됩니다 — 별도 설정 불필요.

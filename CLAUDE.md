@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **오너**: 박상선 책임매니저  
 **리포**: github.com/sparktype/summary-voice-mcp
 
-작업 진행 시 Supertonic 서버(`./tts_server/supertonic_start.sh`)를 켜두면 에이전트별 다성 TTS가 활성화됩니다.  
+TTS Supervisor(`./server.sh status`)가 실행 중이면 Supertonic이 자동으로 켜져 에이전트별 다성 TTS가 활성화됩니다.  
 에이전트 타입 → 목소리 매핑은 `voice-map.json`에서 편집하며, 코드 변경 없이 JSON만 수정하면 됩니다.
 
 **팀 구성 시 모델**: 반드시 `claude-sonnet-4-6`(Sonnet 4.6)만 사용합니다.  
@@ -16,10 +16,10 @@ HMG 사내 AI에서 Opus 모델은 지원되지 않으며, Agent 파라미터 `m
 
 ## 프로젝트 개요
 
-Claude Code의 응답을 자동으로 음성으로 읽어주는 MCP 서버. 두 개의 독립적인 프로세스로 구성된다.
+Claude Code의 응답을 자동으로 음성으로 읽어주는 MCP 서버. 두 개의 주요 프로세스로 구성된다.
 
 - **MCP 서버** (Node.js/TypeScript): Claude Code Stop hook에서 호출되거나 MCP tool로 사용
-- **TTS 상주 서버** (Python/FastAPI, 포트 7777): MLX 모델을 메모리에 올려두고 요청을 처리
+- **TTS Supervisor** (`tts_server/supervisor.py`): launchd가 단일 프로세스로 관리 — uvicorn(포트 7777)·supertonic(포트 7788)·TTS Player 루프를 포함
 
 ## 명령어
 
@@ -74,8 +74,8 @@ Claude 응답 완료
           ├─ /tmp/tts-spool/<epoch_ms>.wav 기록 → 즉시 반환
           └─ 실패 시 speakInner() 직접 재생 폴백
 
-TTS Player 데몬 (tts_server/tts_player.sh)
-  → /tmp/tts-spool/ 0.3초 폴링 → epoch_ms 오름차순 afplay 순차 재생
+TTS Player Loop (supervisor.py 내 asyncio Task)
+  → /tmp/tts-spool/ 폴링 → epoch_ms 오름차순 afplay 순차 재생
 
 세션 시작 / 프롬프트 입력
   → SessionStart / UserPromptSubmit hook
@@ -97,7 +97,7 @@ TTS Player 데몬 (tts_server/tts_player.sh)
 | `src/last-message-store.ts` | 마지막 TTS 텍스트 파일 영속화 (`speak_last` 지원) |
 | `src/llm-client.ts` | HMG Hub LLM 클라이언트 공통 모듈 |
 | `tts_server/server.py` | FastAPI TTS 서버 — 단일 워커 스레드로 MLX 모델 실행 |
-| `tts_server/tts_player.sh` | 스풀 소비자 데몬 — `/tmp/tts-spool/` 순차 재생 |
+| `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
 
 ### TTS 서버 설계 포인트
 

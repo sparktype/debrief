@@ -17,7 +17,7 @@ error() { echo -e "  ${RED}✗${NC}  ${1}" >&2; exit 1; }
 # ── 경로 설정 ───────────────────────────────────────────────────────────────
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${PROJECT_DIR}/tts-venv"
-START_SH="${PROJECT_DIR}/tts_server/start.sh"
+SUPERVISOR_PY="${PROJECT_DIR}/tts_server/supervisor.py"
 PLIST_PATH="${HOME}/Library/LaunchAgents/com.voice-persona.tts-server.plist"
 MODEL_ID="mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 LABEL="com.voice-persona.tts-server"
@@ -132,15 +132,23 @@ cat > "${PLIST_PATH}" << PLIST_EOF
 
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>${START_SH}</string>
+    <string>${VENV_DIR}/bin/python</string>
+    <string>${SUPERVISOR_PY}</string>
   </array>
 
   <key>RunAtLoad</key>
   <true/>
 
+  <!-- 비정상 종료(크래시)만 재시작 — launchctl stop 후에는 재시작 안 함 -->
   <key>KeepAlive</key>
-  <false/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <!-- 크래시 루프 방지: 재시작 최소 간격 10초 -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
 
   <key>StandardOutPath</key>
   <string>/tmp/voice-persona-tts.log</string>
@@ -154,8 +162,10 @@ cat > "${PLIST_PATH}" << PLIST_EOF
     <string>1</string>
     <key>PATH</key>
     <string>${VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin</string>
-    <key>PROJECT_DIR</key>
-    <string>${PROJECT_DIR}</string>
+    <key>HUB_BASE_URL</key>
+    <string></string>
+    <key>HUB_API_KEY</key>
+    <string></string>
   </dict>
 </dict>
 </plist>
@@ -175,15 +185,14 @@ fi
 launchctl load "${PLIST_PATH}"
 ok "LaunchAgent 등록 완료"
 
-# ── 9. TTS 서버 즉시 시작 ──────────────────────────────────────────────────
-step "TTS 서버 시작"
+# ── 9. Supervisor 즉시 시작 ─────────────────────────────────────────────────
+step "Supervisor 시작"
 
-if [[ ! -f "${START_SH}" ]]; then
-  warn "tts_server/start.sh를 찾을 수 없습니다. 서버 시작을 건너뜁니다."
-  warn "start.sh를 생성한 후 'bash ${START_SH}' 를 실행하거나 재부팅하세요."
+if [[ ! -f "${SUPERVISOR_PY}" ]]; then
+  warn "tts_server/supervisor.py를 찾을 수 없습니다. 서버 시작을 건너뜁니다."
 else
-  bash "${START_SH}"
-  ok "TTS 서버 시작 명령 완료"
+  launchctl start "${LABEL}" 2>/dev/null || true
+  ok "Supervisor 시작 명령 완료 (포트 7777·7788 로딩 중)"
 fi
 
 # ── 완료 ────────────────────────────────────────────────────────────────────
@@ -195,7 +204,8 @@ echo ""
 echo "  모델   : ${MODEL_ID}"
 echo "  venv   : ${VENV_DIR}"
 echo "  plist  : ${PLIST_PATH}"
-echo "  로그   : /tmp/voice-persona-tts.log"
+echo "  로그   : ${PROJECT_DIR}/.tts_server.log"
 echo ""
-echo "  서버 로그 확인: tail -f /tmp/voice-persona-tts.log"
+echo "  상태 확인: ${PROJECT_DIR}/server.sh status"
+echo "  서버 로그: tail -f ${PROJECT_DIR}/.tts_server.log"
 echo ""
