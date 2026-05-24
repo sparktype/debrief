@@ -83,3 +83,80 @@ async def player_loop(
             if audio is not None and audio.exists():
                 audio.unlink(missing_ok=True)
             idle = 0
+
+
+async def cleanup_loop(
+    spool: Path = SPOOL_DIR,
+    shutdown: "asyncio.Event | None" = None,
+    interval: float = 1800.0,
+) -> None:
+    """시작 시 1회 + 30분 주기로 stale 파일 정리."""
+    if shutdown is None:
+        shutdown = _shutdown_event
+    _do_cleanup(spool)
+    while not shutdown.is_set():
+        try:
+            await asyncio.wait_for(shutdown.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            _do_cleanup(spool)
+
+
+async def monitor_children(
+    procs: "list[subprocess.Popen]",
+    shutdown: "asyncio.Event | None" = None,
+) -> None:
+    """자식 프로세스를 1초 주기로 감시 — 비정상 종료 시 shutdown 이벤트 set."""
+    if shutdown is None:
+        shutdown = _shutdown_event
+    while not shutdown.is_set():
+        for proc in procs:
+            rc = proc.poll()
+            if rc is not None:
+                log.error(f"[Monitor] 자식 PID {proc.pid} 비정상 종료 (returncode={rc})")
+                shutdown.set()
+                return
+        await asyncio.sleep(1)
+
+
+def _start_uvicorn() -> subprocess.Popen:
+    """uvicorn 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
+    log_fd = open(LOG_FILE, "a")
+    return subprocess.Popen(
+        [str(VENV_BIN / "uvicorn"), "tts_server.server:app",
+         "--host", "127.0.0.1", "--port", "7777"],
+        env={**os.environ, "HF_HUB_OFFLINE": "1"},
+        stdout=log_fd,
+        stderr=log_fd,
+    )
+
+
+def _start_supertonic() -> subprocess.Popen:
+    """supertonic 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
+    supertonic_log = open("/tmp/supertonic.log", "a")
+    return subprocess.Popen(
+        [str(VENV_BIN / "supertonic"), "serve",
+         "--host", "127.0.0.1", "--port", "7788"],
+        env={**os.environ, "HF_HUB_OFFLINE": "0"},
+        stdout=supertonic_log,
+        stderr=supertonic_log,
+    )
+
+
+async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
+    """자식 프로세스를 역순 SIGTERM → 5초 후 SIGKILL로 종료한다."""
+    log.info("[Supervisor] 종료 시작...")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 5.0
+    for proc in reversed(procs):   # supertonic → uvicorn 순서
+        proc.terminate()
+    for proc in procs:
+        remaining = max(0.1, deadline - loop.time())
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, proc.wait),
+                timeout=remaining,
+            )
+        except asyncio.TimeoutError:
+            log.warning(f"[Supervisor] PID {proc.pid} 응답 없음 — SIGKILL")
+            proc.kill()
+    log.info("[Supervisor] 종료 완료")

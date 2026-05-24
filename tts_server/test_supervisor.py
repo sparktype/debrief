@@ -165,3 +165,48 @@ class TestPlayerLoop:
 
         asyncio.run(run())
         assert played[0] == "1000.wav", "오래된 파일이 먼저 재생되어야 한다"
+
+
+class TestMonitorChildren:
+    def test_sets_shutdown_on_child_exit(self):
+        """자식 프로세스가 종료되면 shutdown 이벤트를 set한다."""
+        from unittest.mock import MagicMock
+        from tts_server.supervisor import monitor_children
+
+        proc = MagicMock()
+        proc.pid = 9999
+        proc.poll.return_value = 1  # 비정상 종료
+
+        shutdown = asyncio.Event()
+
+        async def run():
+            await monitor_children([proc], shutdown=shutdown)
+
+        asyncio.run(run())
+        assert shutdown.is_set(), "자식 종료 시 shutdown 이벤트가 set되어야 한다"
+
+    def test_does_not_shutdown_while_children_running(self):
+        """자식이 정상 실행 중이면 shutdown을 set하지 않는다."""
+        from unittest.mock import MagicMock
+        from tts_server.supervisor import monitor_children
+
+        proc = MagicMock()
+        proc.pid = 9998
+        proc.poll.return_value = None  # 실행 중
+
+        shutdown = asyncio.Event()
+        # call_count를 외부에서 참조할 수 있도록 리스트로 래핑
+        counter = [0]
+
+        async def run():
+            def patched_poll():
+                counter[0] += 1
+                if counter[0] >= 3:
+                    shutdown.set()
+                return None
+
+            proc.poll = patched_poll
+            await monitor_children([proc], shutdown=shutdown)
+
+        asyncio.run(run())
+        assert counter[0] >= 3
