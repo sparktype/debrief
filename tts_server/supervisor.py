@@ -165,3 +165,37 @@ async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
             log.warning(f"[Supervisor] PID {proc.pid} 응답 없음 — SIGKILL")
             proc.kill()
     log.info("[Supervisor] 종료 완료")
+
+
+async def main() -> None:
+    PID_FILE.write_text(str(os.getpid()))
+    log.info(f"[Supervisor] 시작 (PID {os.getpid()})")
+
+    uvicorn_proc = _start_uvicorn()
+    log.info(f"[Supervisor] uvicorn 기동 (PID {uvicorn_proc.pid})")
+
+    supertonic_proc = _start_supertonic()
+    log.info(f"[Supervisor] supertonic 기동 (PID {supertonic_proc.pid})")
+
+    procs = [uvicorn_proc, supertonic_proc]
+    loop = asyncio.get_running_loop()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _shutdown_event.set)
+
+    try:
+        await asyncio.gather(
+            player_loop(),
+            cleanup_loop(),
+            monitor_children(procs),
+        )
+    finally:
+        await _graceful_shutdown(procs)
+        PID_FILE.unlink(missing_ok=True)
+        # 자식 중 하나라도 비정상 종료면 exit(1) → launchd 재시작 트리거
+        if any(p.returncode not in (None, 0) for p in procs):
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
