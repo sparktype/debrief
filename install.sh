@@ -15,21 +15,15 @@ ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}⚠${NC} $*"; }
 err()  { echo -e "${RED}✗${NC} $*"; exit 1; }
 
-# ── [1/7] 환경 확인 ──────────────────────────────────────────────────────────
+# ── [1/6] 환경 확인 ──────────────────────────────────────────────────────────
 echo ""
-info "[1/7] 환경 확인 중..."
+info "[1/6] 환경 확인 중..."
 
 [[ "$(uname -m)" != "arm64" ]] && err "Apple Silicon(M1/M2/M3/M4) Mac에서만 실행 가능합니다."
 
 OS_VER=$(sw_vers -productVersion)
 MAJOR=$(echo "$OS_VER" | cut -d. -f1)
 [[ "$MAJOR" -lt 13 ]] && err "macOS 13(Ventura) 이상이 필요합니다. 현재: $OS_VER"
-
-if ! command -v node &>/dev/null; then
-  err "Node.js가 없습니다. https://nodejs.org 에서 설치하세요."
-fi
-NODE_VER=$(node -e "process.stdout.write(process.versions.node.split('.')[0])")
-[[ "$NODE_VER" -lt 18 ]] && err "Node.js 18 이상이 필요합니다. 현재: $(node --version)"
 
 if ! command -v python3 &>/dev/null; then
   err "Python 3.11+가 없습니다. 'brew install python@3.11' 로 설치하세요."
@@ -44,11 +38,11 @@ if ! command -v claude &>/dev/null; then
   warn "Claude Code 없이도 설치는 계속됩니다."
 fi
 
-ok "환경 확인 완료 (macOS $OS_VER, Node $(node --version), Python $(python3 --version))"
+ok "환경 확인 완료 (macOS $OS_VER, Python $(python3 --version))"
 
-# ── [2/7] 저장소 클론/업데이트 ───────────────────────────────────────────────
+# ── [2/6] 저장소 클론/업데이트 ───────────────────────────────────────────────
 echo ""
-info "[2/7] 저장소 준비 중..."
+info "[2/6] 저장소 준비 중..."
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   info "기존 설치를 업데이트합니다: $INSTALL_DIR"
@@ -61,17 +55,9 @@ fi
 cd "$INSTALL_DIR"
 ok "저장소 준비 완료"
 
-# ── [3/7] Node.js 빌드 ───────────────────────────────────────────────────────
+# ── [3/6] Python 환경 ────────────────────────────────────────────────────────
 echo ""
-info "[3/7] Node.js 패키지 설치 및 빌드 중..."
-
-npm ci --silent || err "npm ci 실패."
-npm run build || err "빌드 실패."
-ok "빌드 완료"
-
-# ── [4/7] Python 환경 ────────────────────────────────────────────────────────
-echo ""
-info "[4/7] Python 가상환경 및 패키지 설치 중..."
+info "[3/6] Python 가상환경 및 패키지 설치 중..."
 
 python3 -m venv tts-venv || err "Python venv 생성 실패."
 tts-venv/bin/pip install -q --upgrade pip
@@ -79,9 +65,9 @@ tts-venv/bin/pip install -q mlx-audio edge-tts fastapi uvicorn 'supertonic[serve
   err "Python 패키지 설치 실패."
 ok "Python 환경 준비 완료"
 
-# ── [5/7] MLX 모델 캐시 (선택) ───────────────────────────────────────────────
+# ── [4/6] MLX 모델 캐시 (선택) ───────────────────────────────────────────────
 echo ""
-info "[5/7] MLX Qwen3-TTS 모델 캐시 확인 중..."
+info "[4/6] MLX Qwen3-TTS 모델 캐시 확인 중..."
 
 SKIP_MODEL=false
 for arg in "$@"; do [[ "$arg" == "--skip-model" ]] && SKIP_MODEL=true; done
@@ -105,52 +91,56 @@ else
   warn "모델 다운로드 건너뜀 (--skip-model). Edge TTS fallback으로 동작합니다."
 fi
 
-# ── [6/7] Claude Code hooks 등록 ─────────────────────────────────────────────
+# ── [5/6] Claude Code hooks 등록 ─────────────────────────────────────────────
 echo ""
-info "[6/7] Claude Code hooks 등록 중..."
+info "[5/6] Claude Code hooks 등록 중..."
 
 register_hooks() {
   local settings_file="$HOOKS_SETTINGS"
   mkdir -p "$(dirname "$settings_file")"
+  local install_dir="$INSTALL_DIR"
 
-  node -e "
-const fs = require('fs');
-const path = '$settings_file';
-const installDir = '$INSTALL_DIR';
+  python3 - <<PYEOF
+import json, os, sys
+path = "$settings_file"
+install_dir = "$install_dir"
 
-let config = {};
-try { config = JSON.parse(fs.readFileSync(path, 'utf8')); } catch {}
+try:
+    with open(path) as f:
+        config = json.load(f)
+except Exception:
+    config = {}
 
-config.hooks = config.hooks || {};
+hooks = config.setdefault("hooks", {})
 
-const hookDefs = {
-  Stop: [{ matcher: '', hooks: [{ type: 'command', command: installDir + '/hooks/stop.sh', timeout: 15 }] }],
-  SubagentStop: [{ matcher: '', hooks: [{ type: 'command', command: installDir + '/hooks/subagent-stop.sh', timeout: 15 }] }],
-  UserPromptSubmit: [{ matcher: '', hooks: [{ type: 'command', command: installDir + '/hooks/prompt-submit.sh', timeout: 10 }] }],
-  SessionStart: [{ matcher: '', hooks: [{ type: 'command', command: installDir + '/hooks/session-start.sh', timeout: 10 }] }],
-};
-
-for (const [event, def] of Object.entries(hookDefs)) {
-  if (!config.hooks[event]) {
-    config.hooks[event] = def;
-  } else {
-    const exists = config.hooks[event].some(h =>
-      h.hooks && h.hooks.some(hh => hh.command && hh.command.includes('voice-persona'))
-    );
-    if (!exists) config.hooks[event].push(...def);
-  }
+hook_defs = {
+    "Stop": {"timeout": 15, "script": "stop.sh"},
+    "SubagentStop": {"timeout": 15, "script": "subagent-stop.sh"},
+    "UserPromptSubmit": {"timeout": 10, "script": "prompt-submit.sh"},
+    "SessionStart": {"timeout": 10, "script": "session-start.sh"},
 }
 
-fs.writeFileSync(path, JSON.stringify(config, null, 2));
-console.log('hooks 등록 완료');
-"
+for event, meta in hook_defs.items():
+    cmd = f"{install_dir}/hooks/{meta['script']}"
+    entry = {"matcher": "", "hooks": [{"type": "command", "command": cmd, "timeout": meta["timeout"]}]}
+    lst = hooks.setdefault(event, [])
+    if not any(
+        hh.get("command", "").startswith(install_dir)
+        for h in lst for hh in h.get("hooks", [])
+    ):
+        lst.append(entry)
+
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+print("hooks 등록 완료")
+PYEOF
 }
 register_hooks || warn "hooks 등록 실패. 수동 등록이 필요합니다."
 ok "Claude Code hooks 등록 완료"
 
-# ── [7/7] TTS Supervisor LaunchAgent 등록 ────────────────────────────────────
+# ── [6/6] TTS Supervisor LaunchAgent 등록 ────────────────────────────────────
 echo ""
-info "[7/7] TTS Supervisor LaunchAgent 등록 중..."
+info "[6/6] TTS Supervisor LaunchAgent 등록 중..."
 
 mkdir -p "$LAUNCHD_PLIST_DIR"
 
