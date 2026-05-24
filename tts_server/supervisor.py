@@ -60,6 +60,7 @@ async def player_loop(
     spool.mkdir(exist_ok=True)
     idle = 0
     while not shutdown.is_set():
+        audio: "Path | None" = None
         try:
             files = sorted(list(spool.glob("*.wav")) + list(spool.glob("*.mp3")))
             if files:
@@ -79,8 +80,6 @@ async def player_loop(
                 await asyncio.sleep(delay)
         except Exception as e:
             log.error(f"[Player] 재생 오류: {e}")
-            try:
-                if "audio" in locals() and Path(audio).exists():
-                    Path(audio).unlink(missing_ok=True)
-            except Exception:
-                pass
+            if audio is not None and audio.exists():
+                audio.unlink(missing_ok=True)
+            idle = 0
