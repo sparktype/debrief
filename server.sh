@@ -91,8 +91,28 @@ _do_build() {
 
 # ── 수동 관리 명령 ─────────────────────────────────────────
 
+_kill_orphan_players() {
+  # 구버전 tts_player.sh 및 launchd 외부에서 실행 중인 고아 supervisor.py 종료
+  local launchd_pid
+  launchd_pid=$(launchctl list "$LAUNCHD_LABEL" 2>/dev/null | awk '/"PID"/{gsub(/[^0-9]/,"",$3); print $3}')
+
+  local pids
+  pids=$(pgrep -f "tts_player.sh" 2>/dev/null)
+  for pid in $pids; do
+    [[ "$pid" == "$launchd_pid" ]] && continue
+    kill "$pid" 2>/dev/null && echo "  고아 tts_player.sh 종료: PID $pid"
+  done
+
+  pids=$(pgrep -f "tts_server/supervisor.py" 2>/dev/null)
+  for pid in $pids; do
+    [[ "$pid" == "$launchd_pid" ]] && continue
+    kill "$pid" 2>/dev/null && echo "  고아 supervisor.py 종료: PID $pid"
+  done
+}
+
 do_start() {
   _check_deps
+  _kill_orphan_players
 
   if _is_launchd_managed; then
     echo "launchd 서비스가 supervisor를 관리 중입니다."
