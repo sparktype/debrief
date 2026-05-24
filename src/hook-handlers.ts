@@ -25,10 +25,6 @@ export function classifyPostToolBash(
     if (passed) return `전체 ${passed}개 통과.`;
     return null;
   }
-  if (exitCode !== 0) {
-    const snippet = cmd.split(/\s+/).slice(0, 3).join(" ");
-    return `명령 실패: ${snippet}.`;
-  }
   return null;
 }
 

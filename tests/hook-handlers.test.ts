@@ -49,9 +49,9 @@ describe("classifyPostToolBash", () => {
     expect(classifyPostToolBash("npm test", "no matches", 0)).toBeNull();
   });
 
-  it("일반 명령 실패 → 명령 앞 3단어 포함", () => {
+  it("일반 명령 실패 → null (빌드/테스트 외 명령은 실패해도 알림 없음)", () => {
     const msg = classifyPostToolBash("git push origin main", "", 128);
-    expect(msg).toBe("명령 실패: git push origin.");
+    expect(msg).toBeNull();
   });
 
   it("일반 명령 성공 → null", () => {

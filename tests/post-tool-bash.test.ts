@@ -65,9 +65,9 @@ describe("classifyPostToolBash — 테스트 명령", () => {
 });
 
 describe("classifyPostToolBash — 알 수 없는 명령", () => {
-  it("알 수 없는 명령 exitCode=1 → '명령 실패:' 포함 반환", () => {
+  it("알 수 없는 명령 exitCode=1 → null (빌드/테스트 외는 실패해도 알림 없음)", () => {
     const msg = classifyPostToolBash("some-unknown-cmd --flag", "", 1);
-    expect(msg).toContain("명령 실패:");
+    expect(msg).toBeNull();
   });
 
   it("알 수 없는 명령 exitCode=0 → null 반환 (성공은 알림 없음)", () => {
@@ -115,14 +115,13 @@ describe("handlePostToolBash — speakHook 호출 여부", () => {
     expect(player.speakHook).toHaveBeenCalledWith("테스트 2개 실패, 5개 통과.", "Sohee", 1.2);
   });
 
-  it("알 수 없는 명령 exitCode=1 → speakHook('명령 실패:') 포함 호출", async () => {
+  it("알 수 없는 명령 exitCode=1 → speakHook 미호출 (빌드/테스트 외는 알림 없음)", async () => {
     const raw = JSON.stringify({
       tool_input: { command: "some-tool --flag value" },
       tool_response: { exitCode: 1, output: "" },
     });
     await handlePostToolBash(raw, BASE_CONFIG);
-    const calledWith = vi.mocked(player.speakHook).mock.calls[0]?.[0] ?? "";
-    expect(calledWith).toContain("명령 실패:");
+    expect(player.speakHook).not.toHaveBeenCalled();
   });
 
   it("exit_code 키(snake_case)도 정상 인식 — exitCode=1과 동일하게 처리", async () => {
