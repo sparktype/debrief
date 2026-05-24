@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CONFIG_PATH = join(__dirname, "..", ".siren.json");
+const DEFAULT_CONFIG_PATH = join(__dirname, "..", ".voice-persona.json");
 const DEFAULTS = {
     autoSpeak: true,
     minChars: 50,

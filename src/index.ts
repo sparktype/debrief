@@ -11,6 +11,7 @@ import { extractSummary, extractOneLiner } from "./summarizer.js";
 import { speak, speakAgent, speakHook, configureTimes } from "./player.js";
 import { recommendSkill, readRecentTranscripts, saveCooldown } from "./skill-recommender.js";
 import { loadLastMessage } from "./last-message-store.js";
+import { handlePostToolBash, handlePreToolBash, handleNotification } from "./hook-handlers.js";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -118,6 +119,24 @@ if (process.argv[2] === "hook-suggest") {
     await speak(msg, config.voice, config.ttsSpeed, config.ttsInstruct).catch(() => {});
     saveCooldown(rec.skill);
   }
+  process.exit(0);
+}
+
+if (process.argv[2] === "post-tool-bash") {
+  const raw = await readStdin();
+  try { await handlePostToolBash(raw, config); } catch { /* JSON 파싱 실패 시 무시 */ }
+  process.exit(0);
+}
+
+if (process.argv[2] === "pre-tool-bash") {
+  const raw = await readStdin();
+  try { await handlePreToolBash(raw, config); } catch { /* JSON 파싱 실패 시 무시 */ }
+  process.exit(0);
+}
+
+if (process.argv[2] === "notification") {
+  const raw = await readStdin();
+  try { await handleNotification(raw, config); } catch { /* JSON 파싱 실패 시 무시 */ }
   process.exit(0);
 }
 
