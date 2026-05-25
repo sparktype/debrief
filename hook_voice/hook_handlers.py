@@ -90,17 +90,17 @@ def classify_pre_tool_bash(cmd: str) -> str | None:
     rules = _load_classify_rules()
     if rules:
         for rule in rules:
-            if re.search(rule["pattern"], cmd):
+            if re.search(rule["pattern"], cmd, re.IGNORECASE):
                 return rule["message"]
         return None
     # JSON 없을 때 하드코딩 폴백
-    if re.search(r"rm\s+-rf|git\s+reset\s+--hard|DROP\s+TABLE", cmd):
+    if re.search(r"rm\s+-rf|git\s+reset\s+--hard|DROP\s+TABLE", cmd, re.IGNORECASE):
         return "주의: 되돌릴 수 없는 작업입니다."
-    if re.search(r"npm run build|tsc\b|cargo build|go build", cmd):
+    if re.search(r"npm run build|tsc\b|cargo build|go build", cmd, re.IGNORECASE):
         return "빌드를 시작합니다."
-    if re.search(r"npm\s+test|vitest|pytest|cargo\s+test|go\s+test", cmd):
+    if re.search(r"npm\s+test|vitest|pytest|cargo\s+test|go\s+test", cmd, re.IGNORECASE):
         return "테스트를 실행합니다."
-    if re.search(r"npm\s+install|npm\s+ci|pip\s+install|uv\s+sync", cmd):
+    if re.search(r"npm\s+install|npm\s+ci|pip\s+install|uv\s+sync", cmd, re.IGNORECASE):
         return "패키지를 설치합니다."
     return None
 

@@ -13,9 +13,17 @@ from hook_voice.hook_handlers import (
     handle_hook,
     handle_subagent_stop,
 )
-import hook_voice.hook_handlers as hh
+import hook_voice.hook_handlers as _hh
 
 _CFG = Config()
+
+
+@pytest.fixture(autouse=True)
+def reset_classify_cache():
+    _hh._classify_rules_cache = None
+    yield
+    _hh._classify_rules_cache = None
+
 
 # ── 순수 함수 테스트 ──────────────────────────────────────────
 
@@ -35,17 +43,14 @@ def test_classify_pre_other():
     assert classify_pre_tool_bash("ls -la") is None
 
 def test_classify_git_push_force():
-    hh._classify_rules_cache = None  # 캐시 초기화
     assert classify_pre_tool_bash("git push origin main --force") == \
         "주의: 강제 push — 원격 이력이 변경됩니다."
 
 def test_classify_kubectl_delete():
-    hh._classify_rules_cache = None  # 캐시 초기화
     assert classify_pre_tool_bash("kubectl delete pod my-pod") == \
         "주의: 쿠버네티스 리소스를 삭제합니다."
 
 def test_classify_returns_none_for_unknown():
-    hh._classify_rules_cache = None  # 캐시 초기화
     assert classify_pre_tool_bash("echo hello world") is None
 
 def test_classify_post_build_success():
