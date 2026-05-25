@@ -29,7 +29,7 @@ class Config:
     min_chars: int = 50
     voice: str = "Sohee"
     summary_model: str = "gpt-5.4"
-    tts_speed: float = 1.2
+    tts_speed: float = 1.0
     tts_instruct: str = "밝고 활기차게 말해주세요"
     skill_cooldown_minutes: int = 30
     supertonic_port: int = 7788
