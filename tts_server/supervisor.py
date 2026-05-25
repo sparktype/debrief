@@ -17,8 +17,6 @@ SPOOL_DIR = Path("/tmp/tts-spool")
 MAX_AGE_SECS = 300   # 5분
 MAX_FILES = 10
 
-_shutdown_event = asyncio.Event()
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(message)s",
@@ -56,7 +54,7 @@ async def player_loop(
 ) -> None:
     """스풀 디렉토리를 폴링하며 오디오 파일을 순차 재생한다."""
     if shutdown is None:
-        shutdown = _shutdown_event
+        shutdown = asyncio.Event()
     spool.mkdir(exist_ok=True)
     idle = 0
     while not shutdown.is_set():
@@ -79,6 +77,11 @@ async def player_loop(
                 )
                 if shutdown.is_set() and proc.returncode is None:
                     proc.terminate()
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        proc.kill()
+                        await proc.wait()
                 for t in pending:
                     t.cancel()
                 audio.unlink(missing_ok=True)
@@ -101,7 +104,7 @@ async def cleanup_loop(
 ) -> None:
     """시작 시 1회 + 30분 주기로 stale 파일 정리."""
     if shutdown is None:
-        shutdown = _shutdown_event
+        shutdown = asyncio.Event()
     _do_cleanup(spool)
     while not shutdown.is_set():
         try:
@@ -117,7 +120,7 @@ async def monitor_children(
 ) -> None:
     """자식 프로세스를 1초 주기로 감시 — 비정상 종료 시 shutdown 이벤트 set."""
     if shutdown is None:
-        shutdown = _shutdown_event
+        shutdown = asyncio.Event()
     while not shutdown.is_set():
         for proc in procs:
             rc = proc.poll()
@@ -174,6 +177,7 @@ async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
 
 
 async def main() -> None:
+    shutdown = asyncio.Event()
     PID_FILE.write_text(str(os.getpid()))
     log.info(f"[Supervisor] 시작 (PID {os.getpid()})")
 
@@ -181,7 +185,7 @@ async def main() -> None:
     loop = asyncio.get_running_loop()
 
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, _shutdown_event.set)
+        loop.add_signal_handler(sig, shutdown.set)
 
     try:
         uvicorn_proc = _start_uvicorn()
@@ -193,9 +197,9 @@ async def main() -> None:
         log.info(f"[Supervisor] supertonic 기동 (PID {supertonic_proc.pid})")
 
         await asyncio.gather(
-            player_loop(),
-            cleanup_loop(),
-            monitor_children(procs),
+            player_loop(shutdown=shutdown),
+            cleanup_loop(shutdown=shutdown),
+            monitor_children(procs, shutdown=shutdown),
         )
     finally:
         await _graceful_shutdown(procs)
