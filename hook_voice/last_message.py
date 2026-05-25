@@ -1,9 +1,12 @@
 # hook_voice/last_message.py
 # 마지막 TTS 재생 텍스트 저장 및 읽기, 발화 히스토리 기록
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 
 def _get_data_dir() -> Path:
@@ -41,8 +44,8 @@ def _rotate_history(hist: Path) -> None:
                 "\n".join(lines[_HISTORY_TRIM_COUNT:]) + "\n",
                 encoding="utf-8",
             )
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("_rotate_history 실패: %s", e)
 
 
 def append_history(text: str) -> None:
@@ -54,8 +57,8 @@ def append_history(text: str) -> None:
         with open(hist, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         _rotate_history(hist)
-    except Exception:
-        pass
+    except Exception as e:
+        _log.debug("append_history 실패: %s", e)
 
 
 def load_last_message() -> str | None:
