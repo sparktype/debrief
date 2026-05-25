@@ -310,7 +310,9 @@ if "hooks" not in data:
 
 def add_simple(sec, cmd, t):
     existing = data["hooks"].get(sec, [])
-    if not any(h.get("command") == cmd for h in existing if isinstance(h, dict)):
+    # matcher-wrapper 포함 모든 포맷에서 중복 검사
+    existing_json = json.dumps(existing)
+    if cmd not in existing_json:
         existing.append({"type": "command", "command": cmd, "timeout": t})
     data["hooks"][sec] = existing
 
@@ -330,6 +332,10 @@ add_matcher("PostToolUse", "Bash", hooks_dir + "/post-tool-bash.sh", 10)
 
 print(json.dumps(data, indent=2, ensure_ascii=False))
 ')
+  if [ -z "$HOOKS_JSON" ]; then
+    echo "  [오류] hook 등록 스크립트 실행 실패"
+    return 1
+  fi
   echo "$HOOKS_JSON" > "$SETTINGS_JSON"
   echo "  → settings.json에 7종 hook 등록 완료"
 
