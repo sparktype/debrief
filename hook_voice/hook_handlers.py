@@ -230,43 +230,60 @@ async def handle_history(args: list[str], config: "Config") -> None:
 
 async def handle_health() -> None:
     """TTS 시스템 전체 상태를 진단하고 출력한다."""
+    import asyncio as _asyncio
     import os as _os
     import httpx as _httpx
 
     results: list[tuple[str, str]] = []
 
-    # 1. HUB_API_KEY
+    # 1. HUB_API_KEY (동기)
     api_key = _os.environ.get("HUB_API_KEY", "")
     results.append(("HUB_API_KEY 환경변수", "OK" if api_key else "MISSING"))
 
-    # 2. LLM API
-    if api_key:
+    # 2~5. LLM API · EdgeTTS · uvicorn · supertonic — 병렬 실행
+    async def _check_llm() -> tuple[str, str]:
+        if not api_key:
+            return ("LLM API 연결", "SKIP (API 키 없음)")
         try:
             from .llm_client import chat_completion
             resp = await chat_completion([{"role": "user", "content": "ping"}], max_tokens=1)
-            results.append(("LLM API 연결", "OK" if resp is not None else "응답 없음"))
+            return ("LLM API 연결", "OK" if resp is not None else "응답 없음")
         except Exception as e:
-            results.append(("LLM API 연결", f"FAIL ({type(e).__name__})"))
-    else:
-        results.append(("LLM API 연결", "SKIP (API 키 없음)"))
+            return ("LLM API 연결", f"FAIL ({type(e).__name__})")
 
-    # 3. uvicorn
-    try:
-        async with _httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get("http://localhost:7777/health")
-            results.append(("uvicorn (7777)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})"))
-    except Exception as e:
-        results.append(("uvicorn (7777)", f"FAIL ({type(e).__name__})"))
+    async def _check_edgetts() -> tuple[str, str]:
+        try:
+            async with _httpx.AsyncClient(timeout=3.0, verify=False) as client:
+                await client.get("https://speech.platform.bing.com/")
+            return ("EdgeTTS 연결", "OK")
+        except Exception as e:
+            return ("EdgeTTS 연결", f"FAIL ({type(e).__name__})")
 
-    # 4. supertonic
-    try:
-        async with _httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get("http://localhost:7788/v1/health")
-            results.append(("supertonic (7788)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})"))
-    except Exception as e:
-        results.append(("supertonic (7788)", f"FAIL ({type(e).__name__})"))
+    async def _check_uvicorn() -> tuple[str, str]:
+        try:
+            async with _httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get("http://localhost:7777/health")
+                return ("uvicorn (7777)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
+        except Exception as e:
+            return ("uvicorn (7777)", f"FAIL ({type(e).__name__})")
 
-    # 5. spool
+    async def _check_supertonic() -> tuple[str, str]:
+        try:
+            async with _httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get("http://localhost:7788/v1/health")
+                return ("supertonic (7788)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
+        except Exception as e:
+            return ("supertonic (7788)", f"FAIL ({type(e).__name__})")
+
+    parallel_results = await _asyncio.gather(
+        _check_llm(),
+        _check_edgetts(),
+        _check_uvicorn(),
+        _check_supertonic(),
+    )
+    results.extend(parallel_results)
+
+    # 6. spool (동기)
     from .player import SPOOL_DIR
     files = (list(SPOOL_DIR.glob("*.wav")) + list(SPOOL_DIR.glob("*.mp3"))) if SPOOL_DIR.exists() else []
     results.append(("spool 디렉토리", f"{len(files)}개 대기 ({SPOOL_DIR})"))
