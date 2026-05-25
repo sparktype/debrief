@@ -332,7 +332,7 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
         json_key = args[1]
         if json_key not in _KEY_MAP:
             print(f"알 수 없는 키: {json_key}. 사용 가능: {', '.join(_KEY_MAP)}", file=_sys.stderr)
-            return
+            _sys.exit(1)
         cfg = load_config(config_path)
         print(getattr(cfg, _KEY_MAP[json_key]))
         return
@@ -341,7 +341,7 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
         json_key, raw_val = args[1], args[2]
         if json_key not in _KEY_MAP:
             print(f"알 수 없는 키: {json_key}. 사용 가능: {', '.join(_KEY_MAP)}", file=_sys.stderr)
-            return
+            _sys.exit(1)
         data = _json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
         if raw_val.lower() == "true":
             val: object = True
@@ -367,3 +367,4 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
         return
 
     print("사용법: hook_voice config [list|get <key>|set <key> <val>|reset]", file=_sys.stderr)
+    _sys.exit(1)

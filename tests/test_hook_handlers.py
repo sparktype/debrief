@@ -217,7 +217,7 @@ class TestHandleConfig:
         assert not cfg_path.exists()
 
     @pytest.mark.asyncio
-    async def test_set_bool_true(self, tmp_path):
+    async def test_set_bool_false(self, tmp_path):
         cfg_path = tmp_path / ".voice-persona.json"
         await handle_config(["set", "autoSpeak", "false"], cfg_path)
         data = json.loads(cfg_path.read_text())
@@ -226,6 +226,8 @@ class TestHandleConfig:
     @pytest.mark.asyncio
     async def test_get_unknown_key_prints_error(self, tmp_path, capsys):
         cfg_path = tmp_path / ".voice-persona.json"
-        await handle_config(["get", "nonExistentKey"], cfg_path)
+        with pytest.raises(SystemExit) as exc_info:
+            await handle_config(["get", "nonExistentKey"], cfg_path)
+        assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "알 수 없는 키" in err

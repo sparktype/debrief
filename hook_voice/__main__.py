@@ -3,7 +3,7 @@
 import asyncio
 import sys
 
-from .config import load_config
+from .config import load_config, _DEFAULT_CONFIG_PATH
 from .hook_handlers import (
     handle_hook,
     handle_notification,
@@ -52,7 +52,6 @@ async def main() -> None:
     elif subcommand == "health":
         await handle_health()
     elif subcommand == "config":
-        from .config import _DEFAULT_CONFIG_PATH
         await handle_config(sys.argv[2:], _DEFAULT_CONFIG_PATH)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
