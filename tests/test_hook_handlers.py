@@ -56,19 +56,19 @@ def test_classify_returns_none_for_unknown():
     assert classify_pre_tool_bash("echo hello world") is None
 
 def test_classify_post_build_success():
-    assert classify_post_tool_bash("npm run build", "", 0) == "빌드 완료."
+    assert classify_post_tool_bash("npm run build", "", 0) == "빌드가 완료됐습니다."
 
 def test_classify_post_build_failure():
-    assert classify_post_tool_bash("tsc", "", 1) == "빌드 실패. 에러를 확인하세요."
+    assert classify_post_tool_bash("tsc", "", 1) == "빌드가 실패했습니다. 에러를 확인해 주세요."
 
 def test_classify_post_test_passed():
     result = classify_post_tool_bash("pytest", "5 passed in 1.2s", 0)
-    assert result == "전체 5개 통과."
+    assert result == "전체 5개 통과했습니다."
 
 def test_classify_post_test_failed():
     result = classify_post_tool_bash("pytest", "2 failed, 3 passed", 1)
     assert result is not None
-    assert "2개 실패" in result
+    assert "2개 실패했습니다" in result
     assert "3개 통과" in result
 
 def test_classify_post_other():
@@ -307,7 +307,7 @@ class TestHandleControl:
             mock_kill.assert_called_once_with(12345, signal.SIGKILL)
 
         out = capsys.readouterr().out
-        assert "스킵" in out
+        assert "건너뛰었습니다" in out
         assert not pid_file.exists()
 
     @pytest.mark.asyncio

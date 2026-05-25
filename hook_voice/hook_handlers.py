@@ -107,15 +107,15 @@ def classify_pre_tool_bash(cmd: str) -> str | None:
 
 def classify_post_tool_bash(cmd: str, output: str, exit_code: int) -> str | None:
     if re.search(r"npm run build|tsc\b|cargo build|go build", cmd):
-        return "빌드 완료." if exit_code == 0 else "빌드 실패. 에러를 확인하세요."
+        return "빌드가 완료됐습니다." if exit_code == 0 else "빌드가 실패했습니다. 에러를 확인해 주세요."
     if re.search(r"npm\s+test|vitest|pytest|cargo\s+test|go\s+test", cmd):
         passed = re.search(r"(\d+)\s*(passed|passing)", output)
         failed = re.search(r"(\d+)\s*(failed|failing)", output)
         if failed and int(failed.group(1)) > 0:
             p = f", {passed.group(1)}개 통과" if passed else ""
-            return f"테스트 {failed.group(1)}개 실패{p}."
+            return f"테스트 {failed.group(1)}개 실패했습니다{p}."
         if passed:
-            return f"전체 {passed.group(1)}개 통과."
+            return f"전체 {passed.group(1)}개 통과했습니다."
     return None
 
 
@@ -351,16 +351,16 @@ async def handle_control(action: str) -> None:
     try:
         if action == "pause":
             _os.kill(pid, _signal.SIGSTOP)
-            print(f"TTS 일시정지 (PID {pid})")
+            print(f"TTS를 일시정지했습니다. (PID {pid})")
         elif action == "resume":
             _os.kill(pid, _signal.SIGCONT)
-            print(f"TTS 재개 (PID {pid})")
+            print(f"TTS 재생을 재개했습니다. (PID {pid})")
         elif action == "skip":
             _os.kill(pid, _signal.SIGKILL)
             pid_file.unlink(missing_ok=True)
-            print(f"현재 트랙 스킵 (PID {pid})")
+            print(f"현재 트랙을 건너뛰었습니다. (PID {pid})")
     except ProcessLookupError:
-        print("재생 프로세스가 이미 종료됐습니다.")
+        print("재생 프로세스가 이미 종료된 상태입니다.")
         pid_file.unlink(missing_ok=True)
     except PermissionError as e:
         print(f"권한 오류: {e}", file=_sys.stderr)

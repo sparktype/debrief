@@ -113,10 +113,12 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `voice` | `Sohee` | MLX 스피커 또는 macOS voice |
 | `summaryModel` | `gpt-5.4` | HMG Hub LLM 모델 |
-| `ttsSpeed` | `1.0` | afplay -r 배속 |
+| `ttsSpeed` | `1.1` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
 
 프로젝트 루트의 `.voice-persona.json` 으로 개별 오버라이드 가능.
+
+> **멘트 작성 규칙**: 모든 TTS 발화 텍스트(빌드·테스트 결과, 컨트롤 피드백 등)는 경어체(`-습니다/ㅂ니다`)를 사용합니다.
 
 ### 환경변수
 
