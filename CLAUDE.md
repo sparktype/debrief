@@ -60,9 +60,11 @@ Claude 응답 완료
   → SubagentStop hook (hooks/subagent-stop.sh)
     → python -m hook_voice subagent-stop [agentType]
       → resolve_voice(agentType) (hook_voice/voice_router.py)  # voice-map.json → voice ID
-      → get_agent_label(agentType) → "리뷰어" / "플래너" / "빌더" / "탐색기"
+      → resolve_voice_name(agentType) → "빌", "리누스" 등 인물 이름
+      → get_agent_label(agentType) → "리뷰어" / "플래너" / "빌더" 등
+      → resolve_instruct(agentType) → 역할별 TTS instruct 텍스트
       → extract_one_liner() (hook_voice/summarizer.py)  # 25자 이내 한 줄 요약 + 특수문자 제거
-      → f"{label}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
+      → f"{label} {voice_name}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
           ├─ Supertonic: localhost:7788/v1/health 확인 → WAV 생성
           ├─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
           └─ 실패 시 HTTP(7777) → subprocess 폴백
@@ -86,7 +88,7 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | `hook_voice/llm_client.py` | HMG Hub LLM 클라이언트 (httpx AsyncClient) |
 | `hook_voice/last_message.py` | 마지막 TTS 텍스트 파일 영속화 |
 | `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
-| `hook_voice/voice_router.py` | agentType → 카테고리 → Supertonic voice ID 변환 |
+| `hook_voice/voice_router.py` | agentType → 카테고리 → voice ID·이름·instruct 변환 |
 | `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
 | `hook_voice/player.py` | EdgeTTS spool enqueue, speak_hook/speak_agent + 폴백 |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
@@ -100,7 +102,7 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 - `afplay -r <speed>` 로 재생 속도 후처리 — Qwen3-TTS는 `speed!=1.0` 시 최적화 경로가 비활성화됨
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
 - **파일 스풀 직렬화**: hook·서브에이전트 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
-- 서브에이전트 발화: `f"{role}입니다. {one_liner}"` 형식, `sanitize_for_speech()`로 특수문자·유니코드 기호 제거
+- 서브에이전트 발화: `f"{role} {voice_name}입니다. {one_liner}"` 형식 (예: "리뷰어 빌입니다."), `sanitize_for_speech()`로 특수문자·유니코드 기호 제거
 - **HMG SSL 프록시 우회**: `edge_tts.communicate._SSL_CTX`를 `CERT_NONE` 컨텍스트로 모듈 임포트 시점에 교체
 
 ### 설정 (`hook_voice/config.py` 기본값)
@@ -111,8 +113,8 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `voice` | `Sohee` | MLX 스피커 또는 macOS voice |
 | `summaryModel` | `gpt-5.4` | HMG Hub LLM 모델 |
-| `ttsSpeed` | `1.2` | afplay -r 배속 |
-| `ttsInstruct` | `"밝고 활기차게 말해주세요"` | Qwen3-TTS instruct 파라미터 |
+| `ttsSpeed` | `1.0` | afplay -r 배속 |
+| `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
 
 프로젝트 루트의 `.voice-persona.json` 으로 개별 오버라이드 가능.
 
@@ -127,11 +129,23 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | `VOICE_PERSONA_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: `~/.local/share/voice-persona`) |
 | `VOICE_PERSONA_OFFLINE` | `1` 설정 시 Edge TTS 건너뛰고 MLX 서버부터 시도 |
 
-### MLX 내장 스피커
+### Supertonic 목소리 (voice-map.json)
 
-`Sohee`, `Vivian`, `Serena`, `Uncle_Fu`, `Dylan`, `Eric`, `Ryan`, `Aiden`, `Ono_Anna`
+| Voice ID | 이름 | 역할 | 인물 모티프 | Instruct |
+|----------|------|------|------------|---------|
+| F1 | 멜린다 | default | Melinda Gates | 밝고 친절하게 |
+| F2 | 마리 | tester | Marie Curie | 또렷하고 정확하게 |
+| F3 | 제인 | explorer | Jane Goodall | 밝고 호기심 있게 |
+| F4 | 셰릴 | ops | Sheryl Sandberg | 침착하고 명확하게 |
+| F5 | 리사 | specialist | Lisa Su | 전문적이고 자신감 있게 |
+| M1 | 스티브 | planner | Steve Jobs | 차분하고 논리적으로 |
+| M2 | 빌 | reviewer | Bill Gates | 천천히 신중하게 |
+| M3 | 일론 | optimizer | Elon Musk | 군더더기 없이 빠르게 |
+| M4 | 리누스 | builder | Linus Torvalds | 빠르고 자신감 있게 |
+| M5 | 팀 | guardian | Tim Berners-Lee | 꼼꼼하고 신중하게 |
 
-이 목록에 없는 voice는 macOS `say -v <voice>` 로 라우팅됨.
+역할·이름·instruct는 `voice-map.json`에서 코드 변경 없이 수정 가능.  
+speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용하며, 위 목소리는 서브에이전트 전용.
 
 ## Claude Code 연동 (`.claude/settings.json`)
 

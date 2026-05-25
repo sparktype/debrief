@@ -57,11 +57,11 @@ async def _is_tts_server_alive() -> bool:
         return False
 
 
-async def _speak_http(text: str, voice: str, speed: float) -> None:
+async def _speak_http(text: str, voice: str, speed: float, instruct: str = "") -> None:
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"{TTS_SERVER_URL}/speak",
-            json={"text": text, "voice": voice, "lang_code": "korean", "speed": speed, "instruct": ""},
+            json={"text": text, "voice": voice, "lang_code": "korean", "speed": speed, "instruct": instruct},
             timeout=10.0,
         )
         if r.status_code == 429:
@@ -86,10 +86,10 @@ async def _speak_subprocess(text: str, voice: str, speed: float) -> None:
         await proc.wait()
 
 
-async def _speak_without_edge(text: str, voice: str, speed: float) -> None:
+async def _speak_without_edge(text: str, voice: str, speed: float, instruct: str = "") -> None:
     if await _is_tts_server_alive():
         try:
-            await _speak_http(text, voice, speed)
+            await _speak_http(text, voice, speed, instruct)
             save_last_message(text)
             return
         except Exception:
@@ -132,7 +132,7 @@ async def _generate_supertonic(text: str, voice: str, port: int) -> bytes:
         return r.content
 
 
-async def speak_agent(text: str, voice: str, port: int, speed: float) -> None:
+async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "") -> None:
     if not text.strip():
         return
     if await _is_supertonic_alive(port):
@@ -145,4 +145,4 @@ async def speak_agent(text: str, voice: str, port: int, speed: float) -> None:
             return
         except Exception:
             pass
-    await _speak_without_edge(text, voice, speed)
+    await _speak_without_edge(text, voice, speed, instruct)

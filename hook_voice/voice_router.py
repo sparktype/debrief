@@ -12,18 +12,26 @@ _CATEGORY_LABELS: dict[str, str] = {
     "builder": "빌더",
     "tester": "테스터",
     "explorer": "탐색기",
+    "optimizer": "옵티마이저",
+    "guardian": "가디언",
+    "ops": "옵스",
+    "specialist": "스페셜리스트",
 }
 
 
 class VoiceMap(TypedDict):
     supertonic: dict
     voices: dict[str, str]
+    voice_names: dict[str, str]
+    instructs: dict[str, str]
     categories: dict[str, list[str]]
 
 
 _FALLBACK_MAP: VoiceMap = {
     "supertonic": {"lang": "ko"},
     "voices": {"default": "F1"},
+    "voice_names": {"F1": "멜린다"},
+    "instructs": {"default": "밝고 친절하게 말해주세요"},
     "categories": {},
 }
 
@@ -41,17 +49,39 @@ def load_voice_map(path: Path | None = None) -> VoiceMap:
         return dict(_FALLBACK_MAP)  # type: ignore[return-value]
 
 
-def resolve_voice(agent_type: str, voice_map: VoiceMap | None = None) -> str:
-    m = voice_map or load_voice_map()
+def _resolve_category(agent_type: str, m: VoiceMap) -> str | None:
     for cat, agents in m["categories"].items():
         if agent_type in agents:
-            return m["voices"].get(cat) or m["voices"].get("default", "F1")
+            return cat
+    return None
+
+
+def resolve_voice(agent_type: str, voice_map: VoiceMap | None = None) -> str:
+    m = voice_map or load_voice_map()
+    cat = _resolve_category(agent_type, m)
+    if cat:
+        return m["voices"].get(cat) or m["voices"].get("default", "F1")
     return m["voices"].get("default", "F1")
+
+
+def resolve_voice_name(agent_type: str, voice_map: VoiceMap | None = None) -> str:
+    m = voice_map or load_voice_map()
+    voice_id = resolve_voice(agent_type, m)
+    return m.get("voice_names", {}).get(voice_id, voice_id)
+
+
+def resolve_instruct(agent_type: str, voice_map: VoiceMap | None = None) -> str:
+    m = voice_map or load_voice_map()
+    cat = _resolve_category(agent_type, m)
+    instructs = m.get("instructs", {})
+    if cat and cat in instructs:
+        return instructs[cat]
+    return instructs.get("default", "밝고 친절하게 말해주세요")
 
 
 def get_agent_label(agent_type: str, voice_map: VoiceMap | None = None) -> str:
     m = voice_map or load_voice_map()
-    for cat, agents in m["categories"].items():
-        if agent_type in agents:
-            return _CATEGORY_LABELS.get(cat, "에이전트")
+    cat = _resolve_category(agent_type, m)
+    if cat:
+        return _CATEGORY_LABELS.get(cat, "에이전트")
     return "에이전트"

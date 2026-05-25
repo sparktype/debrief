@@ -8,7 +8,7 @@ from pathlib import Path
 from .config import Config
 from .player import speak_hook, speak_agent
 from .summarizer import extract_summary, extract_one_liner
-from .voice_router import load_voice_map, resolve_voice, get_agent_label
+from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 
 
@@ -138,9 +138,11 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
         return
     vm = load_voice_map()
     voice = resolve_voice(agent_type, vm)
+    voice_name = resolve_voice_name(agent_type, vm)
     label = get_agent_label(agent_type, vm)
+    instruct = resolve_instruct(agent_type, vm)
     one_liner = await extract_one_liner(text, config.summary_model)
-    await speak_agent(f"{label}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed)
+    await speak_agent(f"{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct)
 
 
 async def handle_hook_suggest(raw: str, config: Config) -> None:

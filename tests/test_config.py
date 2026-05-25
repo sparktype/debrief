@@ -10,7 +10,7 @@ def test_load_config_returns_defaults_when_no_file(tmp_path):
     assert cfg.min_chars == 50
     assert cfg.voice == "Sohee"
     assert cfg.summary_model == "gpt-5.4"
-    assert cfg.tts_speed == 1.2
+    assert cfg.tts_speed == 1.0
     assert cfg.tts_instruct == "밝고 활기차게 말해주세요"
     assert cfg.skill_cooldown_minutes == 30
     assert cfg.supertonic_port == 7788
