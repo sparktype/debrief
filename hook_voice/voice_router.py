@@ -30,7 +30,7 @@ class VoiceMap(TypedDict):
 _FALLBACK_MAP: VoiceMap = {
     "supertonic": {"lang": "ko"},
     "voices": {"default": "F1"},
-    "voice_names": {"F1": "멜린다"},
+    "voice_names": {"F1": "연아"},
     "instructs": {"default": "밝고 친절하게 말해주세요"},
     "categories": {},
 }

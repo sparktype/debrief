@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from hook_voice.voice_router import load_voice_map, resolve_voice, get_agent_label
+from hook_voice.voice_router import _FALLBACK_MAP, load_voice_map, resolve_voice, resolve_voice_name, get_agent_label
 
 _SAMPLE_MAP = {
     "supertonic": {"lang": "ko"},
@@ -48,3 +48,13 @@ def test_get_agent_label_unknown(tmp_path):
     f.write_text(json.dumps(_SAMPLE_MAP))
     vm = load_voice_map(f)
     assert get_agent_label("unknown-bot", vm) == "에이전트"
+
+def test_fallback_map_f1_is_yeona():
+    """voice-map.json 로드 실패 시 F1 이름이 '연아'여야 한다."""
+    assert _FALLBACK_MAP["voice_names"]["F1"] == "연아"
+
+def test_resolve_voice_name_fallback_uses_yeona(tmp_path):
+    """voice-map.json이 없을 때 default voice 이름이 '연아'."""
+    vm = load_voice_map(tmp_path / "nonexistent.json")
+    name = resolve_voice_name("unknown-agent", vm)
+    assert name == "연아"
