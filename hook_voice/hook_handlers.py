@@ -313,3 +313,57 @@ async def handle_post_tool_bash(raw: str, config: Config) -> None:
     msg = classify_post_tool_bash(cmd, out, code)
     if msg:
         await speak_hook(msg, config.voice, config.tts_speed)
+
+
+async def handle_config(args: list[str], config_path: "Path") -> None:
+    """CLI 설정 관리 — get/set/list/reset."""
+    import sys as _sys
+    import json as _json
+    from .config import load_config, _KEY_MAP
+
+    if not args or args[0] == "list":
+        cfg = load_config(config_path)
+        print("[현재 설정]")
+        for json_key, py_key in _KEY_MAP.items():
+            print(f"  {json_key} = {getattr(cfg, py_key)}")
+        return
+
+    if args[0] == "get" and len(args) == 2:
+        json_key = args[1]
+        if json_key not in _KEY_MAP:
+            print(f"알 수 없는 키: {json_key}. 사용 가능: {', '.join(_KEY_MAP)}", file=_sys.stderr)
+            return
+        cfg = load_config(config_path)
+        print(getattr(cfg, _KEY_MAP[json_key]))
+        return
+
+    if args[0] == "set" and len(args) == 3:
+        json_key, raw_val = args[1], args[2]
+        if json_key not in _KEY_MAP:
+            print(f"알 수 없는 키: {json_key}. 사용 가능: {', '.join(_KEY_MAP)}", file=_sys.stderr)
+            return
+        data = _json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+        if raw_val.lower() == "true":
+            val: object = True
+        elif raw_val.lower() == "false":
+            val = False
+        else:
+            try:
+                val = int(raw_val)
+            except ValueError:
+                try:
+                    val = float(raw_val)
+                except ValueError:
+                    val = raw_val
+        data[json_key] = val
+        config_path.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"  {json_key} = {val}  (저장됨)")
+        return
+
+    if args[0] == "reset":
+        if config_path.exists():
+            config_path.unlink()
+        print("설정을 기본값으로 초기화했습니다.")
+        return
+
+    print("사용법: hook_voice config [list|get <key>|set <key> <val>|reset]", file=_sys.stderr)

@@ -12,6 +12,7 @@ from hook_voice.hook_handlers import (
     handle_notification,
     handle_hook,
     handle_subagent_stop,
+    handle_config,
 )
 import hook_voice.hook_handlers as _hh
 
@@ -180,3 +181,51 @@ async def test_subagent_stop_empty_one_liner_still_speaks():
         spoken_text = call_args.args[0] if call_args.args else call_args[0][0]
     assert "빌더" in spoken_text
     assert "리누스" in spoken_text
+
+
+# ── handle_config 테스트 ─────────────────────────────────────
+
+class TestHandleConfig:
+    @pytest.mark.asyncio
+    async def test_list_shows_all_keys(self, tmp_path, capsys):
+        cfg_path = tmp_path / ".voice-persona.json"
+        await handle_config([], cfg_path)
+        out = capsys.readouterr().out
+        assert "ttsSpeed" in out
+        assert "autoSpeak" in out
+
+    @pytest.mark.asyncio
+    async def test_set_saves_value(self, tmp_path):
+        cfg_path = tmp_path / ".voice-persona.json"
+        await handle_config(["set", "ttsSpeed", "1.5"], cfg_path)
+        data = json.loads(cfg_path.read_text())
+        assert data["ttsSpeed"] == 1.5
+
+    @pytest.mark.asyncio
+    async def test_get_returns_value(self, tmp_path, capsys):
+        cfg_path = tmp_path / ".voice-persona.json"
+        cfg_path.write_text('{"ttsSpeed": 1.5}')
+        await handle_config(["get", "ttsSpeed"], cfg_path)
+        out = capsys.readouterr().out.strip()
+        assert out == "1.5"
+
+    @pytest.mark.asyncio
+    async def test_reset_deletes_file(self, tmp_path, capsys):
+        cfg_path = tmp_path / ".voice-persona.json"
+        cfg_path.write_text('{"ttsSpeed": 1.5}')
+        await handle_config(["reset"], cfg_path)
+        assert not cfg_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_set_bool_true(self, tmp_path):
+        cfg_path = tmp_path / ".voice-persona.json"
+        await handle_config(["set", "autoSpeak", "false"], cfg_path)
+        data = json.loads(cfg_path.read_text())
+        assert data["autoSpeak"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_unknown_key_prints_error(self, tmp_path, capsys):
+        cfg_path = tmp_path / ".voice-persona.json"
+        await handle_config(["get", "nonExistentKey"], cfg_path)
+        err = capsys.readouterr().err
+        assert "알 수 없는 키" in err
