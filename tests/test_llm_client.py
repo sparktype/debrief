@@ -1,4 +1,5 @@
 # tests/test_llm_client.py
+import logging
 import pytest
 import httpx
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -34,3 +35,13 @@ async def test_chat_completion_returns_empty_on_error():
             messages=[{"role": "user", "content": "test"}],
         )
         assert result == ""
+
+
+async def test_chat_completion_warns_on_missing_api_key(caplog):
+    """HUB_API_KEY 미설정 시 warning 로그 후 빈 문자열 반환."""
+    with pytest.MonkeyPatch().context() as m:
+        m.delenv("HUB_API_KEY", raising=False)
+        with caplog.at_level(logging.WARNING, logger="hook_voice.llm_client"):
+            result = await chat_completion([{"role": "user", "content": "ping"}])
+    assert result == ""
+    assert "HUB_API_KEY" in caplog.text
