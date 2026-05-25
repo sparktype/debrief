@@ -11,6 +11,7 @@ from hook_voice.hook_handlers import (
     handle_post_tool_bash,
     handle_notification,
     handle_hook,
+    handle_subagent_stop,
 )
 
 _CFG = Config()
@@ -94,3 +95,50 @@ async def test_handle_hook_skips_short_text():
     with patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock:
         await handle_hook(raw, _CFG)
         mock.assert_not_called()
+
+
+# ── handle_subagent_stop 테스트 ──────────────────────────────
+
+async def test_subagent_stop_skips_short_text():
+    """min_chars 미만 텍스트는 TTS 호출 없이 반환."""
+    raw = json.dumps({"last_assistant_message": "짧음"})
+    with patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak:
+        await handle_subagent_stop(raw, "feature-reviewer", _CFG)
+    mock_speak.assert_not_called()
+
+
+async def test_subagent_stop_uses_correct_voice_for_reviewer():
+    """feature-reviewer → M2(빌) voice 사용."""
+    long_text = "코드 리뷰를 완료했습니다. " * 5  # 60자 이상
+    raw = json.dumps({"last_assistant_message": long_text})
+    with patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="리뷰 완료"):
+        await handle_subagent_stop(raw, "feature-reviewer", _CFG)
+    mock_speak.assert_called_once()
+    spoken_text = mock_speak.call_args[0][0]
+    used_voice = mock_speak.call_args[0][1]
+    assert used_voice == "M2"
+    assert "빌" in spoken_text
+
+
+async def test_subagent_stop_falls_back_to_default_on_unknown_agent():
+    """알 수 없는 agent_type → default voice(F1) 사용."""
+    raw = json.dumps({"last_assistant_message": "A" * 60})
+    with patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="완료"):
+        await handle_subagent_stop(raw, "unknown-xyz", _CFG)
+    mock_speak.assert_called_once()
+    used_voice = mock_speak.call_args[0][1]
+    assert used_voice == "F1"
+
+
+async def test_subagent_stop_empty_one_liner_still_speaks():
+    """extract_one_liner가 빈 문자열 반환해도 '{label} {name}입니다.' 발화."""
+    raw = json.dumps({"last_assistant_message": "B" * 60})
+    with patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value=""):
+        await handle_subagent_stop(raw, "feature-builder", _CFG)
+    mock_speak.assert_called_once()
+    spoken_text = mock_speak.call_args[0][0]
+    assert "빌더" in spoken_text
+    assert "리누스" in spoken_text
