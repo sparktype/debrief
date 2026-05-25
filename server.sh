@@ -382,6 +382,9 @@ print(json.dumps(data, indent=2, ensure_ascii=False))
   <key>ThrottleInterval</key>
   <integer>10</integer>
 
+  <key>WorkingDirectory</key>
+  <string>${SCRIPT_DIR}</string>
+
   <key>StandardOutPath</key>
   <string>${LOG_FILE}</string>
 
