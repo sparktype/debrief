@@ -21,7 +21,7 @@ def _load_classify_rules() -> list[dict]:
     return _classify_rules_cache
 
 from .config import Config
-from .player import speak_hook, speak_agent
+from .player import speak_hook, speak_agent, SPOOL_DIR
 from .summarizer import extract_summary, extract_one_liner
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
@@ -313,6 +313,55 @@ async def handle_post_tool_bash(raw: str, config: Config) -> None:
     msg = classify_post_tool_bash(cmd, out, code)
     if msg:
         await speak_hook(msg, config.voice, config.tts_speed)
+
+
+async def handle_control(action: str) -> None:
+    """TTS 재생 제어 — pause/resume/flush/skip."""
+    import os as _os
+    import signal as _signal
+    import sys as _sys
+
+    if action == "flush":
+        removed = 0
+        for f in list(SPOOL_DIR.glob("*.wav")) + list(SPOOL_DIR.glob("*.mp3")):
+            try:
+                f.unlink()
+                removed += 1
+            except Exception:
+                pass
+        print(f"큐를 비웠습니다. ({removed}개 제거)")
+        return
+
+    pid_file = SPOOL_DIR / ".player.pid"
+    if not pid_file.exists():
+        print("현재 재생 중인 TTS가 없습니다.")
+        return
+
+    try:
+        pid = int(pid_file.read_text().strip())
+    except Exception:
+        print("PID 파일을 읽을 수 없습니다.")
+        return
+
+    try:
+        if action == "pause":
+            _os.kill(pid, _signal.SIGSTOP)
+            print(f"TTS 일시정지 (PID {pid})")
+        elif action == "resume":
+            _os.kill(pid, _signal.SIGCONT)
+            print(f"TTS 재개 (PID {pid})")
+        elif action == "skip":
+            _os.kill(pid, _signal.SIGKILL)
+            pid_file.unlink(missing_ok=True)
+            print(f"현재 트랙 스킵 (PID {pid})")
+        else:
+            print("사용법: hook_voice control [pause|resume|flush|skip]", file=_sys.stderr)
+            _sys.exit(1)
+    except ProcessLookupError:
+        print("재생 프로세스가 이미 종료됐습니다.")
+        pid_file.unlink(missing_ok=True)
+    except PermissionError as e:
+        print(f"권한 오류: {e}", file=_sys.stderr)
 
 
 async def handle_config(args: list[str], config_path: "Path") -> None:

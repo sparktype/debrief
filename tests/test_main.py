@@ -42,6 +42,12 @@ async def test_hook_suggest_subcommand_dispatches():
         mock.assert_called_once()
 
 
+async def test_control_subcommand_dispatches():
+    with patch("hook_voice.__main__.handle_control", new=AsyncMock()) as mock:
+        await _run_main(["prog", "control", "flush"])
+        mock.assert_called_once_with("flush")
+
+
 async def test_unknown_subcommand_exits_1():
     with pytest.raises(SystemExit) as exc:
         await _run_main(["prog", "unknown-cmd"])

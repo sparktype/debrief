@@ -13,6 +13,7 @@ from hook_voice.hook_handlers import (
     handle_hook,
     handle_subagent_stop,
     handle_config,
+    handle_control,
 )
 import hook_voice.hook_handlers as _hh
 
@@ -231,3 +232,104 @@ class TestHandleConfig:
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "알 수 없는 키" in err
+
+
+# ── handle_control 테스트 ─────────────────────────────────────
+
+class TestHandleControl:
+    @pytest.mark.asyncio
+    async def test_flush_removes_wav_mp3(self, tmp_path, capsys):
+        (tmp_path / "file1.wav").write_bytes(b"")
+        (tmp_path / "file2.mp3").write_bytes(b"")
+
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path):
+            await handle_control("flush")
+
+        out = capsys.readouterr().out
+        assert "2개 제거" in out
+        assert not (tmp_path / "file1.wav").exists()
+        assert not (tmp_path / "file2.mp3").exists()
+
+    @pytest.mark.asyncio
+    async def test_flush_with_empty_spool(self, tmp_path, capsys):
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path):
+            await handle_control("flush")
+
+        out = capsys.readouterr().out
+        assert "0개 제거" in out
+
+    @pytest.mark.asyncio
+    async def test_no_pid_file_prints_message(self, tmp_path, capsys):
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path):
+            await handle_control("pause")
+
+        out = capsys.readouterr().out
+        assert "재생 중인 TTS가 없습니다" in out
+
+    @pytest.mark.asyncio
+    async def test_pause_sends_sigstop(self, tmp_path, capsys):
+        pid_file = tmp_path / ".player.pid"
+        pid_file.write_text("12345")
+
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path), \
+             patch("os.kill") as mock_kill:
+            import signal
+            await handle_control("pause")
+            mock_kill.assert_called_once_with(12345, signal.SIGSTOP)
+
+        out = capsys.readouterr().out
+        assert "일시정지" in out
+        assert "12345" in out
+
+    @pytest.mark.asyncio
+    async def test_resume_sends_sigcont(self, tmp_path, capsys):
+        pid_file = tmp_path / ".player.pid"
+        pid_file.write_text("12345")
+
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path), \
+             patch("os.kill") as mock_kill:
+            import signal
+            await handle_control("resume")
+            mock_kill.assert_called_once_with(12345, signal.SIGCONT)
+
+        out = capsys.readouterr().out
+        assert "재개" in out
+
+    @pytest.mark.asyncio
+    async def test_skip_sends_sigkill_and_removes_pid_file(self, tmp_path, capsys):
+        pid_file = tmp_path / ".player.pid"
+        pid_file.write_text("12345")
+
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path), \
+             patch("os.kill") as mock_kill:
+            import signal
+            await handle_control("skip")
+            mock_kill.assert_called_once_with(12345, signal.SIGKILL)
+
+        out = capsys.readouterr().out
+        assert "스킵" in out
+        assert not pid_file.exists()
+
+    @pytest.mark.asyncio
+    async def test_invalid_action_exits_with_error(self, tmp_path, capsys):
+        pid_file = tmp_path / ".player.pid"
+        pid_file.write_text("12345")
+
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path), \
+             patch("os.kill"):
+            with pytest.raises(SystemExit) as exc_info:
+                await handle_control("unknown")
+        assert exc_info.value.code == 1
+
+    @pytest.mark.asyncio
+    async def test_process_already_gone_removes_pid_file(self, tmp_path, capsys):
+        pid_file = tmp_path / ".player.pid"
+        pid_file.write_text("99999")
+
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path), \
+             patch("os.kill", side_effect=ProcessLookupError):
+            await handle_control("pause")
+
+        out = capsys.readouterr().out
+        assert "이미 종료" in out
+        assert not pid_file.exists()

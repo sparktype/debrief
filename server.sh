@@ -492,6 +492,7 @@ PYEOF
 }
 
 # ── 메인 ──────────────────────────────────────────────────
+VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 CMD="${1:-status}"
 case "$CMD" in
   start)     do_start ;;
@@ -501,8 +502,12 @@ case "$CMD" in
   logs)      do_logs "$@" ;;
   install)   do_install ;;
   uninstall) do_uninstall ;;
+  pause)     "$VENV_PY" -m hook_voice control pause ;;
+  resume)    "$VENV_PY" -m hook_voice control resume ;;
+  flush)     "$VENV_PY" -m hook_voice control flush ;;
+  skip)      "$VENV_PY" -m hook_voice control skip ;;
   *)
-    echo "사용법: $(basename "$0") [start|stop|restart|status|logs [줄수]|install|uninstall]"
+    echo "사용법: $(basename "$0") [start|stop|restart|status|logs [줄수]|install|uninstall|pause|resume|flush|skip]"
     exit 1
     ;;
 esac

@@ -69,6 +69,11 @@ async def player_loop(
                 proc = await asyncio.create_subprocess_exec(
                     "afplay", "-r", speed, str(audio)
                 )
+                pid_file = spool / ".player.pid"
+                try:
+                    pid_file.write_text(str(proc.pid))
+                except Exception:
+                    pass
                 # shutdown 이벤트와 재생 완료를 동시에 대기
                 play_task = asyncio.ensure_future(proc.wait())
                 done, pending = await asyncio.wait(
@@ -84,6 +89,10 @@ async def player_loop(
                         await proc.wait()
                 for t in pending:
                     t.cancel()
+                try:
+                    pid_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
                 audio.unlink(missing_ok=True)
                 idle = 0
             else:

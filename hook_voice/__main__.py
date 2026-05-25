@@ -14,6 +14,7 @@ from .hook_handlers import (
     handle_history,
     handle_health,
     handle_config,
+    handle_control,
 )
 
 
@@ -53,6 +54,9 @@ async def main() -> None:
         await handle_health()
     elif subcommand == "config":
         await handle_config(sys.argv[2:], _DEFAULT_CONFIG_PATH)
+    elif subcommand == "control":
+        action = sys.argv[2] if len(sys.argv) > 2 else ""
+        await handle_control(action)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)
