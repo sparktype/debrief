@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from hook_voice.player import speak_hook, speak_agent, _enqueue_spool
 
 
-def test_enqueue_spool_moves_file_and_creates_meta(tmp_path):
+def test_enqueue_spool_moves_file_and_encodes_speed(tmp_path):
+    """_enqueue_spool이 파일을 이동하고 파일명에 speed를 인코딩한다."""
     src = tmp_path / "audio.mp3"
     src.write_bytes(b"fake mp3")
     spool = tmp_path / "spool"
@@ -18,9 +19,8 @@ def test_enqueue_spool_moves_file_and_creates_meta(tmp_path):
 
     mp3_files = list(spool.glob("*.mp3"))
     assert len(mp3_files) == 1
-    meta = mp3_files[0].with_suffix(".meta")
-    assert meta.exists()
-    assert meta.read_text() == "1.2"
+    assert "_120." in mp3_files[0].name
+    assert not mp3_files[0].with_suffix(".meta").exists()
     assert not src.exists()
 
 
@@ -75,3 +75,28 @@ async def test_speak_agent_skips_empty_text():
     with patch("hook_voice.player._is_supertonic_alive", new=AsyncMock()) as mock:
         await speak_agent("", "M4", 7788, 1.2)
         mock.assert_not_called()
+
+
+from hook_voice.player import SPOOL_DIR
+import hook_voice.player as player_module
+
+def test_enqueue_spool_encodes_speed_in_filename(tmp_path):
+    """_enqueue_spool이 meta 파일 대신 파일명에 speed를 인코딩한다."""
+    # Temporarily override SPOOL_DIR
+    original_spool = player_module.SPOOL_DIR
+    player_module.SPOOL_DIR = tmp_path
+    try:
+        audio = tmp_path / "source.wav"
+        audio.write_bytes(b"RIFF")
+
+        from hook_voice.player import _enqueue_spool
+        _enqueue_spool(audio, speed=1.25)
+
+        spool_files = list(tmp_path.glob("*.wav"))
+        meta_files = list(tmp_path.glob("*.meta"))
+
+        assert len(spool_files) == 1, f"Expected 1 wav, got: {spool_files}"
+        assert len(meta_files) == 0, f"Expected 0 meta files, got: {meta_files}"
+        assert "_125." in spool_files[0].name, f"Expected _125. in filename, got: {spool_files[0].name}"
+    finally:
+        player_module.SPOOL_DIR = original_spool

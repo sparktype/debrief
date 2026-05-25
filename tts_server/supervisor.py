@@ -34,7 +34,6 @@ def _do_cleanup(spool: Path = SPOOL_DIR) -> None:
             try:
                 if now - f.stat().st_mtime > MAX_AGE_SECS:
                     f.unlink(missing_ok=True)
-                    f.with_suffix(".meta").unlink(missing_ok=True)
             except Exception:
                 pass
 
@@ -43,7 +42,6 @@ def _do_cleanup(spool: Path = SPOOL_DIR) -> None:
         if excess > 0:
             for f in remaining[:excess]:
                 f.unlink(missing_ok=True)
-                f.with_suffix(".meta").unlink(missing_ok=True)
     except Exception as e:
         log.warning(f"[Cleanup] 오류: {e}")
 
@@ -63,9 +61,11 @@ async def player_loop(
             files = sorted(list(spool.glob("*.wav")) + list(spool.glob("*.mp3")))
             if files:
                 audio = files[0]
-                meta = audio.with_suffix(".meta")
-                speed = meta.read_text().strip() if meta.exists() else "1.2"
-                meta.unlink(missing_ok=True)
+                stem_parts = audio.stem.rsplit("_", 1)
+                if len(stem_parts) == 2 and stem_parts[-1].isdigit():
+                    speed = str(int(stem_parts[-1]) / 100)  # "120" → "1.2"
+                else:
+                    speed = "1.0"
                 proc = await asyncio.create_subprocess_exec(
                     "afplay", "-r", speed, str(audio)
                 )

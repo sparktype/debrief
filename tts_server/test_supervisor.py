@@ -43,27 +43,23 @@ class TestDoCleanup:
         remaining = list(tmp_path.glob("*.wav"))
         assert len(remaining) == 10, f"10개만 남아야 하는데 {len(remaining)}개"
 
-    def test_meta_files_removed_with_audio(self, tmp_path):
-        """오래된 오디오 파일 삭제 시 대응 .meta 파일도 함께 삭제된다."""
+    def test_old_audio_file_removed_no_meta(self, tmp_path):
+        """오래된 오디오 파일은 삭제된다 — .meta 파일 없이 파일명에 speed 인코딩."""
         from tts_server.supervisor import _do_cleanup
 
-        old_wav = tmp_path / "1000.wav"
+        old_wav = tmp_path / "1000_120.wav"
         old_wav.write_bytes(b"old")
-        old_meta = tmp_path / "1000.meta"
-        old_meta.write_text("1.2")
         old_time = time.time() - 360
         os.utime(str(old_wav), (old_time, old_time))
-        os.utime(str(old_meta), (old_time, old_time))
 
         _do_cleanup(tmp_path)
 
         assert not old_wav.exists()
-        assert not old_meta.exists()
 
 
 class TestPlayerLoop:
     def test_plays_wav_with_default_speed(self, tmp_path):
-        """wav 파일이 있고 meta 없으면 speed=1.2로 afplay 호출한다."""
+        """파일명에 speed 태그 없으면 기본값 1.0으로 afplay 호출한다."""
         from unittest.mock import AsyncMock, patch
 
         audio = tmp_path / "1000.wav"
@@ -86,15 +82,14 @@ class TestPlayerLoop:
 
         asyncio.run(run())
         assert len(played) == 1
-        assert played[0] == ("afplay", "-r", "1.2", str(audio))
+        assert played[0] == ("afplay", "-r", "1.0", str(audio))
 
-    def test_reads_speed_from_meta(self, tmp_path):
-        """.meta 파일이 있으면 그 값을 speed로 사용한다."""
+    def test_reads_speed_from_filename(self, tmp_path):
+        """파일명에 인코딩된 speed를 파싱해 afplay에 전달한다."""
         from unittest.mock import AsyncMock, patch
 
-        audio = tmp_path / "2000.wav"
+        audio = tmp_path / "2000_abc12_150.wav"
         audio.write_bytes(b"audio")
-        (tmp_path / "2000.meta").write_text("1.5")
 
         played = []
         shutdown = asyncio.Event()

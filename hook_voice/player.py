@@ -36,9 +36,10 @@ def _venv_python() -> Path:
 def _enqueue_spool(audio_file: Path, speed: float) -> None:
     SPOOL_DIR.mkdir(exist_ok=True)
     uid = f"{int(time.time() * 1000)}_{''.join(random.choices(string.ascii_lowercase + string.digits, k=5))}"
-    dest = SPOOL_DIR / f"{uid}{audio_file.suffix}"
+    speed_tag = str(round(speed * 100))  # 1.0→100, 1.2→120, 1.25→125
+    dest = SPOOL_DIR / f"{uid}_{speed_tag}{audio_file.suffix}"
     audio_file.rename(dest)
-    (SPOOL_DIR / f"{uid}.meta").write_text(str(speed))
+    # .meta 파일 없음 — speed는 파일명에 인코딩됨
 
 
 async def _generate_edge(text: str) -> Path:
