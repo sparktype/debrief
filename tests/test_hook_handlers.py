@@ -312,11 +312,7 @@ class TestHandleControl:
 
     @pytest.mark.asyncio
     async def test_invalid_action_exits_with_error(self, tmp_path, capsys):
-        pid_file = tmp_path / ".player.pid"
-        pid_file.write_text("12345")
-
-        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path), \
-             patch("os.kill"):
+        with patch("hook_voice.hook_handlers.SPOOL_DIR", tmp_path):
             with pytest.raises(SystemExit) as exc_info:
                 await handle_control("unknown")
         assert exc_info.value.code == 1

@@ -103,6 +103,10 @@ async def player_loop(
             log.error(f"[Player] 재생 오류: {e}")
             if audio is not None and audio.exists():
                 audio.unlink(missing_ok=True)
+            try:
+                (spool / ".player.pid").unlink(missing_ok=True)
+            except Exception:
+                pass
             idle = 0
 
 

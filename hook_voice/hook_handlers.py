@@ -321,6 +321,11 @@ async def handle_control(action: str) -> None:
     import signal as _signal
     import sys as _sys
 
+    _VALID_ACTIONS = {"pause", "resume", "flush", "skip"}
+    if action not in _VALID_ACTIONS:
+        print("사용법: hook_voice control [pause|resume|flush|skip]", file=_sys.stderr)
+        _sys.exit(1)
+
     if action == "flush":
         removed = 0
         for f in list(SPOOL_DIR.glob("*.wav")) + list(SPOOL_DIR.glob("*.mp3")):
@@ -354,14 +359,12 @@ async def handle_control(action: str) -> None:
             _os.kill(pid, _signal.SIGKILL)
             pid_file.unlink(missing_ok=True)
             print(f"현재 트랙 스킵 (PID {pid})")
-        else:
-            print("사용법: hook_voice control [pause|resume|flush|skip]", file=_sys.stderr)
-            _sys.exit(1)
     except ProcessLookupError:
         print("재생 프로세스가 이미 종료됐습니다.")
         pid_file.unlink(missing_ok=True)
     except PermissionError as e:
         print(f"권한 오류: {e}", file=_sys.stderr)
+        _sys.exit(1)
 
 
 async def handle_config(args: list[str], config_path: "Path") -> None:
