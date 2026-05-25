@@ -248,6 +248,25 @@ except Exception:
     fi
   fi
 
+  # TTS 큐 상태
+  SPOOL_DIR="/tmp/tts-spool"
+  if [ -d "$SPOOL_DIR" ]; then
+    QUEUE_COUNT=$(find "$SPOOL_DIR" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
+  else
+    QUEUE_COUNT=0
+  fi
+  DATA_DIR="${VOICE_PERSONA_DATA_DIR:-$HOME/.local/share/voice-persona}"
+  LAST_MSG=""
+  if [ -f "$DATA_DIR/last_message.txt" ]; then
+    LAST_MSG=$(head -c 60 "$DATA_DIR/last_message.txt" 2>/dev/null)
+  fi
+  echo ""
+  echo "[TTS 큐]"
+  echo "  대기: ${QUEUE_COUNT}개"
+  if [ -n "$LAST_MSG" ]; then
+    echo "  마지막 발화: $LAST_MSG"
+  fi
+
   echo ""
   echo "  모델:      ${LLM_MODEL} (${HUB_BASE_URL})"
   echo "  로그:      $LOG_FILE"
@@ -269,53 +288,52 @@ do_logs() {
 do_install() {
   _check_deps
 
-  # 1. Stop hook 등록
-  echo "Stop hook 등록 중..."
+  # 1. 7종 hook 일괄 등록
+  echo "7종 hook 등록 중..."
   if [[ ! -f "$SETTINGS_JSON" ]]; then
     echo '{}' > "$SETTINGS_JSON"
   fi
-  python3 - "$SETTINGS_JSON" "$HOOK_CMD" << 'PYEOF'
-import json, sys
-settings_path, hook_cmd = sys.argv[1], sys.argv[2]
-with open(settings_path) as f:
-    d = json.load(f)
-hooks = d.setdefault("hooks", {})
-stop_list = hooks.setdefault("Stop", [])
-if any(hook_cmd in str(h) for h in stop_list):
-    print("  Stop hook 이미 등록됨 — 스킵")
-else:
-    stop_list.append({
-        "matcher": "",
-        "hooks": [{"type": "command", "command": hook_cmd, "timeout": 15}]
-    })
-    with open(settings_path, "w") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
-    print("  ✓ Stop hook 등록 완료")
-PYEOF
+  HOOKS_JSON=$(HOOKS_SCRIPT_DIR="$SCRIPT_DIR" python3 -c '
+import json, os
 
-  # 2. SubagentStop hook 등록
-  echo "SubagentStop hook 등록 중..."
-  SUBAGENT_HOOK_CMD="$SCRIPT_DIR/hooks/subagent-stop.sh"
-  python3 - "$SETTINGS_JSON" "$SUBAGENT_HOOK_CMD" << 'PYEOF'
-import json, sys
-settings_path, hook_cmd = sys.argv[1], sys.argv[2]
-with open(settings_path) as f:
-    d = json.load(f)
-hooks = d.setdefault("hooks", {})
-stop_list = hooks.setdefault("SubagentStop", [])
-if any(hook_cmd in str(h) for h in stop_list):
-    print("  SubagentStop hook 이미 등록됨 — 스킵")
-else:
-    stop_list.append({
-        "matcher": "",
-        "hooks": [{"type": "command", "command": hook_cmd, "timeout": 15}]
-    })
-    with open(settings_path, "w") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
-    print("  ✓ SubagentStop hook 등록 완료")
-PYEOF
+settings_path = os.path.expanduser("~/.claude/settings.json")
+hooks_dir = os.environ.get("HOOKS_SCRIPT_DIR", "") + "/hooks"
 
-  # 3. TTS LaunchAgent 등록 (수동 실행 supervisor 종료 후)
+try:
+    with open(settings_path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+
+if "hooks" not in data:
+    data["hooks"] = {}
+
+def add_simple(sec, cmd, t):
+    existing = data["hooks"].get(sec, [])
+    if not any(h.get("command") == cmd for h in existing if isinstance(h, dict)):
+        existing.append({"type": "command", "command": cmd, "timeout": t})
+    data["hooks"][sec] = existing
+
+def add_matcher(sec, matcher, cmd, t):
+    existing = data["hooks"].get(sec, [])
+    if not any(h.get("matcher") == matcher for h in existing if isinstance(h, dict)):
+        existing.append({"matcher": matcher, "hooks": [{"type": "command", "command": cmd, "timeout": t}]})
+    data["hooks"][sec] = existing
+
+add_simple("Stop",            hooks_dir + "/stop.sh",          15)
+add_simple("SubagentStop",    hooks_dir + "/subagent-stop.sh", 15)
+add_simple("Notification",    hooks_dir + "/notification.sh",  10)
+add_simple("UserPromptSubmit",hooks_dir + "/prompt-submit.sh", 10)
+add_simple("SessionStart",    hooks_dir + "/session-start.sh", 10)
+add_matcher("PreToolUse",  "Bash", hooks_dir + "/pre-tool-bash.sh",  10)
+add_matcher("PostToolUse", "Bash", hooks_dir + "/post-tool-bash.sh", 10)
+
+print(json.dumps(data, indent=2, ensure_ascii=False))
+')
+  echo "$HOOKS_JSON" > "$SETTINGS_JSON"
+  echo "  → settings.json에 7종 hook 등록 완료"
+
+  # 2. TTS LaunchAgent 등록 (수동 실행 supervisor 종료 후)
   if _supervisor_running && ! _is_launchd_managed; then
     echo "수동 실행 Supervisor 종료 중..."
     do_stop
