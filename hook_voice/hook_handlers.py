@@ -121,7 +121,8 @@ async def handle_notification(raw: str, config: Config) -> None:
     except Exception:
         msg = ""
     if msg and config.auto_speak:
-        await speak_hook(msg, config.voice, config.tts_speed)
+        await speak_hook(msg, config.voice, config.tts_speed,
+                         edge_timeout=config.edge_timeout_ms / 1000)
 
 
 async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> None:

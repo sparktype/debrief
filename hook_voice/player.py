@@ -122,13 +122,13 @@ async def _is_supertonic_alive(port: int) -> bool:
         return False
 
 
-async def _generate_supertonic(text: str, voice: str, port: int) -> bytes:
+async def _generate_supertonic(text: str, voice: str, port: int, timeout: float = 20.0) -> bytes:
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"http://localhost:{port}/v1/audio/speech",
             json={"model": "supertonic-3", "input": text, "voice": voice,
                   "response_format": "wav", "lang": "ko"},
-            timeout=20.0,
+            timeout=timeout,
         )
         r.raise_for_status()
         return r.content
@@ -140,7 +140,10 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
         return
     if await _is_supertonic_alive(port):
         try:
-            wav_bytes = await asyncio.wait_for(_generate_supertonic(text, voice, port), timeout=supertonic_timeout)
+            wav_bytes = await asyncio.wait_for(
+                _generate_supertonic(text, voice, port, timeout=supertonic_timeout),
+                timeout=supertonic_timeout,
+            )
             tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
             tmp.write_bytes(wav_bytes)
             _enqueue_spool(tmp, speed)
