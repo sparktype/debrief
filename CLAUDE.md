@@ -133,7 +133,7 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 
 | Voice ID | 이름 | 역할 | 인물 모티프 | Instruct |
 |----------|------|------|------------|---------|
-| F1 | 멜린다 | default | Melinda Gates | 밝고 친절하게 |
+| F1 | 연아 | default | 김연아 | 밝고 친절하게 |
 | F2 | 마리 | tester | Marie Curie | 또렷하고 정확하게 |
 | F3 | 제인 | explorer | Jane Goodall | 밝고 호기심 있게 |
 | F4 | 셰릴 | ops | Sheryl Sandberg | 침착하고 명확하게 |
