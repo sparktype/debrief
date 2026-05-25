@@ -17,7 +17,7 @@ from .hook_handlers import (
 async def _read_stdin() -> str:
     if sys.stdin.isatty():
         return ""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     data = await loop.run_in_executor(None, sys.stdin.buffer.read)
     return data.decode("utf-8").strip()
 

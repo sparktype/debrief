@@ -46,3 +46,18 @@ async def test_unknown_subcommand_exits_1():
     with pytest.raises(SystemExit) as exc:
         await _run_main(["prog", "unknown-cmd"])
     assert exc.value.code == 1
+
+
+async def test_read_stdin_uses_running_loop():
+    """get_running_loop()를 사용하는지 확인 — DeprecationWarning 없이 동작."""
+    import warnings
+    from hook_voice.__main__ import _read_stdin
+    with patch("sys.stdin.isatty", return_value=False), \
+         patch("sys.stdin.buffer.read", return_value=b"hello"):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = await _read_stdin()
+    # No DeprecationWarning about event loop
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning) and "event_loop" in str(x.message).lower()]
+    assert len(deprecation_warnings) == 0
+    assert result == "hello"
