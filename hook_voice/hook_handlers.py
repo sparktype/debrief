@@ -247,15 +247,15 @@ async def handle_health() -> None:
         try:
             from .llm_client import chat_completion
             resp = await chat_completion([{"role": "user", "content": "ping"}], max_tokens=1)
-            return ("LLM API 연결", "OK" if resp is not None else "응답 없음")
+            return ("LLM API 연결", "OK" if resp else "FAIL (빈 응답)")
         except Exception as e:
             return ("LLM API 연결", f"FAIL ({type(e).__name__})")
 
     async def _check_edgetts() -> tuple[str, str]:
         try:
             async with _httpx.AsyncClient(timeout=3.0, verify=False) as client:
-                await client.get("https://speech.platform.bing.com/")
-            return ("EdgeTTS 연결", "OK")
+                r = await client.get("https://speech.platform.bing.com/")
+                return ("EdgeTTS 연결", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
         except Exception as e:
             return ("EdgeTTS 연결", f"FAIL ({type(e).__name__})")
 
