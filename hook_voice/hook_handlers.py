@@ -228,6 +228,60 @@ async def handle_history(args: list[str], config: "Config") -> None:
             pass
 
 
+async def handle_health() -> None:
+    """TTS 시스템 전체 상태를 진단하고 출력한다."""
+    import os as _os
+    import httpx as _httpx
+
+    results: list[tuple[str, str]] = []
+
+    # 1. HUB_API_KEY
+    api_key = _os.environ.get("HUB_API_KEY", "")
+    results.append(("HUB_API_KEY 환경변수", "OK" if api_key else "MISSING"))
+
+    # 2. LLM API
+    if api_key:
+        try:
+            from .llm_client import chat_completion
+            resp = await chat_completion([{"role": "user", "content": "ping"}], max_tokens=1)
+            results.append(("LLM API 연결", "OK" if resp is not None else "응답 없음"))
+        except Exception as e:
+            results.append(("LLM API 연결", f"FAIL ({type(e).__name__})"))
+    else:
+        results.append(("LLM API 연결", "SKIP (API 키 없음)"))
+
+    # 3. uvicorn
+    try:
+        async with _httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get("http://localhost:7777/health")
+            results.append(("uvicorn (7777)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})"))
+    except Exception as e:
+        results.append(("uvicorn (7777)", f"FAIL ({type(e).__name__})"))
+
+    # 4. supertonic
+    try:
+        async with _httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get("http://localhost:7788/v1/health")
+            results.append(("supertonic (7788)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})"))
+    except Exception as e:
+        results.append(("supertonic (7788)", f"FAIL ({type(e).__name__})"))
+
+    # 5. spool
+    from .player import SPOOL_DIR
+    files = (list(SPOOL_DIR.glob("*.wav")) + list(SPOOL_DIR.glob("*.mp3"))) if SPOOL_DIR.exists() else []
+    results.append(("spool 디렉토리", f"{len(files)}개 대기 ({SPOOL_DIR})"))
+
+    print("[TTS 시스템 진단]")
+    for label, status in results:
+        if status.startswith("OK") or "대기" in status:
+            icon = "✓"
+        elif "SKIP" in status:
+            icon = "!"
+        else:
+            icon = "✗"
+        print(f"  [{icon}] {label}: {status}")
+
+
 async def handle_post_tool_bash(raw: str, config: Config) -> None:
     if not config.auto_speak:
         return

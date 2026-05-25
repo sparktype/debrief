@@ -12,6 +12,7 @@ from .hook_handlers import (
     handle_pre_tool_bash,
     handle_post_tool_bash,
     handle_history,
+    handle_health,
 )
 
 
@@ -47,6 +48,8 @@ async def main() -> None:
         await handle_post_tool_bash(raw, config)
     elif subcommand == "history":
         await handle_history(sys.argv[2:], config)
+    elif subcommand == "health":
+        await handle_health()
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)
