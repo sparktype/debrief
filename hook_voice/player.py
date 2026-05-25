@@ -99,11 +99,12 @@ async def _speak_without_edge(text: str, voice: str, speed: float, instruct: str
     save_last_message(text)
 
 
-async def speak_hook(text: str, voice: str = "Sohee", speed: float = 1.2) -> None:
+async def speak_hook(text: str, voice: str = "Sohee", speed: float = 1.2,
+                     edge_timeout: float = 10.0) -> None:
     skip_edge = os.environ.get("VOICE_PERSONA_OFFLINE") == "1"
     if not skip_edge and _venv_python().exists():
         try:
-            mp3 = await asyncio.wait_for(_generate_edge(text), timeout=10.0)
+            mp3 = await asyncio.wait_for(_generate_edge(text), timeout=edge_timeout)
             _enqueue_spool(mp3, speed)
             save_last_message(text)
             return
@@ -133,12 +134,13 @@ async def _generate_supertonic(text: str, voice: str, port: int) -> bytes:
         return r.content
 
 
-async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "") -> None:
+async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "",
+                      supertonic_timeout: float = 20.0) -> None:
     if not text.strip():
         return
     if await _is_supertonic_alive(port):
         try:
-            wav_bytes = await asyncio.wait_for(_generate_supertonic(text, voice, port), timeout=20.0)
+            wav_bytes = await asyncio.wait_for(_generate_supertonic(text, voice, port), timeout=supertonic_timeout)
             tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
             tmp.write_bytes(wav_bytes)
             _enqueue_spool(tmp, speed)

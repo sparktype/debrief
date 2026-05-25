@@ -110,7 +110,8 @@ async def handle_hook(raw: str, config: Config) -> None:
             text = _extract_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
         summary = await extract_summary(text, config.summary_model)
-        await speak_hook(summary, config.voice, config.tts_speed)
+        await speak_hook(summary, config.voice, config.tts_speed,
+                         edge_timeout=config.edge_timeout_ms / 1000)
 
 
 async def handle_notification(raw: str, config: Config) -> None:
@@ -142,7 +143,8 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     label = get_agent_label(agent_type, vm)
     instruct = resolve_instruct(agent_type, vm)
     one_liner = await extract_one_liner(text, config.summary_model)
-    await speak_agent(f"{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct)
+    await speak_agent(f"{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
+                      supertonic_timeout=config.supertonic_timeout_ms / 1000)
 
 
 async def handle_hook_suggest(raw: str, config: Config) -> None:
