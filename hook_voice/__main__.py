@@ -11,6 +11,7 @@ from .hook_handlers import (
     handle_hook_suggest,
     handle_pre_tool_bash,
     handle_post_tool_bash,
+    handle_history,
 )
 
 
@@ -44,6 +45,8 @@ async def main() -> None:
         await handle_pre_tool_bash(raw, config)
     elif subcommand == "post-tool-bash":
         await handle_post_tool_bash(raw, config)
+    elif subcommand == "history":
+        await handle_history(sys.argv[2:], config)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

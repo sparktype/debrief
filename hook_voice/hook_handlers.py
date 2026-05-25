@@ -182,6 +182,30 @@ async def handle_pre_tool_bash(raw: str, config: Config) -> None:
         await speak_hook(msg, config.voice, config.tts_speed)
 
 
+async def handle_history(args: list[str], config: "Config") -> None:
+    """최근 N개 발화 히스토리를 출력한다."""
+    n = 10
+    if args:
+        try:
+            n = int(args[0])
+        except ValueError:
+            pass
+    from .last_message import _get_history_file
+    hist = _get_history_file()
+    if not hist.exists():
+        print("발화 히스토리가 없습니다.")
+        return
+    lines = hist.read_text(encoding="utf-8").splitlines()
+    for line in lines[-n:]:
+        try:
+            entry = json.loads(line)
+            ts = entry.get("ts", "")[:19].replace("T", " ")
+            text = entry.get("text", "")[:80]
+            print(f"  {ts}  {text}")
+        except Exception:
+            pass
+
+
 async def handle_post_tool_bash(raw: str, config: Config) -> None:
     if not config.auto_speak:
         return
