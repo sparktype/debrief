@@ -5,6 +5,21 @@ import os
 import re
 from pathlib import Path
 
+_CLASSIFY_RULES_PATH = Path(__file__).parent.parent / "classify-rules.json"
+_classify_rules_cache: list[dict] | None = None
+
+
+def _load_classify_rules() -> list[dict]:
+    global _classify_rules_cache
+    if _classify_rules_cache is not None:
+        return _classify_rules_cache
+    try:
+        data = json.loads(_CLASSIFY_RULES_PATH.read_text(encoding="utf-8"))
+        _classify_rules_cache = data.get("pre_tool", [])
+    except Exception:
+        _classify_rules_cache = []
+    return _classify_rules_cache
+
 from .config import Config
 from .player import speak_hook, speak_agent
 from .summarizer import extract_summary, extract_one_liner
@@ -72,6 +87,13 @@ def _extract_agent_type_from_transcript(path: Path) -> str:
 
 
 def classify_pre_tool_bash(cmd: str) -> str | None:
+    rules = _load_classify_rules()
+    if rules:
+        for rule in rules:
+            if re.search(rule["pattern"], cmd):
+                return rule["message"]
+        return None
+    # JSON 없을 때 하드코딩 폴백
     if re.search(r"rm\s+-rf|git\s+reset\s+--hard|DROP\s+TABLE", cmd):
         return "주의: 되돌릴 수 없는 작업입니다."
     if re.search(r"npm run build|tsc\b|cargo build|go build", cmd):
