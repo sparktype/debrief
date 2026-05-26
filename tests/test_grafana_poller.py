@@ -133,3 +133,55 @@ def test_detect_changes_multiple():
     statuses = {c.status for c in changes}
     assert "firing" in statuses
     assert "resolved" in statuses
+
+
+async def test_analyze_alert_returns_llm_summary():
+    config = _make_config()
+    poller = GrafanaPoller(config)
+    change = AlertChange(
+        name="KafkaLag",
+        status="firing",
+        labels={"alertname": "KafkaLag", "severity": "critical"},
+        annotations={"summary": "lag exceeded 10000"},
+        value="10500",
+        started_at=datetime(2026, 5, 26, 10, 0, tzinfo=timezone.utc),
+    )
+    with patch("hook_voice.grafana_poller.chat_completion", new=AsyncMock(return_value="Kafka 컨슈머 처리 지연입니다.")):
+        result = await poller.analyze_alert(change)
+    assert result == "Kafka 컨슈머 처리 지연입니다."
+
+
+async def test_analyze_alert_fallback_on_empty_llm():
+    config = _make_config()
+    poller = GrafanaPoller(config)
+    change = AlertChange(
+        name="KafkaLag",
+        status="firing",
+        labels={"alertname": "KafkaLag"},
+        annotations={},
+        value="",
+        started_at=datetime(2026, 5, 26, 10, 0, tzinfo=timezone.utc),
+    )
+    with patch("hook_voice.grafana_poller.chat_completion", new=AsyncMock(return_value="")):
+        result = await poller.analyze_alert(change)
+    assert "KafkaLag" in result
+    assert len(result) > 0
+
+
+async def test_analyze_alert_resolved_no_llm():
+    config = _make_config()
+    poller = GrafanaPoller(config)
+    change = AlertChange(
+        name="KafkaLag",
+        status="resolved",
+        labels={"alertname": "KafkaLag"},
+        annotations={},
+        value="",
+        started_at=datetime(2026, 5, 26, 10, 0, tzinfo=timezone.utc),
+        duration=timedelta(minutes=5),
+    )
+    with patch("hook_voice.grafana_poller.chat_completion", new=AsyncMock()) as mock_llm:
+        result = await poller.analyze_alert(change)
+        mock_llm.assert_not_called()
+    assert "해소" in result
+    assert "5분" in result
