@@ -9,6 +9,7 @@ import httpx
 
 from .config import Config
 from .llm_client import chat_completion
+from .player import speak_hook
 
 _log = logging.getLogger(__name__)
 
@@ -128,5 +129,61 @@ class GrafanaPoller:
         return result if result else f"{change.name} 알럿이 발생했습니다."
 
     async def run(self, shutdown: asyncio.Event) -> None:
-        """supervisor에서 호출하는 폴링 루프 — Task 4에서 구현됨."""
-        await shutdown.wait()
+        """supervisor에서 호출하는 폴링 루프."""
+        g = self._config.grafana
+        if not g.enabled or not g.url or not g.token:
+            _log.info("[Grafana] 폴러 비활성화 (enabled=False 또는 url/token 미설정)")
+            await shutdown.wait()
+            return
+
+        _log.info("[Grafana] 폴링 시작 (interval=%ds, alerts=%s)", g.interval, g.alerts)
+        prev_snapshot: dict = {}
+        first_run = True
+
+        while not shutdown.is_set():
+            try:
+                curr = await self.poll_once()
+            except PermissionError as e:
+                _log.error("[Grafana] %s — 폴러를 비활성화합니다.", e)
+                await speak_hook(
+                    "Grafana 인증에 실패했습니다. 토큰을 확인해 주세요.",
+                    self._config.voice,
+                    self._config.tts_speed,
+                )
+                break
+
+            if first_run:
+                prev_snapshot = curr
+                first_run = False
+                _log.info("[Grafana] 첫 폴링 완료 — snapshot 수집 (발화 없음)")
+            else:
+                changes = _detect_changes(prev_snapshot, curr, g.alerts)
+                if changes:
+                    await self._handle_changes(changes)
+                prev_snapshot = curr
+
+            try:
+                await asyncio.wait_for(shutdown.wait(), timeout=float(g.interval))
+            except asyncio.TimeoutError:
+                pass
+
+    async def _handle_changes(self, changes: list[AlertChange]) -> None:
+        """알럿 변화를 TTS로 발화. 3개 초과 시 묶음 요약."""
+        if len(changes) > 3:
+            firing = sum(1 for c in changes if c.status == "firing")
+            resolved = sum(1 for c in changes if c.status == "resolved")
+            parts = []
+            if firing:
+                parts.append(f"발생 {firing}개")
+            if resolved:
+                parts.append(f"해소 {resolved}개")
+            text = f"{len(changes)}개 알럿 상태가 변경됐습니다. {', '.join(parts)}."
+            await speak_hook(text, self._config.voice, self._config.tts_speed)
+            return
+
+        for change in changes:
+            try:
+                text = await self.analyze_alert(change)
+                await speak_hook(text, self._config.voice, self._config.tts_speed)
+            except Exception as e:
+                _log.warning("[Grafana] 발화 실패: %s", e)

@@ -185,3 +185,102 @@ async def test_analyze_alert_resolved_no_llm():
         mock_llm.assert_not_called()
     assert "해소" in result
     assert "5분" in result
+
+
+async def test_run_disabled_exits_immediately():
+    """grafana.enabled=False 이면 즉시 종료."""
+    config = Config(grafana=GrafanaConfig(enabled=False))
+    poller = GrafanaPoller(config)
+    shutdown = asyncio.Event()
+    shutdown.set()
+    with patch("hook_voice.grafana_poller.speak_hook", new=AsyncMock()) as mock_speak:
+        await poller.run(shutdown)
+        mock_speak.assert_not_called()
+
+
+async def test_run_first_cycle_no_speak():
+    """첫 사이클은 snapshot만 수집하고 발화하지 않는다."""
+    config = _make_config(alerts=["KafkaLag"])
+    poller = GrafanaPoller(config)
+    shutdown = asyncio.Event()
+
+    async def fake_poll():
+        shutdown.set()
+        return {"fp001": SAMPLE_ALERT}
+
+    poller.poll_once = fake_poll
+
+    with patch("hook_voice.grafana_poller.speak_hook", new=AsyncMock()) as mock_speak:
+        await poller.run(shutdown)
+        mock_speak.assert_not_called()
+
+
+async def test_run_fires_on_second_cycle():
+    """두 번째 사이클에서 새 알럿 감지 시 발화한다."""
+    config = _make_config(alerts=["KafkaLag"])
+    poller = GrafanaPoller(config)
+    shutdown = asyncio.Event()
+    call_count = 0
+
+    async def fake_poll():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {}
+        shutdown.set()
+        return {"fp001": SAMPLE_ALERT}
+
+    poller.poll_once = fake_poll
+
+    with patch("hook_voice.grafana_poller.speak_hook", new=AsyncMock()) as mock_speak, \
+         patch.object(poller, "analyze_alert", new=AsyncMock(return_value="Kafka 알럿입니다.")):
+        await poller.run(shutdown)
+        mock_speak.assert_called_once()
+
+
+async def test_run_burst_over_3_alerts():
+    """3개 초과 알럿은 묶음 1회만 발화한다."""
+    config = _make_config(alerts=["A1", "A2", "A3", "A4"])
+    poller = GrafanaPoller(config)
+    shutdown = asyncio.Event()
+    call_count = 0
+
+    alerts = [
+        {**SAMPLE_ALERT, "fingerprint": f"fp{i}",
+         "labels": {"alertname": f"A{i}", "severity": "critical"}}
+        for i in range(1, 5)
+    ]
+
+    async def fake_poll():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {}
+        shutdown.set()
+        return {a["fingerprint"]: a for a in alerts}
+
+    poller.poll_once = fake_poll
+
+    with patch("hook_voice.grafana_poller.speak_hook", new=AsyncMock()) as mock_speak:
+        await poller.run(shutdown)
+        assert mock_speak.call_count == 1
+        text = mock_speak.call_args[0][0]
+        assert "4개" in text
+
+
+async def test_run_auth_failure_speaks_warning_and_exits():
+    """401/403 인증 실패 시 경고 TTS 1회 발화 후 종료."""
+    config = _make_config()
+    poller = GrafanaPoller(config)
+    shutdown = asyncio.Event()
+
+    async def fake_poll():
+        raise PermissionError("Grafana 인증 실패 (HTTP 401)")
+
+    poller.poll_once = fake_poll
+
+    with patch("hook_voice.grafana_poller.speak_hook", new=AsyncMock()) as mock_speak:
+        await poller.run(shutdown)
+        mock_speak.assert_called_once()
+        text = mock_speak.call_args[0][0]
+        assert "인증" in text
