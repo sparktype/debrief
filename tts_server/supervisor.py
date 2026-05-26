@@ -8,6 +8,9 @@ import sys
 import time
 from pathlib import Path
 
+from hook_voice.config import load_config
+from hook_voice.grafana_poller import GrafanaPoller
+
 PROJECT_DIR = Path(__file__).parent.parent
 VENV_BIN = PROJECT_DIR / ".venv" / "bin"
 PID_FILE = PROJECT_DIR / ".tts_server.pid"
@@ -209,10 +212,15 @@ async def main() -> None:
         procs.append(supertonic_proc)
         log.info(f"[Supervisor] supertonic 기동 (PID {supertonic_proc.pid})")
 
+        config = load_config()
+        poller = GrafanaPoller(config)
+        log.info("[Supervisor] GrafanaPoller 준비 (enabled=%s)", config.grafana.enabled)
+
         await asyncio.gather(
             player_loop(shutdown=shutdown),
             cleanup_loop(shutdown=shutdown),
             monitor_children(procs, shutdown=shutdown),
+            poller.run(shutdown),
         )
     finally:
         await _graceful_shutdown(procs)
