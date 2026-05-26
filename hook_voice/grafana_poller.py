@@ -18,8 +18,8 @@ _ZERO_TIME = "0001-01-01T00:00:00Z"
 class AlertChange:
     name: str
     status: Literal["firing", "resolved"]
-    labels: dict
-    annotations: dict
+    labels: dict[str, str]
+    annotations: dict[str, str]
     value: str
     started_at: datetime
     duration: timedelta | None = None
@@ -84,6 +84,7 @@ class GrafanaPoller:
         url = f"{g.url.rstrip('/')}/api/alertmanager/grafana/api/v2/alerts"
         headers = {"Authorization": f"Bearer {g.token}"}
         try:
+            # HMG 사내 SSL 인터셉트 프록시 우회
             async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code in (401, 403):
