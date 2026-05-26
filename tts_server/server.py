@@ -28,7 +28,7 @@ def _log(level: str, message: str) -> None:
 _MODEL_ID = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 
 # 단일 워커 스레드 상태
-_work_queue: queue.Queue = queue.Queue(maxsize=1)
+_work_queue: queue.Queue = queue.Queue(maxsize=5)
 _model_ready = threading.Event()
 _model_error = threading.Event()
 _model_error_message = ""

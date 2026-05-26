@@ -76,16 +76,17 @@ def read_recent_transcripts(
     max_files: int = 3,
     max_lines_per_file: int = 50,
 ) -> str:
-    dir_ = transcripts_dir or (Path.home() / ".claude" / "transcripts")
-    cache_key = str(dir_)
+    scan_dir = transcripts_dir or (Path.home() / ".claude" / "projects")
+    cache_key = str(scan_dir)
     if cache_key in _transcript_cache:
         data, ts = _transcript_cache[cache_key]
         if time.time() - ts < _CACHE_TTL:
             return data
-    if not dir_.exists():
+    if not scan_dir.exists():
         return ""
     try:
-        files = sorted(dir_.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)[:max_files]
+        glob_fn = scan_dir.glob if transcripts_dir else scan_dir.rglob
+        files = sorted(glob_fn("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)[:max_files]
         parts: list[str] = []
         for f in files:
             for line in f.read_text(encoding="utf-8").splitlines()[-max_lines_per_file:]:
