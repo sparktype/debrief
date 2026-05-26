@@ -43,6 +43,7 @@ def _detect_changes(
     changes: list[AlertChange] = []
     watched_set = set(watched)
 
+    # 동일 fingerprint의 value 변화는 감지하지 않음 — firing 지속 중 재발화 방지
     for fp, alert in curr.items():
         name = alert["labels"].get("alertname", "")
         if name not in watched_set:
@@ -101,7 +102,7 @@ class GrafanaPoller:
         except PermissionError:
             raise
         except Exception as e:
-            _log.warning("[Grafana] 폴링 실패: %s", e)
+            _log.warning("[Grafana] 폴링 실패: %s", type(e).__name__)
             return {}
 
     async def analyze_alert(self, change: AlertChange) -> str:

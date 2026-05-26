@@ -478,6 +478,7 @@ async def handle_grafana(args: list[str], config_path: "Path | None" = None) -> 
         _set_alerts(data, alerts)
         _save_raw(data)
         print(f"알럿 추가됨: {name}", flush=True)
+        print("※ 변경 사항은 TTS supervisor 재시작 후 적용됩니다 (./server.sh restart)", flush=True)
 
     elif sub == "remove":
         if len(args) < 2:
@@ -493,6 +494,7 @@ async def handle_grafana(args: list[str], config_path: "Path | None" = None) -> 
         _set_alerts(data, alerts)
         _save_raw(data)
         print(f"알럿 제거됨: {name}", flush=True)
+        print("※ 변경 사항은 TTS supervisor 재시작 후 적용됩니다 (./server.sh restart)", flush=True)
 
     else:
         print(f"알 수 없는 서브커맨드: {sub}", flush=True)
