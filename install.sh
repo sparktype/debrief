@@ -1,200 +1,297 @@
 #!/usr/bin/env bash
+# AI 코딩 도구별 voice hook 등록/해제
+# 사용법: ./install.sh [--uninstall] <tool> [<tool2>...]
+# 지원 도구: claude | codex | opencode
 set -euo pipefail
 
-INSTALL_DIR="${HOME}/.local/share/voice-persona"
-REPO_URL="https://github.com/sparktype/voice-persona"
-LAUNCHD_PLIST_DIR="${HOME}/Library/LaunchAgents"
-LAUNCHD_LABEL="com.voice-persona.tts-server"
-PLIST_FILE="${LAUNCHD_PLIST_DIR}/${LAUNCHD_LABEL}.plist"
-HOOKS_SETTINGS="${HOME}/.claude/settings.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOOKS_DIR="$SCRIPT_DIR/hooks"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+# ── 인수 파싱 ──────────────────────────────────────────────
 
-info() { echo -e "${BLUE}[i]${NC} $*"; }
-ok()   { echo -e "${GREEN}✓${NC} $*"; }
-warn() { echo -e "${YELLOW}⚠${NC} $*"; }
-err()  { echo -e "${RED}✗${NC} $*"; exit 1; }
+UNINSTALL=false
+TOOLS=()
 
-# ── [1/6] 환경 확인 ──────────────────────────────────────────────────────────
-echo ""
-info "[1/6] 환경 확인 중..."
+for arg in "$@"; do
+  case "$arg" in
+    --uninstall|-u|uninstall) UNINSTALL=true ;;
+    claude|codex|opencode)    TOOLS+=("$arg") ;;
+    *)
+      echo "알 수 없는 인수: $arg" >&2
+      echo "사용법: $(basename "$0") [--uninstall] <tool> [<tool2>...]" >&2
+      echo "지원 도구: claude | codex | opencode" >&2
+      exit 1
+      ;;
+  esac
+done
 
-[[ "$(uname -m)" != "arm64" ]] && err "Apple Silicon(M1/M2/M3/M4) Mac에서만 실행 가능합니다."
-
-OS_VER=$(sw_vers -productVersion)
-MAJOR=$(echo "$OS_VER" | cut -d. -f1)
-[[ "$MAJOR" -lt 13 ]] && err "macOS 13(Ventura) 이상이 필요합니다. 현재: $OS_VER"
-
-if ! command -v python3 &>/dev/null; then
-  err "Python 3.11+가 없습니다. 'brew install python@3.11' 로 설치하세요."
-fi
-PY_VER=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null)
-PY_MAJOR=$(python3 -c "import sys; print(sys.version_info.major)" 2>/dev/null)
-[[ "$PY_MAJOR" -lt 3 || ("$PY_MAJOR" -eq 3 && "$PY_VER" -lt 11) ]] && \
-  err "Python 3.11 이상이 필요합니다. 현재: $(python3 --version)"
-
-if ! command -v claude &>/dev/null; then
-  warn "Claude Code CLI가 없습니다. https://claude.ai/code 에서 설치하세요."
-  warn "Claude Code 없이도 설치는 계속됩니다."
-fi
-
-ok "환경 확인 완료 (macOS $OS_VER, Python $(python3 --version))"
-
-# ── [2/6] 저장소 클론/업데이트 ───────────────────────────────────────────────
-echo ""
-info "[2/6] 저장소 준비 중..."
-
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-  info "기존 설치를 업데이트합니다: $INSTALL_DIR"
-  git -C "$INSTALL_DIR" pull --ff-only || warn "git pull 실패. 수동 업데이트 필요."
-else
-  info "저장소를 클론합니다: $INSTALL_DIR"
-  mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone "$REPO_URL" "$INSTALL_DIR" || err "저장소 클론 실패."
-fi
-cd "$INSTALL_DIR"
-ok "저장소 준비 완료"
-
-# ── [3/6] Python 환경 ────────────────────────────────────────────────────────
-echo ""
-info "[3/6] Python 가상환경 및 패키지 설치 중..."
-
-python3 -m venv .venv || err "Python venv 생성 실패."
-.venv/bin/pip install -q --upgrade pip
-.venv/bin/pip install -q mlx-audio edge-tts fastapi uvicorn 'supertonic[serve]' || \
-  err "Python 패키지 설치 실패."
-ok "Python 환경 준비 완료"
-
-# ── [4/6] MLX 모델 캐시 (선택) ───────────────────────────────────────────────
-echo ""
-info "[4/6] MLX Qwen3-TTS 모델 캐시 확인 중..."
-
-SKIP_MODEL=false
-for arg in "$@"; do [[ "$arg" == "--skip-model" ]] && SKIP_MODEL=true; done
-
-if [[ "$SKIP_MODEL" == "false" ]]; then
+if [[ ${#TOOLS[@]} -eq 0 ]]; then
+  echo "사용법: $(basename "$0") [--uninstall] <tool> [<tool2>...]"
+  echo "지원 도구: claude | codex | opencode"
   echo ""
-  echo "MLX Qwen3-TTS 모델을 다운로드합니다 (약 800MB)."
-  echo "이 단계를 건너뛰려면 Ctrl+C 후 '--skip-model' 옵션으로 재실행하세요."
-  read -r -p "다운로드하시겠습니까? [Y/n] " REPLY
-  REPLY="${REPLY:-Y}"
-  if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-    .venv/bin/python3 -c "
-from mlx_audio.tts.utils import load_model
-load_model('mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit')
-print('모델 다운로드 완료')
-" || warn "모델 다운로드 실패. Edge TTS fallback으로 동작합니다."
-  else
-    warn "모델 다운로드 건너뜀. Edge TTS fallback으로 동작합니다."
-  fi
-else
-  warn "모델 다운로드 건너뜀 (--skip-model). Edge TTS fallback으로 동작합니다."
+  echo "예시:"
+  echo "  ./install.sh claude                   # Claude Code hook 등록"
+  echo "  ./install.sh claude codex opencode    # 복수 등록"
+  echo "  ./install.sh --uninstall claude       # hook 제거"
+  exit 1
 fi
 
-# ── [5/6] Claude Code hooks 등록 ─────────────────────────────────────────────
-echo ""
-info "[5/6] Claude Code hooks 등록 중..."
+# ── Claude Code ────────────────────────────────────────────
+# 설정 파일: ~/.claude/settings.json
+# hook 포맷: {hooks: {Stop:[...], SubagentStop:[...], ...}}
 
-register_hooks() {
-  local settings_file="$HOOKS_SETTINGS"
-  mkdir -p "$(dirname "$settings_file")"
-  local install_dir="$INSTALL_DIR"
+install_claude() {
+  local settings="$HOME/.claude/settings.json"
+  [[ -f "$settings" ]] || echo '{}' > "$settings"
 
-  python3 - <<PYEOF
-import json, os, sys
-path = "$settings_file"
-install_dir = "$install_dir"
+  python3 - "$settings" "$HOOKS_DIR" << 'PYEOF'
+import json, sys
 
-try:
-    with open(path) as f:
-        config = json.load(f)
-except Exception:
-    config = {}
+settings_path, hooks_dir = sys.argv[1], sys.argv[2]
 
-hooks = config.setdefault("hooks", {})
+with open(settings_path) as f:
+    data = json.load(f)
 
-hook_defs = {
-    "Stop": {"timeout": 15, "script": "stop.sh"},
-    "SubagentStop": {"timeout": 15, "script": "subagent-stop.sh"},
-    "UserPromptSubmit": {"timeout": 10, "script": "prompt-submit.sh"},
-    "SessionStart": {"timeout": 10, "script": "session-start.sh"},
-}
+if "hooks" not in data:
+    data["hooks"] = {}
 
-for event, meta in hook_defs.items():
-    cmd = f"{install_dir}/hooks/{meta['script']}"
-    entry = {"matcher": "", "hooks": [{"type": "command", "command": cmd, "timeout": meta["timeout"]}]}
-    lst = hooks.setdefault(event, [])
+def add_simple(sec, script, timeout):
+    cmd = hooks_dir + "/" + script
+    existing = data["hooks"].get(sec, [])
+    if cmd not in json.dumps(existing):
+        existing.append({"type": "command", "command": cmd, "timeout": timeout})
+    data["hooks"][sec] = existing
+
+def add_matcher(sec, matcher, script, timeout):
+    cmd = hooks_dir + "/" + script
+    existing = data["hooks"].get(sec, [])
     if not any(
-        hh.get("command", "").startswith(install_dir)
-        for h in lst for hh in h.get("hooks", [])
+        isinstance(h, dict) and h.get("matcher") == matcher
+        and cmd in json.dumps(h.get("hooks", []))
+        for h in existing
     ):
-        lst.append(entry)
+        existing.append({
+            "matcher": matcher,
+            "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]
+        })
+    data["hooks"][sec] = existing
 
-with open(path, "w") as f:
-    json.dump(config, f, indent=2)
-print("hooks 등록 완료")
+add_simple("Stop",             "stop.sh",          15)
+add_simple("SubagentStop",     "subagent-stop.sh", 15)
+add_simple("Notification",     "notification.sh",  10)
+add_simple("UserPromptSubmit", "prompt-submit.sh", 10)
+add_simple("SessionStart",     "session-start.sh", 10)
+add_matcher("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
+add_matcher("PostToolUse", "Bash", "post-tool-bash.sh", 5)
+
+with open(settings_path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
 PYEOF
+
+  echo "  ✓ Claude Code — 7종 hook 등록 완료"
+  echo "    파일: $HOME/.claude/settings.json"
 }
-register_hooks || warn "hooks 등록 실패. 수동 등록이 필요합니다."
-ok "Claude Code hooks 등록 완료"
 
-# ── [6/6] TTS Supervisor LaunchAgent 등록 ────────────────────────────────────
-echo ""
-info "[6/6] TTS Supervisor LaunchAgent 등록 중..."
+uninstall_claude() {
+  local settings="$HOME/.claude/settings.json"
+  [[ -f "$settings" ]] || { echo "  Claude Code 설정 파일 없음, 건너뜀"; return; }
 
-mkdir -p "$LAUNCHD_PLIST_DIR"
+  python3 - "$settings" "$HOOKS_DIR" << 'PYEOF'
+import json, sys
 
-cat > "$PLIST_FILE" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${INSTALL_DIR}/.venv/bin/python</string>
-    <string>${INSTALL_DIR}/tts_server/supervisor.py</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
-  <key>ThrottleInterval</key>
-  <integer>10</integer>
-  <key>StandardOutPath</key>
-  <string>${INSTALL_DIR}/.tts_server.log</string>
-  <key>StandardErrorPath</key>
-  <string>${INSTALL_DIR}/.tts_server.log</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HF_HUB_OFFLINE</key>
-    <string>1</string>
-    <key>PATH</key>
-    <string>${INSTALL_DIR}/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
-  </dict>
-</dict>
-</plist>
-EOF
+settings_path, hooks_dir = sys.argv[1], sys.argv[2]
 
-launchctl unload "$PLIST_FILE" 2>/dev/null || true
-launchctl load "$PLIST_FILE" 2>/dev/null || warn "LaunchAgent 등록 실패. 수동 실행: ${INSTALL_DIR}/server.sh start"
-launchctl start "${LAUNCHD_LABEL}" 2>/dev/null || true
-ok "TTS Supervisor LaunchAgent 등록 완료"
+with open(settings_path) as f:
+    data = json.load(f)
 
-# ── 완료 ─────────────────────────────────────────────────────────────────────
+hooks = data.get("hooks", {})
+for sec in list(hooks.keys()):
+    filtered = [h for h in hooks[sec] if hooks_dir not in json.dumps(h)]
+    if filtered:
+        hooks[sec] = filtered
+    else:
+        del hooks[sec]
+
+with open(settings_path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PYEOF
+
+  echo "  ✓ Claude Code hook 제거 완료"
+}
+
+# ── Codex CLI ──────────────────────────────────────────────
+# 설정 파일: ~/.codex/hooks.json
+# hook 포맷: Claude Code와 동일 (Stop, SubagentStop, PreToolUse, PostToolUse)
+
+install_codex() {
+  local hooks_file="$HOME/.codex/hooks.json"
+  mkdir -p "$(dirname "$hooks_file")"
+  [[ -f "$hooks_file" ]] || echo '{"hooks":{}}' > "$hooks_file"
+
+  python3 - "$hooks_file" "$HOOKS_DIR" << 'PYEOF'
+import json, sys
+
+hooks_file, hooks_dir = sys.argv[1], sys.argv[2]
+
+with open(hooks_file) as f:
+    data = json.load(f)
+
+if "hooks" not in data:
+    data["hooks"] = {}
+
+def add_simple(sec, script, timeout):
+    cmd = hooks_dir + "/" + script
+    existing = data["hooks"].get(sec, [])
+    if cmd not in json.dumps(existing):
+        existing.append({"type": "command", "command": cmd, "timeout": timeout})
+    data["hooks"][sec] = existing
+
+def add_matcher(sec, matcher, script, timeout):
+    cmd = hooks_dir + "/" + script
+    existing = data["hooks"].get(sec, [])
+    if not any(
+        isinstance(h, dict) and h.get("matcher") == matcher
+        and cmd in json.dumps(h.get("hooks", []))
+        for h in existing
+    ):
+        existing.append({
+            "matcher": matcher,
+            "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]
+        })
+    data["hooks"][sec] = existing
+
+# Codex는 Claude Code와 동일한 hook 포맷 사용 (Stop, SubagentStop, PreToolUse, PostToolUse)
+add_simple("Stop",         "stop.sh",          15)
+add_simple("SubagentStop", "subagent-stop.sh", 15)
+add_matcher("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
+add_matcher("PostToolUse", "Bash", "post-tool-bash.sh", 5)
+
+with open(hooks_file, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PYEOF
+
+  echo "  ✓ Codex — 4종 hook 등록 완료"
+  echo "    파일: $HOME/.codex/hooks.json"
+}
+
+uninstall_codex() {
+  local hooks_file="$HOME/.codex/hooks.json"
+  [[ -f "$hooks_file" ]] || { echo "  ~/.codex/hooks.json 없음, 건너뜀"; return; }
+
+  python3 - "$hooks_file" "$HOOKS_DIR" << 'PYEOF'
+import json, sys
+
+hooks_file, hooks_dir = sys.argv[1], sys.argv[2]
+
+with open(hooks_file) as f:
+    data = json.load(f)
+
+hooks = data.get("hooks", {})
+for sec in list(hooks.keys()):
+    filtered = [h for h in hooks[sec] if hooks_dir not in json.dumps(h)]
+    if filtered:
+        hooks[sec] = filtered
+    else:
+        del hooks[sec]
+
+with open(hooks_file, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PYEOF
+
+  echo "  ✓ Codex hook 제거 완료"
+}
+
+# ── OpenCode ───────────────────────────────────────────────
+# 설정 파일: ~/.config/opencode/opencode.json
+# hook 포맷: {"hook": {"session_completed": [{"command": ["path"]}]}}
+# 이벤트 매핑:
+#   session_completed → Stop (응답 완료 후 TTS)
+
+install_opencode() {
+  local config="$HOME/.config/opencode/opencode.json"
+  if [[ ! -f "$config" ]]; then
+    mkdir -p "$(dirname "$config")"
+    echo '{}' > "$config"
+  fi
+
+  python3 - "$config" "$HOOKS_DIR" << 'PYEOF'
+import json, sys
+
+config_path, hooks_dir = sys.argv[1], sys.argv[2]
+
+with open(config_path) as f:
+    data = json.load(f)
+
+if "hook" not in data:
+    data["hook"] = {}
+
+stop_cmd = [hooks_dir + "/stop.sh"]
+
+completed = data["hook"].get("session_completed", [])
+if not any(e.get("command") == stop_cmd for e in completed):
+    completed.append({"command": stop_cmd})
+data["hook"]["session_completed"] = completed
+
+with open(config_path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PYEOF
+
+  echo "  ✓ OpenCode — 1종 hook 등록 완료"
+  echo "    파일: $HOME/.config/opencode/opencode.json"
+  echo "    매핑: session_completed → stop.sh"
+}
+
+uninstall_opencode() {
+  local config="$HOME/.config/opencode/opencode.json"
+  [[ -f "$config" ]] || { echo "  ~/.config/opencode/opencode.json 없음, 건너뜀"; return; }
+
+  python3 - "$config" "$HOOKS_DIR" << 'PYEOF'
+import json, sys
+
+config_path, hooks_dir = sys.argv[1], sys.argv[2]
+
+with open(config_path) as f:
+    data = json.load(f)
+
+hook = data.get("hook", {})
+for event in list(hook.keys()):
+    filtered = [e for e in hook[event] if hooks_dir not in json.dumps(e)]
+    if filtered:
+        hook[event] = filtered
+    else:
+        del hook[event]
+
+if not hook:
+    data.pop("hook", None)
+
+with open(config_path, "w") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+PYEOF
+
+  echo "  ✓ OpenCode hook 제거 완료"
+}
+
+# ── 메인 ──────────────────────────────────────────────────
+
+if $UNINSTALL; then
+  echo "hook 제거 중: ${TOOLS[*]}"
+  for tool in "${TOOLS[@]}"; do
+    case "$tool" in
+      claude)   uninstall_claude ;;
+      codex)    uninstall_codex ;;
+      opencode) uninstall_opencode ;;
+    esac
+  done
+else
+  echo "hook 등록 중: ${TOOLS[*]}"
+  for tool in "${TOOLS[@]}"; do
+    case "$tool" in
+      claude)   install_claude ;;
+      codex)    install_codex ;;
+      opencode) install_opencode ;;
+    esac
+  done
+fi
+
 echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}✓ voice-persona 설치 완료${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo "  상태 확인 : ${INSTALL_DIR}/server.sh status"
-echo "  서버 로그 : tail -f ${INSTALL_DIR}/.tts_server.log"
-echo "  설정 파일 : ~/.voice-persona.json (없으면 기본값 사용)"
-echo "  제거      : bash ${INSTALL_DIR}/uninstall.sh"
-echo ""
-echo "  Claude Code를 재시작하면 자동으로 음성이 활성화됩니다."
-echo ""
+echo "✓ 완료"

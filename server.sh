@@ -1,44 +1,38 @@
 #!/usr/bin/env bash
-# summary-voice-mcp 실행·관리 스크립트
-# 사용법: ./server.sh [start|stop|restart|status|logs [줄수]|install|uninstall]
+# TTS Supervisor 서비스 관리 — launchctl 래퍼
+# 사용법: ./server.sh [start|stop|restart|status|logs [N]|install|uninstall|pause|resume|flush|skip]
 set -euo pipefail
 
-# ── 경로 설정 ──────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/.tts_server.log"
-SETTINGS_JSON="$HOME/.claude/settings.json"
-HOOK_CMD="$SCRIPT_DIR/hooks/stop.sh"
 
-# ── launchd 서비스 설정 (macOS) ────────────────────────────
 LAUNCHD_PLIST_DIR="$HOME/Library/LaunchAgents"
-LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/com.voice-persona.tts-server.plist"
 LAUNCHD_LABEL="com.voice-persona.tts-server"
+LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/$LAUNCHD_LABEL.plist"
 
-# ── TTS 서버 설정 ──────────────────────────────────────────
 TTS_PORT=7777
 SUPERTONIC_PORT=7788
-PLAYER_PID_FILE=/tmp/tts-player.pid
-PLAYER_SPOOL=/tmp/tts-spool
+VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 
-# ── 환경변수 ───────────────────────────────────────────────
+# ── 환경변수 (plist 생성 시 삽입용) ──────────────────────────
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
-
-# HMG Hub 공용 엔드포인트 (LLM 요약)
 export HUB_BASE_URL="${HUB_BASE_URL:-https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3}"
 export LLM_MODEL="${LLM_MODEL:-gpt-5.4}"
 
-# HUB_API_KEY 미설정 시 로컬 rc 파일에서 읽어옴
 if [[ -z "${HUB_API_KEY:-}" ]]; then
   for _rc in "$HOME/.zshenv.local" "$HOME/.zshrc.local" "$HOME/.zshenv"; do
     if [[ -f "$_rc" ]]; then
-      # shellcheck disable=SC1090
       set -a; source "$_rc" 2>/dev/null || true; set +a
       [[ -n "${HUB_API_KEY:-}" ]] && break
     fi
   done
 fi
 
-# ── 헬퍼 함수 ─────────────────────────────────────────────
+# ── 헬퍼 ──────────────────────────────────────────────────
+
+_launchd_loaded() {
+  launchctl list "$LAUNCHD_LABEL" &>/dev/null
+}
 
 _tts_running() {
   lsof -iTCP:${TTS_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
@@ -48,140 +42,70 @@ _supertonic_running() {
   lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
 }
 
-_supervisor_running() {
-  local pid
-  pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null) || return 1
-  kill -0 "$pid" 2>/dev/null
-}
-
 _check_health() {
-  local port="${1:-$TTS_PORT}"
-  local path="${2:-/health}"
   curl -s -o /dev/null -w "%{http_code}" \
-    --connect-timeout 1 "http://127.0.0.1:${port}${path}" 2>/dev/null
+    --connect-timeout 1 "http://127.0.0.1:${1:-$TTS_PORT}${2:-/health}" 2>/dev/null
 }
 
-_is_launchd_managed() {
-  [[ -f "$LAUNCHD_PLIST" ]] && launchctl list "$LAUNCHD_LABEL" &>/dev/null
-}
-
-_check_deps() {
-  if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
-    echo "경고: .venv 없음 — setup-tts.sh를 먼저 실행하세요." >&2
-  fi
-  if [[ -z "${HUB_API_KEY:-}" ]]; then
-    echo "경고: HUB_API_KEY 미설정 — LLM 요약이 폴백으로 동작합니다." >&2
+_require_plist() {
+  if [[ ! -f "$LAUNCHD_PLIST" ]]; then
+    echo "launchd 서비스가 등록되지 않았습니다. 먼저 ./server.sh install 을 실행하세요." >&2
+    exit 1
   fi
 }
 
-# ── 수동 관리 명령 ─────────────────────────────────────────
-
-_kill_orphan_players() {
-  # 구버전 tts_player.sh 및 launchd 외부에서 실행 중인 고아 supervisor.py 종료
-  local launchd_pid
-  launchd_pid=$(launchctl list "$LAUNCHD_LABEL" 2>/dev/null | awk '/"PID"/{gsub(/[^0-9]/,"",$3); print $3}')
-
-  local pids
-  pids=$(pgrep -f "tts_player.sh" 2>/dev/null)
-  for pid in $pids; do
-    [[ "$pid" == "$launchd_pid" ]] && continue
-    kill "$pid" 2>/dev/null && echo "  고아 tts_player.sh 종료: PID $pid"
-  done
-
-  pids=$(pgrep -f "tts_server/supervisor.py" 2>/dev/null)
-  for pid in $pids; do
-    [[ "$pid" == "$launchd_pid" ]] && continue
-    kill "$pid" 2>/dev/null && echo "  고아 supervisor.py 종료: PID $pid"
+_wait_for_stop() {
+  local i=0
+  while (( i < 8 )); do
+    _tts_running || return 0
+    sleep 1; i=$(( i + 1 ))
   done
 }
+
+# ── 명령 ──────────────────────────────────────────────────
 
 do_start() {
-  _check_deps
-  _kill_orphan_players
-
-  if _is_launchd_managed; then
-    echo "launchd 서비스가 supervisor를 관리 중입니다."
-    echo "  일시 중지: launchctl stop  $LAUNCHD_LABEL"
-    echo "  재시작:    launchctl start $LAUNCHD_LABEL"
-    echo "  완전 제거: $(basename "$0") uninstall"
-    return 0
+  _require_plist
+  if ! _launchd_loaded; then
+    echo "LaunchAgent 로드 중..."
+    launchctl load "$LAUNCHD_PLIST"
   fi
-
-  if _supervisor_running; then
-    local pid
-    pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null)
-    echo "이미 실행 중 (supervisor PID: $pid)"
-    return 0
-  fi
-
-  echo "Supervisor 시작 중..."
-  nohup "$SCRIPT_DIR/.venv/bin/python" \
-      "$SCRIPT_DIR/tts_server/supervisor.py" \
-      >> "$LOG_FILE" 2>&1 &
-  disown $!
-
+  echo "TTS 서버 시작 중..."
+  launchctl start "$LAUNCHD_LABEL"
   local i=0
   while (( i < 10 )); do
-    if [[ "$(_check_health "$TTS_PORT")" == "200" ]]; then
-      echo "✓ TTS 서버 기동 완료 (HTTP 200)"
-      return 0
-    fi
-    sleep 1
-    i=$(( i + 1 ))
+    [[ "$(_check_health)" == "200" ]] && { echo "✓ 기동 완료"; return 0; }
+    sleep 1; i=$(( i + 1 ))
   done
-  echo "✓ Supervisor 기동됨 — 모델 로딩 중, 잠시 후 응답 예정"
+  echo "✓ 기동 요청됨 — 모델 로딩 중 (./server.sh logs 로 확인)"
 }
 
 do_stop() {
-  if _is_launchd_managed; then
-    echo "launchd 관리 서버 종료 중 (launchctl stop)..."
-    launchctl stop "$LAUNCHD_LABEL"
-    local i=0
-    while (( i < 8 )); do
-      _supervisor_running || break
-      sleep 1
-      i=$(( i + 1 ))
-    done
-    return 0
-  fi
-
-  if ! _supervisor_running; then
-    echo "Supervisor가 실행 중이지 않습니다."
-    return 0
-  fi
-
-  local pid
-  pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null)
-  echo "Supervisor 종료 중 (PID $pid)..."
-  kill -TERM "$pid" 2>/dev/null || true
-  local i=0
-  while (( i < 8 )); do
-    _supervisor_running || break
-    sleep 1
-    i=$(( i + 1 ))
-  done
-  rm -f "$SCRIPT_DIR/.tts_server.pid"
-  echo "종료 완료"
+  _require_plist
+  echo "TTS 서버 종료 중..."
+  launchctl stop "$LAUNCHD_LABEL" 2>/dev/null || true
+  _wait_for_stop
+  echo "✓ 종료됨"
 }
 
 do_restart() {
-  do_stop
-  do_start
+  _require_plist
+  echo "TTS 서버 재시작 중..."
+  launchctl stop "$LAUNCHD_LABEL" 2>/dev/null || true
+  _wait_for_stop
+  launchctl start "$LAUNCHD_LABEL"
+  local i=0
+  while (( i < 10 )); do
+    [[ "$(_check_health)" == "200" ]] && { echo "✓ 재시작 완료"; return 0; }
+    sleep 1; i=$(( i + 1 ))
+  done
+  echo "✓ 재시작 요청됨 — 모델 로딩 중"
 }
 
 do_status() {
   echo "● voice-persona 상태"
 
-  # Supervisor 확인
-  if _supervisor_running; then
-    local pid
-    pid=$(cat "$SCRIPT_DIR/.tts_server.pid" 2>/dev/null)
-    echo "  Supervisor: ✓ 실행 중 (PID: $pid)"
-  else
-    echo "  Supervisor: ✗ 중지됨"
-  fi
-
-  # TTS 서버 확인
+  # TTS 서버
   if _tts_running; then
     local pid
     pid=$(lsof -iTCP:${TTS_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
@@ -195,7 +119,7 @@ do_status() {
     echo "  TTS 서버:  ✗ 중지됨"
   fi
 
-  # Supertonic 서버 확인
+  # Supertonic
   if _supertonic_running; then
     local st_pid
     st_pid=$(lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
@@ -209,67 +133,61 @@ do_status() {
     echo "  Supertonic: ✗ 중지됨"
   fi
 
-  # Stop hook 등록 확인
-  local hook_registered=false
-  if [[ -f "$SETTINGS_JSON" ]]; then
-    hook_registered=$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$SETTINGS_JSON'))
-    stops = d.get('hooks', {}).get('Stop', [])
-    print('true' if any('$SCRIPT_DIR' in str(h) for h in stops) else 'false')
-except Exception:
-    print('false')
-" 2>/dev/null)
-  fi
-  if [[ "$hook_registered" == "true" ]]; then
-    echo "  Stop hook: ✓ 등록됨 ($SETTINGS_JSON)"
-  else
-    echo "  Stop hook: ✗ 미등록 — $(basename "$0") install 로 등록"
-  fi
-
-  # launchd 서비스 상태
+  # launchd
+  echo ""
   if [[ -f "$LAUNCHD_PLIST" ]]; then
-    echo ""
-    local launchd_row
-    launchd_row=$(launchctl list 2>/dev/null | grep "$LAUNCHD_LABEL" || true)
-    if [[ -n "$launchd_row" ]]; then
-      local launchd_pid launchd_status
-      launchd_pid=$(echo "$launchd_row" | awk '{print $1}')
-      launchd_status=$(echo "$launchd_row" | awk '{print $2}')
-      echo "  launchd:   ✓ 등록됨 (자동 재시작 활성화)"
-      if [[ "$launchd_pid" != "-" ]]; then
-        echo "  launchd PID: $launchd_pid"
+    local row
+    row=$(launchctl list 2>/dev/null | grep "$LAUNCHD_LABEL" || true)
+    if [[ -n "$row" ]]; then
+      local lpid lcode
+      lpid=$(echo "$row" | awk '{print $1}')
+      lcode=$(echo "$row" | awk '{print $2}')
+      echo "  launchd:   ✓ 로드됨 (자동 재시작 활성화)"
+      if [[ "$lpid" != "-" ]]; then
+        echo "  launchd PID: $lpid"
       else
-        echo "  launchd PID: 중지됨 (종료 코드 $launchd_status)"
+        echo "  launchd PID: 중지됨 (종료 코드 $lcode)"
       fi
     else
       echo "  launchd:   ○ plist 존재, 미로드 상태"
     fi
+  else
+    echo "  launchd:   ✗ 미등록 — ./server.sh install 로 등록"
   fi
 
-  # TTS 큐 상태
-  SPOOL_DIR="/tmp/tts-spool"
-  if [ -d "$SPOOL_DIR" ]; then
-    QUEUE_COUNT=$(find "$SPOOL_DIR" -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
-  else
-    QUEUE_COUNT=0
+  # hook 등록 상태 (Claude Code 기준)
+  local claude_settings="$HOME/.claude/settings.json"
+  if [[ -f "$claude_settings" ]]; then
+    local hook_ok
+    hook_ok=$(python3 -c "
+import json
+d = json.load(open('$claude_settings'))
+stops = d.get('hooks', {}).get('Stop', [])
+print('true' if any('$SCRIPT_DIR' in str(h) for h in stops) else 'false')
+" 2>/dev/null)
+    if [[ "$hook_ok" == "true" ]]; then
+      echo "  Stop hook: ✓ 등록됨 (Claude Code)"
+    else
+      echo "  Stop hook: ✗ 미등록 — ./install.sh claude 로 등록"
+    fi
   fi
-  DATA_DIR="${VOICE_PERSONA_DATA_DIR:-$HOME/.local/share/voice-persona}"
-  LAST_MSG=""
-  if [ -f "$DATA_DIR/last_message.txt" ]; then
-    LAST_MSG=$(head -c 60 "$DATA_DIR/last_message.txt" 2>/dev/null)
-  fi
+
+  # TTS 큐
+  local queue_count=0
+  [[ -d "/tmp/tts-spool" ]] && \
+    queue_count=$(find /tmp/tts-spool -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
+
+  local data_dir="${VOICE_PERSONA_DATA_DIR:-$HOME/.local/share/voice-persona}"
+  local last_msg=""
+  [[ -f "$data_dir/last_message.txt" ]] && last_msg=$(head -c 60 "$data_dir/last_message.txt" 2>/dev/null)
+
   echo ""
   echo "[TTS 큐]"
-  echo "  대기: ${QUEUE_COUNT}개"
-  if [ -n "$LAST_MSG" ]; then
-    echo "  마지막 발화: $LAST_MSG"
-  fi
-
+  echo "  대기: ${queue_count}개"
+  [[ -n "$last_msg" ]] && echo "  마지막 발화: $last_msg"
   echo ""
-  echo "  모델:      ${LLM_MODEL} (${HUB_BASE_URL})"
-  echo "  로그:      $LOG_FILE"
+  echo "  모델: ${LLM_MODEL} (${HUB_BASE_URL})"
+  echo "  로그: $LOG_FILE"
 }
 
 do_logs() {
@@ -283,72 +201,20 @@ do_logs() {
   fi
 }
 
-# ── launchd 서비스 관리 ────────────────────────────────────
+# ── launchd 설치/제거 ──────────────────────────────────────
 
 do_install() {
-  _check_deps
-
-  # 1. 7종 hook 일괄 등록
-  echo "7종 hook 등록 중..."
-  if [[ ! -f "$SETTINGS_JSON" ]]; then
-    echo '{}' > "$SETTINGS_JSON"
+  if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
+    echo "경고: .venv 없음 — setup-tts.sh를 먼저 실행하세요." >&2
   fi
-  HOOKS_JSON=$(HOOKS_SCRIPT_DIR="$SCRIPT_DIR" python3 -c '
-import json, os
-
-settings_path = os.path.expanduser("~/.claude/settings.json")
-hooks_dir = os.environ.get("HOOKS_SCRIPT_DIR", "") + "/hooks"
-
-try:
-    with open(settings_path) as f:
-        data = json.load(f)
-except Exception:
-    data = {}
-
-if "hooks" not in data:
-    data["hooks"] = {}
-
-def add_simple(sec, cmd, t):
-    existing = data["hooks"].get(sec, [])
-    # matcher-wrapper 포함 모든 포맷에서 중복 검사
-    existing_json = json.dumps(existing)
-    if cmd not in existing_json:
-        existing.append({"type": "command", "command": cmd, "timeout": t})
-    data["hooks"][sec] = existing
-
-def add_matcher(sec, matcher, cmd, t):
-    existing = data["hooks"].get(sec, [])
-    if not any(h.get("matcher") == matcher for h in existing if isinstance(h, dict)):
-        existing.append({"matcher": matcher, "hooks": [{"type": "command", "command": cmd, "timeout": t}]})
-    data["hooks"][sec] = existing
-
-add_simple("Stop",            hooks_dir + "/stop.sh",          15)
-add_simple("SubagentStop",    hooks_dir + "/subagent-stop.sh", 15)
-add_simple("Notification",    hooks_dir + "/notification.sh",  10)
-add_simple("UserPromptSubmit",hooks_dir + "/prompt-submit.sh", 10)
-add_simple("SessionStart",    hooks_dir + "/session-start.sh", 10)
-add_matcher("PreToolUse",  "Bash", hooks_dir + "/pre-tool-bash.sh",  10)
-add_matcher("PostToolUse", "Bash", hooks_dir + "/post-tool-bash.sh", 10)
-
-print(json.dumps(data, indent=2, ensure_ascii=False))
-')
-  if [ -z "$HOOKS_JSON" ]; then
-    echo "  [오류] hook 등록 스크립트 실행 실패"
-    return 1
-  fi
-  echo "$HOOKS_JSON" > "$SETTINGS_JSON"
-  echo "  → settings.json에 7종 hook 등록 완료"
-
-  # 2. TTS LaunchAgent 등록 (수동 실행 supervisor 종료 후)
-  if _supervisor_running && ! _is_launchd_managed; then
-    echo "수동 실행 Supervisor 종료 중..."
-    do_stop
+  if [[ -z "${HUB_API_KEY:-}" ]]; then
+    echo "경고: HUB_API_KEY 미설정 — LLM 요약이 폴백으로 동작합니다." >&2
   fi
 
   echo "TTS LaunchAgent 등록 중..."
   mkdir -p "$LAUNCHD_PLIST_DIR"
 
-  if launchctl list "$LAUNCHD_LABEL" &>/dev/null; then
+  if _launchd_loaded; then
     echo "  기존 LaunchAgent 언로드 중..."
     launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
   fi
@@ -371,14 +237,12 @@ print(json.dumps(data, indent=2, ensure_ascii=False))
   <key>RunAtLoad</key>
   <true/>
 
-  <!-- 비정상 종료(크래시)만 재시작 — launchctl stop 후에는 재시작 안 함 -->
   <key>KeepAlive</key>
   <dict>
     <key>SuccessfulExit</key>
     <false/>
   </dict>
 
-  <!-- 크래시 루프 방지: 재시작 최소 간격 10초 -->
   <key>ThrottleInterval</key>
   <integer>10</integer>
 
@@ -413,89 +277,45 @@ PLIST_EOF
   launchctl load "$LAUNCHD_PLIST"
   echo "  ✓ LaunchAgent 등록 완료"
 
-  # 기동 대기 (최대 10초)
   local i=0
   while (( i < 10 )); do
-    if [[ "$(_check_health "$TTS_PORT")" == "200" ]]; then
-      break
-    fi
-    sleep 1
-    i=$(( i + 1 ))
+    [[ "$(_check_health "$TTS_PORT")" == "200" ]] && break
+    sleep 1; i=$(( i + 1 ))
   done
 
   echo ""
-  echo "✓ voice-persona 설치 완료"
+  echo "✓ TTS 서버 설치 완료"
   echo ""
-  echo "  Stop hook: Claude 응답 완료 시 자동 TTS 실행"
-  echo "  TTS 서버:  로그인 시 자동 시작 + 크래시 후 자동 재시작"
-  echo "  로그:      $LOG_FILE"
+  echo "  다음으로 코딩 도구별 hook을 등록하세요:"
+  echo "    ./install.sh claude            # Claude Code"
+  echo "    ./install.sh codex             # Codex CLI"
+  echo "    ./install.sh opencode          # OpenCode"
+  echo "    ./install.sh claude opencode   # 복수 등록"
   echo ""
-  echo "제어 명령:"
-  echo "  일시 중지: launchctl stop  $LAUNCHD_LABEL"
-  echo "  재시작:    launchctl start $LAUNCHD_LABEL"
-  echo "  완전 제거: $(basename "$0") uninstall"
+  echo "  서비스 제어:"
+  echo "    launchctl start $LAUNCHD_LABEL"
+  echo "    launchctl stop  $LAUNCHD_LABEL"
+  echo "    ./server.sh logs"
 }
 
 do_uninstall() {
-  # Stop hook 제거
-  echo "Stop hook 제거 중..."
-  if [[ -f "$SETTINGS_JSON" ]]; then
-    python3 - "$SETTINGS_JSON" "$HOOK_CMD" << 'PYEOF'
-import json, sys
-settings_path, hook_cmd = sys.argv[1], sys.argv[2]
-with open(settings_path) as f:
-    d = json.load(f)
-stop = d.get("hooks", {}).get("Stop", [])
-before = len(stop)
-d["hooks"]["Stop"] = [h for h in stop if hook_cmd not in str(h)]
-if len(d["hooks"]["Stop"]) < before:
-    with open(settings_path, "w") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
-    print("  ✓ Stop hook 제거 완료")
-else:
-    print("  Stop hook이 등록되지 않았습니다.")
-PYEOF
-  fi
-
-  # SubagentStop hook 제거
-  echo "SubagentStop hook 제거 중..."
-  SUBAGENT_HOOK_CMD="$SCRIPT_DIR/hooks/subagent-stop.sh"
-  if [[ -f "$SETTINGS_JSON" ]]; then
-    python3 - "$SETTINGS_JSON" "$SUBAGENT_HOOK_CMD" << 'PYEOF'
-import json, sys
-settings_path, hook_cmd = sys.argv[1], sys.argv[2]
-with open(settings_path) as f:
-    d = json.load(f)
-sub = d.get("hooks", {}).get("SubagentStop", [])
-before = len(sub)
-d["hooks"]["SubagentStop"] = [h for h in sub if hook_cmd not in str(h)]
-if len(d["hooks"]["SubagentStop"]) < before:
-    with open(settings_path, "w") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
-    print("  ✓ SubagentStop hook 제거 완료")
-else:
-    print("  SubagentStop hook이 등록되지 않았습니다.")
-PYEOF
-  fi
-
-  # Supervisor 종료 + LaunchAgent 제거
-  if _supervisor_running; then
-    echo "Supervisor 종료 중..."
-    do_stop
+  if _launchd_loaded; then
+    echo "LaunchAgent 언로드 중..."
+    launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
   fi
   if [[ -f "$LAUNCHD_PLIST" ]]; then
-    launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
     rm -f "$LAUNCHD_PLIST"
-    echo "  ✓ LaunchAgent 제거 완료"
+    echo "✓ LaunchAgent 제거 완료"
+  else
+    echo "LaunchAgent가 등록되지 않았습니다."
   fi
-
   echo ""
-  echo "✓ voice-persona 제거 완료"
-  echo "  수동 실행: $(basename "$0") start"
+  echo "  hook 제거가 필요하면:"
+  echo "    ./install.sh --uninstall claude"
+  echo "    ./install.sh --uninstall claude codex opencode"
 }
 
 # ── 메인 ──────────────────────────────────────────────────
-VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 CMD="${1:-status}"
 case "$CMD" in
   start)     do_start ;;
@@ -510,7 +330,7 @@ case "$CMD" in
   flush)     "$VENV_PY" -m hook_voice control flush ;;
   skip)      "$VENV_PY" -m hook_voice control skip ;;
   *)
-    echo "사용법: $(basename "$0") [start|stop|restart|status|logs [줄수]|install|uninstall|pause|resume|flush|skip]"
+    echo "사용법: $(basename "$0") [start|stop|restart|status|logs [N]|install|uninstall|pause|resume|flush|skip]"
     exit 1
     ;;
 esac
