@@ -284,3 +284,44 @@ async def test_run_auth_failure_speaks_warning_and_exits():
         mock_speak.assert_called_once()
         text = mock_speak.call_args[0][0]
         assert "인증" in text
+
+
+from hook_voice.hook_handlers import handle_grafana
+
+
+async def test_grafana_list_empty(tmp_path, capsys):
+    cfg = tmp_path / "persona.json"
+    cfg.write_text('{}')
+    await handle_grafana(["list"], cfg)
+    out = capsys.readouterr().out
+    assert "등록된 알럿이 없습니다" in out
+
+
+async def test_grafana_add_and_list(tmp_path, capsys):
+    cfg = tmp_path / "persona.json"
+    cfg.write_text('{}')
+    await handle_grafana(["add", "KafkaLag"], cfg)
+    capsys.readouterr()
+    await handle_grafana(["list"], cfg)
+    out = capsys.readouterr().out
+    assert "KafkaLag" in out
+
+
+async def test_grafana_remove(tmp_path, capsys):
+    cfg = tmp_path / "persona.json"
+    cfg.write_text('{"grafana": {"alerts": ["KafkaLag", "SparkFailed"]}}')
+    await handle_grafana(["remove", "KafkaLag"], cfg)
+    capsys.readouterr()
+    await handle_grafana(["list"], cfg)
+    out = capsys.readouterr().out
+    assert "KafkaLag" not in out
+    assert "SparkFailed" in out
+
+
+async def test_grafana_add_duplicate(tmp_path):
+    import json
+    cfg = tmp_path / "persona.json"
+    cfg.write_text('{"grafana": {"alerts": ["KafkaLag"]}}')
+    await handle_grafana(["add", "KafkaLag"], cfg)
+    data = json.loads(cfg.read_text())
+    assert data["grafana"]["alerts"].count("KafkaLag") == 1
