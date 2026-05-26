@@ -29,7 +29,7 @@ class GrafanaConfig:
     url: str = ""
     token: str = ""
     interval: int = 30
-    alerts: list = field(default_factory=list)
+    alerts: list[str] = field(default_factory=list)
 
 
 @dataclass
