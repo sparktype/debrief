@@ -420,3 +420,81 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
 
     print("사용법: hook_voice config [list|get <key>|set <key> <val>|reset]", file=_sys.stderr)
     _sys.exit(1)
+
+
+async def handle_grafana(args: list[str], config_path: "Path | None" = None) -> None:
+    """grafana 서브커맨드 — 알럿 감시 목록 관리."""
+    import json
+    from .config import _DEFAULT_CONFIG_PATH
+
+    target = config_path or _DEFAULT_CONFIG_PATH
+
+    def _load_raw() -> dict:
+        if not target.exists():
+            return {}
+        try:
+            return json.loads(target.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _save_raw(data: dict) -> None:
+        target.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _get_alerts(data: dict) -> list:
+        return data.get("grafana", {}).get("alerts", [])
+
+    def _set_alerts(data: dict, alerts: list) -> None:
+        if "grafana" not in data:
+            data["grafana"] = {}
+        data["grafana"]["alerts"] = alerts
+
+    if not args:
+        print("Usage: python -m hook_voice grafana <list|add|remove>", flush=True)
+        return
+
+    sub = args[0]
+
+    if sub == "list":
+        data = _load_raw()
+        alerts = _get_alerts(data)
+        if not alerts:
+            print("등록된 알럿이 없습니다.", flush=True)
+        else:
+            print(f"감시 중인 알럿 ({len(alerts)}개):", flush=True)
+            for a in alerts:
+                print(f"  - {a}", flush=True)
+
+    elif sub == "add":
+        if len(args) < 2:
+            print("Usage: python -m hook_voice grafana add <알럿명>", flush=True)
+            return
+        name = args[1]
+        data = _load_raw()
+        alerts = _get_alerts(data)
+        if name in alerts:
+            print(f"이미 등록된 알럿입니다: {name}", flush=True)
+            return
+        alerts.append(name)
+        _set_alerts(data, alerts)
+        _save_raw(data)
+        print(f"알럿 추가됨: {name}", flush=True)
+        print("※ 변경 사항은 TTS supervisor 재시작 후 적용됩니다 (./server.sh restart)", flush=True)
+
+    elif sub == "remove":
+        if len(args) < 2:
+            print("Usage: python -m hook_voice grafana remove <알럿명>", flush=True)
+            return
+        name = args[1]
+        data = _load_raw()
+        alerts = _get_alerts(data)
+        if name not in alerts:
+            print(f"등록되지 않은 알럿입니다: {name}", flush=True)
+            return
+        alerts.remove(name)
+        _set_alerts(data, alerts)
+        _save_raw(data)
+        print(f"알럿 제거됨: {name}", flush=True)
+        print("※ 변경 사항은 TTS supervisor 재시작 후 적용됩니다 (./server.sh restart)", flush=True)
+
+    else:
+        print(f"알 수 없는 서브커맨드: {sub}", flush=True)

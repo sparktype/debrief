@@ -205,3 +205,17 @@ class TestMonitorChildren:
 
         asyncio.run(run())
         assert counter[0] >= 3
+
+
+async def test_grafana_poller_disabled_exits_cleanly():
+    """GrafanaPoller가 enabled=False일 때 supervisor shutdown과 함께 종료된다."""
+    from hook_voice.config import Config, GrafanaConfig
+    from hook_voice.grafana_poller import GrafanaPoller
+
+    config = Config(grafana=GrafanaConfig(enabled=False))
+    poller = GrafanaPoller(config)
+
+    shutdown = asyncio.Event()
+    shutdown.set()
+
+    await poller.run(shutdown)

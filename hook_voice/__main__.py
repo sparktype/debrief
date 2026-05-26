@@ -15,6 +15,7 @@ from .hook_handlers import (
     handle_health,
     handle_config,
     handle_control,
+    handle_grafana,
 )
 
 
@@ -57,6 +58,8 @@ async def main() -> None:
     elif subcommand == "control":
         action = sys.argv[2] if len(sys.argv) > 2 else ""
         await handle_control(action)
+    elif subcommand == "grafana":
+        await handle_grafana(sys.argv[2:], _DEFAULT_CONFIG_PATH)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

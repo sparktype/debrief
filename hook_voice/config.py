@@ -2,7 +2,7 @@
 # 사용자 설정 파일 로더 및 기본값 관리
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _logger = logging.getLogger(__name__)
@@ -24,6 +24,15 @@ _KEY_MAP = {
 
 
 @dataclass
+class GrafanaConfig:
+    enabled: bool = False
+    url: str = ""
+    token: str = ""
+    interval: int = 30
+    alerts: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     auto_speak: bool = True
     min_chars: int = 50
@@ -35,6 +44,7 @@ class Config:
     supertonic_port: int = 7788
     edge_timeout_ms: int = 10000
     supertonic_timeout_ms: int = 20000
+    grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -44,6 +54,15 @@ def load_config(path: Path | None = None) -> Config:
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
         kwargs = {py_k: data[json_k] for json_k, py_k in _KEY_MAP.items() if json_k in data}
+        if "grafana" in data:
+            g = data["grafana"]
+            kwargs["grafana"] = GrafanaConfig(
+                enabled=g.get("enabled", False),
+                url=g.get("url", ""),
+                token=g.get("token", ""),
+                interval=g.get("interval", 30),
+                alerts=g.get("alerts", []),
+            )
         return Config(**kwargs)
     except json.JSONDecodeError as e:
         _logger.warning("voice-persona.json 파싱 실패, 기본값 사용: %s", e)
