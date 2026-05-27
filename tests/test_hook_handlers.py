@@ -142,12 +142,13 @@ async def test_handle_hook_uses_transcript_fallback(tmp_path):
 
 MOCK_VOICE_MAP = {
     "supertonic": {"lang": "ko", "steps": 10},
-    "voices": {"default": "F1", "reviewer": "M2", "builder": "M4"},
-    "voice_names": {"F1": "연아", "M2": "빌", "M4": "리누스"},
+    "voices": {"default": "F1", "reviewer": "M2", "builder": "M4", "tester": "F2"},
+    "voice_names": {"F1": "연아", "M2": "빌", "M4": "리누스", "F2": "마리"},
     "instructs": {"default": "밝고 친절하게", "reviewer": "천천히 신중하게", "builder": "빠르고 자신감 있게"},
     "categories": {
         "reviewer": ["feature-reviewer", "code-reviewer"],
         "builder": ["feature-builder"],
+        "tester": ["feature-tester"],
     },
 }
 
@@ -201,6 +202,39 @@ async def test_subagent_stop_empty_one_liner_still_speaks():
         spoken_text = call_args.args[0] if call_args.args else call_args[0][0]
     assert "빌더" in spoken_text
     assert "리누스" in spoken_text
+
+
+async def test_subagent_stop_adds_sigh_on_failure():
+    """실패 키워드가 있으면 발화 텍스트 앞에 <sigh>가 붙는다."""
+    raw = json.dumps({"last_assistant_message": "D" * 60})
+    with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="빌드 실패"):
+        await handle_subagent_stop(raw, "feature-builder", _CFG)
+        spoken_text = mock_speak.call_args.args[0]
+    assert spoken_text.startswith("<sigh>")
+
+
+async def test_subagent_stop_adds_laugh_for_tester_success():
+    """tester + 통과 → <laugh>."""
+    raw = json.dumps({"last_assistant_message": "E" * 60})
+    with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="전체 테스트 통과"):
+        await handle_subagent_stop(raw, "feature-tester", _CFG)
+        spoken_text = mock_speak.call_args.args[0]
+    assert spoken_text.startswith("<laugh>")
+
+
+async def test_subagent_stop_no_tag_for_builder_neutral():
+    """builder + 중립 콘텐츠 → 태그 없음."""
+    raw = json.dumps({"last_assistant_message": "F" * 60})
+    with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="구현 완료"):
+        await handle_subagent_stop(raw, "feature-builder", _CFG)
+        spoken_text = mock_speak.call_args.args[0]
+    assert not spoken_text.startswith("<")
 
 
 async def test_subagent_stop_passes_steps_from_voice_map():

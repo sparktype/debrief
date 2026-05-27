@@ -22,9 +22,9 @@ def _load_classify_rules() -> list[dict]:
 
 from .config import Config
 from .player import speak_hook, speak_agent, SPOOL_DIR
-from .summarizer import extract_summary, extract_one_liner
+from .summarizer import extract_summary, extract_one_liner, select_expression_tag
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
-from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label
+from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 
 
@@ -116,9 +116,12 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     voice_name = resolve_voice_name(agent_type, vm)
     label = get_agent_label(agent_type, vm)
     instruct = resolve_instruct(agent_type, vm)
+    category = resolve_category(agent_type, vm)
     steps = vm.get("supertonic", {}).get("steps", 12)
     one_liner = await extract_one_liner(text, config.summary_model)
-    await speak_agent(f"{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
+    tag = select_expression_tag(one_liner, category)
+    prefix = f"{tag} " if tag else ""
+    await speak_agent(f"{prefix}{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
                       steps=steps, supertonic_timeout=config.supertonic_timeout_ms / 1000)
 
 

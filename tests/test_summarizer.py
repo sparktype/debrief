@@ -1,7 +1,7 @@
 # tests/test_summarizer.py
 import pytest
 from unittest.mock import patch, AsyncMock
-from hook_voice.summarizer import strip_markdown, sanitize_for_speech, extract_summary, extract_one_liner
+from hook_voice.summarizer import strip_markdown, sanitize_for_speech, extract_summary, extract_one_liner, select_expression_tag
 
 def test_strip_markdown_removes_code_blocks():
     result = strip_markdown("앞\n```python\ncode\n```\n뒤")
@@ -59,3 +59,50 @@ async def test_extract_one_liner_sanitizes_result():
 async def test_extract_summary_returns_empty_for_blank():
     result = await extract_summary("   ")
     assert result == ""
+
+
+# ── select_expression_tag 테스트 ──────────────────────────────
+
+def test_select_tag_caution_keywords():
+    """위험·삭제 키워드 → clear_throat (역할 무관)."""
+    assert select_expression_tag("파일 삭제 완료", "builder") == "<clear_throat>"
+    assert select_expression_tag("주의가 필요합니다", "reviewer") == "<clear_throat>"
+    assert select_expression_tag("되돌릴 수 없는 작업", "default") == "<clear_throat>"
+
+
+def test_select_tag_negative_keywords():
+    """실패·에러 키워드 → sigh."""
+    assert select_expression_tag("빌드 실패", "builder") == "<sigh>"
+    assert select_expression_tag("타입 에러 발생", "reviewer") == "<sigh>"
+    assert select_expression_tag("오류가 있습니다", "tester") == "<sigh>"
+
+
+def test_select_tag_tester_success():
+    """tester + 성공 키워드 → laugh."""
+    assert select_expression_tag("전체 테스트 통과", "tester") == "<laugh>"
+    assert select_expression_tag("완벽하게 성공", "tester") == "<laugh>"
+
+
+def test_select_tag_discovery_for_explorer():
+    """탐색·발견 키워드 + explorer → hmm."""
+    assert select_expression_tag("흥미로운 패턴 발견", "explorer") == "<hmm>"
+    assert select_expression_tag("코드 분석 결과", "reviewer") == "<hmm>"
+
+
+def test_select_tag_role_defaults():
+    """콘텐츠 중립 → 역할 기본 태그."""
+    assert select_expression_tag("작업 완료했습니다", "reviewer") == "<breath>"
+    assert select_expression_tag("계획을 수립했습니다", "planner") == "<breath>"
+    assert select_expression_tag("explorer 중립", "explorer") == "<hmm>"
+    assert select_expression_tag("guardian 중립", "guardian") == "<clear_throat>"
+
+
+def test_select_tag_builder_optimizer_no_tag():
+    """builder / optimizer는 중립 콘텐츠에서 태그 없음."""
+    assert select_expression_tag("구현 완료", "builder") == ""
+    assert select_expression_tag("최적화 완료", "optimizer") == ""
+
+
+def test_select_tag_caution_beats_negative():
+    """경고 키워드가 실패 키워드보다 우선순위 높음."""
+    assert select_expression_tag("삭제 실패", "builder") == "<clear_throat>"

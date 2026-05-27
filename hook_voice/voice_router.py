@@ -79,6 +79,12 @@ def resolve_instruct(agent_type: str, voice_map: VoiceMap | None = None) -> str:
     return instructs.get("default", "밝고 친절하게 말해주세요")
 
 
+def resolve_category(agent_type: str, voice_map: VoiceMap | None = None) -> str:
+    """agent_type → 카테고리명 (reviewer/builder/... 또는 'default')"""
+    m = voice_map or load_voice_map()
+    return _resolve_category(agent_type, m) or "default"
+
+
 def get_agent_label(agent_type: str, voice_map: VoiceMap | None = None) -> str:
     m = voice_map or load_voice_map()
     cat = _resolve_category(agent_type, m)

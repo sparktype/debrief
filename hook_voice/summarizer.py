@@ -22,6 +22,44 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+# ── Expression Tag 자동 선택 ────────────────────────────────────────────────
+
+_CAUTION_RE = re.compile(r"주의|경고|위험|삭제|되돌릴|강제|초기화")
+_NEGATIVE_RE = re.compile(r"실패|에러|오류|문제|충돌|이슈|버그|안됨|불가")
+_SUCCESS_RE = re.compile(r"통과|성공|완벽|완료")
+_DISCOVERY_RE = re.compile(r"발견|분석|흥미|패턴|탐색|확인")
+
+_ROLE_DEFAULT_TAGS: dict[str, str] = {
+    "reviewer": "<breath>",
+    "planner": "<breath>",
+    "tester": "<breath>",
+    "explorer": "<hmm>",
+    "guardian": "<clear_throat>",
+    "builder": "",
+    "optimizer": "",
+    "ops": "",
+    "specialist": "<breath>",
+    "default": "<breath>",
+}
+
+
+def select_expression_tag(one_liner: str, category: str) -> str:
+    """one_liner 내용과 에이전트 카테고리 기반으로 Expression Tag를 선택한다.
+    반환값: 태그 문자열 (e.g. '<breath>') 또는 빈 문자열."""
+    c = one_liner
+    if _CAUTION_RE.search(c):
+        return "<clear_throat>"
+    if _NEGATIVE_RE.search(c):
+        return "<sigh>"
+    if category == "tester" and _SUCCESS_RE.search(c):
+        return "<laugh>"
+    if _DISCOVERY_RE.search(c) and category in ("explorer", "planner", "reviewer"):
+        return "<hmm>"
+    return _ROLE_DEFAULT_TAGS.get(category, "<breath>")
+
+
+# ── Expression Tags sanitize 보존 ────────────────────────────────────────────
+
 # Supertonic Expression Tags — sanitize 시 보존
 _EXPR_TAG_RE = re.compile(
     r"<(?:breath|laugh|sigh|clear_throat|hmm|cough|sniff|gasp|yawn|cry)>",
