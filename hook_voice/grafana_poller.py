@@ -3,7 +3,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from typing import Literal
+from typing import Awaitable, Callable, Literal
 
 import httpx
 
@@ -25,6 +25,14 @@ class AlertChange:
     value: str
     started_at: datetime
     duration: timedelta | None = None
+
+
+@dataclass
+class PollResult:
+    ok: bool
+    snapshot: dict[str, dict] | None = None
+    error_kind: Literal["auth", "network", "decode", "unknown"] | None = None
+    error_detail: str = ""
 
 
 def _parse_dt(s: str) -> datetime:
@@ -79,31 +87,44 @@ def _detect_changes(
 
 
 class GrafanaPoller:
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self,
+        config: Config,
+        wait_fn: Callable[[asyncio.Event, float], Awaitable[bool]] | None = None,
+    ) -> None:
         self._config = config
+        self._wait_fn = wait_fn or _wait_for_interval
 
-    async def poll_once(self) -> dict:
+    async def poll_once(self) -> PollResult:
         g = self._config.grafana
-        url = f"{g.url.rstrip('/')}/api/alertmanager/grafana/api/v2/alerts"
+        url = f"{g.url.rstrip('/')}/api/alertmanager/grafana/api/v2/alerts/grafana"
         headers = {"Authorization": f"Bearer {g.token}"}
         try:
             # HMG 사내 SSL 인터셉트 프록시 우회
             async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code in (401, 403):
-                    raise PermissionError(f"Grafana 인증 실패 (HTTP {resp.status_code})")
+                    return PollResult(
+                        ok=False,
+                        error_kind="auth",
+                        error_detail=f"Grafana 인증 실패 (HTTP {resp.status_code})",
+                    )
                 resp.raise_for_status()
                 alerts = resp.json()
-                return {
+                snapshot = {
                     a["fingerprint"]: a
                     for a in alerts
                     if a.get("status", {}).get("state") == "active"
                 }
-        except PermissionError:
-            raise
+                return PollResult(ok=True, snapshot=snapshot)
+        except httpx.TimeoutException as e:
+            return PollResult(ok=False, error_kind="network", error_detail=type(e).__name__)
+        except httpx.HTTPError as e:
+            return PollResult(ok=False, error_kind="network", error_detail=type(e).__name__)
+        except ValueError as e:
+            return PollResult(ok=False, error_kind="decode", error_detail=type(e).__name__)
         except Exception as e:
-            _log.warning("[Grafana] 폴링 실패: %s", type(e).__name__)
-            return {}
+            return PollResult(ok=False, error_kind="unknown", error_detail=type(e).__name__)
 
     async def analyze_alert(self, change: AlertChange) -> str:
         """LLM으로 알럿 분석 — 실패 시 규칙 기반 폴백."""
@@ -138,20 +159,33 @@ class GrafanaPoller:
             return
 
         _log.info("[Grafana] 폴링 시작 (interval=%ds, alerts=%s)", g.interval, g.alerts)
-        prev_snapshot: dict = {}
+        prev_snapshot: dict[str, dict] = {}
         first_run = True
+        cycle = 0
 
         while not shutdown.is_set():
-            try:
-                curr = await self.poll_once()
-            except PermissionError as e:
-                _log.error("[Grafana] %s — 폴러를 비활성화합니다.", e)
-                await speak_hook(
-                    "Grafana 인증에 실패했습니다. 토큰을 확인해 주세요.",
-                    self._config.voice,
-                    self._config.tts_speed,
+            cycle += 1
+            result = await self.poll_once()
+            if not result.ok:
+                if result.error_kind == "auth":
+                    _log.error("[Grafana] %s — 폴러를 비활성화합니다.", result.error_detail)
+                    await speak_hook(
+                        "Grafana 인증에 실패했습니다. 토큰을 확인해 주세요.",
+                        self._config.voice,
+                        self._config.tts_speed,
+                    )
+                    break
+                _log.warning(
+                    "[Grafana] poll cycle=%s failed kind=%s detail=%s",
+                    cycle,
+                    result.error_kind,
+                    result.error_detail,
                 )
-                break
+                await self._wait_fn(shutdown, float(g.interval))
+                continue
+
+            curr = result.snapshot or {}
+            _log.info("[Grafana] poll cycle=%s success snapshot=%s", cycle, len(curr))
 
             if first_run:
                 prev_snapshot = curr
@@ -159,14 +193,12 @@ class GrafanaPoller:
                 _log.info("[Grafana] 첫 폴링 완료 — snapshot 수집 (발화 없음)")
             else:
                 changes = _detect_changes(prev_snapshot, curr, g.alerts)
+                _log.info("[Grafana] poll cycle=%s diff=%s", cycle, len(changes))
                 if changes:
                     await self._handle_changes(changes)
                 prev_snapshot = curr
 
-            try:
-                await asyncio.wait_for(shutdown.wait(), timeout=float(g.interval))
-            except asyncio.TimeoutError:
-                pass
+            await self._wait_fn(shutdown, float(g.interval))
 
     async def _handle_changes(self, changes: list[AlertChange]) -> None:
         """알럿 변화를 TTS로 발화. 3개 초과 시 묶음 요약."""
@@ -188,3 +220,11 @@ class GrafanaPoller:
                 await speak_hook(text, self._config.voice, self._config.tts_speed)
             except Exception as e:
                 _log.warning("[Grafana] 발화 실패: %s", e)
+
+
+async def _wait_for_interval(shutdown: asyncio.Event, interval: float) -> bool:
+    try:
+        await asyncio.wait_for(shutdown.wait(), timeout=interval)
+        return True
+    except asyncio.TimeoutError:
+        return False
