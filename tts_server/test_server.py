@@ -126,29 +126,27 @@ from tts_server.server import app
 
 def test_stt_status_disabled():
     """STT 비활성화 시 /stt/status → {"state": "disabled"}"""
-    import tts_server.server as srv
-    original = srv._stt_listener
-    srv._stt_listener = None
-    try:
+    from unittest.mock import patch, MagicMock
+    from hook_voice.config import SttConfig
+    mock_cfg = MagicMock()
+    mock_cfg.stt = SttConfig(enabled=False)
+    with patch("tts_server.server._load_voice_config", return_value=mock_cfg):
         with TestClient(app) as client:
             resp = client.get("/stt/status")
-        assert resp.status_code == 200
-        assert resp.json() == {"state": "disabled"}
-    finally:
-        srv._stt_listener = original
+    assert resp.status_code == 200
+    assert resp.json() == {"state": "disabled"}
 
 
 def test_stt_toggle_disabled_returns_503():
     """STT 비활성화 시 /stt/toggle → 503"""
-    import tts_server.server as srv
-    original = srv._stt_listener
-    srv._stt_listener = None
-    try:
+    from unittest.mock import patch, MagicMock
+    from hook_voice.config import SttConfig
+    mock_cfg = MagicMock()
+    mock_cfg.stt = SttConfig(enabled=False)
+    with patch("tts_server.server._load_voice_config", return_value=mock_cfg):
         with TestClient(app) as client:
             resp = client.post("/stt/toggle")
-        assert resp.status_code == 503
-    finally:
-        srv._stt_listener = original
+    assert resp.status_code == 503
 
 
 def test_stt_toggle_calls_listener():
