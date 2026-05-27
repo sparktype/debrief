@@ -71,7 +71,7 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
         if key not in kwargs:
             return
         value = kwargs[key]
-        if not isinstance(value, int) or value < minimum or (maximum is not None and value > maximum):
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum or (maximum is not None and value > maximum):
             _warn_invalid(key, value, getattr(defaults, key))
             kwargs[key] = getattr(defaults, key)
 
@@ -110,6 +110,24 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
         if not isinstance(grafana.alerts, list) or not all(isinstance(a, str) for a in grafana.alerts):
             _warn_invalid("grafana.alerts", grafana.alerts, defaults.grafana.alerts)
             grafana.alerts = defaults.grafana.alerts
+
+    stt = kwargs.get("stt")
+    if isinstance(stt, SttConfig):
+        if not isinstance(stt.enabled, bool):
+            _warn_invalid("stt.enabled", stt.enabled, defaults.stt.enabled)
+            stt.enabled = defaults.stt.enabled
+        if not isinstance(stt.announce, bool):
+            _warn_invalid("stt.announce", stt.announce, defaults.stt.announce)
+            stt.announce = defaults.stt.announce
+        if not isinstance(stt.model, str) or not stt.model:
+            _warn_invalid("stt.model", stt.model, defaults.stt.model)
+            stt.model = defaults.stt.model
+        if not isinstance(stt.language, str) or not stt.language:
+            _warn_invalid("stt.language", stt.language, defaults.stt.language)
+            stt.language = defaults.stt.language
+        if not isinstance(stt.sample_rate, int) or isinstance(stt.sample_rate, bool) or stt.sample_rate <= 0:
+            _warn_invalid("stt.sample_rate", stt.sample_rate, defaults.stt.sample_rate)
+            stt.sample_rate = defaults.stt.sample_rate
 
     return kwargs
 

@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from hook_voice.config import Config, load_config
+from hook_voice.config import Config, load_config, SttConfig
 
 def test_load_config_returns_defaults_when_no_file(tmp_path):
     cfg = load_config(tmp_path / "nonexistent.json")
@@ -78,8 +78,6 @@ def test_load_config_normalizes_invalid_values(tmp_path, caplog):
     assert "잘못된 값" in caplog.text
 
 
-from hook_voice.config import SttConfig
-
 def test_load_config_stt_defaults(tmp_path):
     cfg = load_config(tmp_path / "nonexistent.json")
     assert cfg.stt.enabled is False
@@ -106,11 +104,13 @@ def test_load_config_stt_from_file(tmp_path):
     assert cfg.stt.sample_rate == 8000
     assert cfg.stt.announce is False
 
-def test_load_config_voice_json_takes_priority(tmp_path):
+def test_load_config_voice_json_takes_priority(tmp_path, monkeypatch):
     voice_json = tmp_path / ".voice.json"
     persona_json = tmp_path / ".voice-persona.json"
     voice_json.write_text(json.dumps({"minChars": 10}))
     persona_json.write_text(json.dumps({"minChars": 99}))
-    # load_config에 경로 미지정 시 .voice.json 우선 탐색 — 이 테스트는 명시적 경로로 검증
-    cfg = load_config(voice_json)
+    import hook_voice.config as cfg_mod
+    monkeypatch.setattr(cfg_mod, "_VOICE_JSON", voice_json)
+    monkeypatch.setattr(cfg_mod, "_VOICE_PERSONA_JSON", persona_json)
+    cfg = load_config()  # 경로 미지정 — _find_default_config() 경유
     assert cfg.min_chars == 10
