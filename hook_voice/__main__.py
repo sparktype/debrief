@@ -3,7 +3,7 @@
 import asyncio
 import sys
 
-from .config import load_config, _DEFAULT_CONFIG_PATH
+from .config import load_config, _find_default_config, _VOICE_JSON
 from .hook_handlers import (
     handle_hook,
     handle_notification,
@@ -54,12 +54,12 @@ async def main() -> None:
     elif subcommand == "health":
         await handle_health()
     elif subcommand == "config":
-        await handle_config(sys.argv[2:], _DEFAULT_CONFIG_PATH)
+        await handle_config(sys.argv[2:], _find_default_config() or _VOICE_JSON)
     elif subcommand == "control":
         action = sys.argv[2] if len(sys.argv) > 2 else ""
         await handle_control(action)
     elif subcommand == "grafana":
-        await handle_grafana(sys.argv[2:], _DEFAULT_CONFIG_PATH)
+        await handle_grafana(sys.argv[2:], _find_default_config() or _VOICE_JSON)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

@@ -7,7 +7,8 @@ from pathlib import Path
 
 _logger = logging.getLogger(__name__)
 
-_DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / ".voice-persona.json"
+_VOICE_JSON = Path(__file__).parent.parent / ".voice.json"
+_VOICE_PERSONA_JSON = Path(__file__).parent.parent / ".voice-persona.json"
 
 _KEY_MAP = {
     "autoSpeak": "auto_speak",
@@ -20,6 +21,7 @@ _KEY_MAP = {
     "supertonicPort": "supertonic_port",
     "edgeTimeoutMs": "edge_timeout_ms",
     "supertonicTimeoutMs": "supertonic_timeout_ms",
+    "allowInsecureTls": "allow_insecure_tls",
 }
 
 
@@ -30,6 +32,15 @@ class GrafanaConfig:
     token: str = ""
     interval: int = 30
     alerts: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SttConfig:
+    enabled: bool = False
+    model: str = "mlx-community/whisper-small-mlx"
+    language: str = "ko"
+    sample_rate: int = 16000
+    announce: bool = True
 
 
 @dataclass
@@ -44,12 +55,76 @@ class Config:
     supertonic_port: int = 7788
     edge_timeout_ms: int = 10000
     supertonic_timeout_ms: int = 20000
+    allow_insecure_tls: bool = True
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
+    stt: SttConfig = field(default_factory=SttConfig)
+
+
+def _warn_invalid(key: str, value: object, fallback: object) -> None:
+    _logger.warning(".voice.json 잘못된 값: %s=%r, 기본값 %r 사용", key, value, fallback)
+
+
+def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
+    defaults = Config()
+
+    def _normalize_int(key: str, minimum: int, maximum: int | None = None) -> None:
+        if key not in kwargs:
+            return
+        value = kwargs[key]
+        if not isinstance(value, int) or value < minimum or (maximum is not None and value > maximum):
+            _warn_invalid(key, value, getattr(defaults, key))
+            kwargs[key] = getattr(defaults, key)
+
+    def _normalize_float(key: str, minimum: float) -> None:
+        if key not in kwargs:
+            return
+        value = kwargs[key]
+        if not isinstance(value, (int, float)) or float(value) <= minimum:
+            _warn_invalid(key, value, getattr(defaults, key))
+            kwargs[key] = getattr(defaults, key)
+        else:
+            kwargs[key] = float(value)
+
+    def _normalize_bool(key: str) -> None:
+        if key not in kwargs:
+            return
+        value = kwargs[key]
+        if not isinstance(value, bool):
+            _warn_invalid(key, value, getattr(defaults, key))
+            kwargs[key] = getattr(defaults, key)
+
+    _normalize_bool("auto_speak")
+    _normalize_bool("allow_insecure_tls")
+    _normalize_int("min_chars", 0)
+    _normalize_float("tts_speed", 0.0)
+    _normalize_int("skill_cooldown_minutes", 0)
+    _normalize_int("supertonic_port", 1, 65535)
+    _normalize_int("edge_timeout_ms", 100)
+    _normalize_int("supertonic_timeout_ms", 100)
+
+    grafana = kwargs.get("grafana")
+    if isinstance(grafana, GrafanaConfig):
+        if grafana.interval < 5:
+            _warn_invalid("grafana.interval", grafana.interval, defaults.grafana.interval)
+            grafana.interval = defaults.grafana.interval
+        if not isinstance(grafana.alerts, list) or not all(isinstance(a, str) for a in grafana.alerts):
+            _warn_invalid("grafana.alerts", grafana.alerts, defaults.grafana.alerts)
+            grafana.alerts = defaults.grafana.alerts
+
+    return kwargs
+
+
+def _find_default_config() -> Path | None:
+    if _VOICE_JSON.exists():
+        return _VOICE_JSON
+    if _VOICE_PERSONA_JSON.exists():
+        return _VOICE_PERSONA_JSON
+    return None
 
 
 def load_config(path: Path | None = None) -> Config:
-    target = path or _DEFAULT_CONFIG_PATH
-    if not target.exists():
+    target = path or _find_default_config()
+    if target is None or not target.exists():
         return Config()
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
@@ -63,10 +138,20 @@ def load_config(path: Path | None = None) -> Config:
                 interval=g.get("interval", 30),
                 alerts=g.get("alerts", []),
             )
+        if "stt" in data:
+            s = data["stt"]
+            kwargs["stt"] = SttConfig(
+                enabled=s.get("enabled", False),
+                model=s.get("model", "mlx-community/whisper-small-mlx"),
+                language=s.get("language", "ko"),
+                sample_rate=s.get("sampleRate", 16000),
+                announce=s.get("announce", True),
+            )
+        kwargs = _normalize_config(kwargs)
         return Config(**kwargs)
     except json.JSONDecodeError as e:
-        _logger.warning("voice-persona.json 파싱 실패, 기본값 사용: %s", e)
+        _logger.warning(".voice.json 파싱 실패, 기본값 사용: %s", e)
         return Config()
     except Exception as e:
-        _logger.warning("voice-persona.json 로드 실패, 기본값 사용: %s", e)
+        _logger.warning(".voice.json 로드 실패, 기본값 사용: %s", e)
         return Config()

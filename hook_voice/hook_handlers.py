@@ -23,6 +23,7 @@ def _load_classify_rules() -> list[dict]:
 from .config import Config
 from .player import speak_hook, speak_agent, SPOOL_DIR
 from .summarizer import extract_summary, extract_one_liner
+from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 
@@ -35,56 +36,6 @@ def _derive_transcript_path() -> Path | None:
         return None
     slug = project_dir.replace("/", "-")
     return Path(home) / ".claude" / "projects" / slug / f"{session_id}.jsonl"
-
-
-def _extract_last_assistant_text(transcript_path: Path) -> str:
-    if not transcript_path.exists():
-        return ""
-    try:
-        for line in reversed(transcript_path.read_text(encoding="utf-8").splitlines()):
-            try:
-                entry = json.loads(line)
-                msg = entry.get("message", entry)
-                if msg.get("role") != "assistant":
-                    continue
-                content = msg.get("content", [])
-                if isinstance(content, list):
-                    for block in content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            text = block.get("text", "")
-                            if len(text) >= 20:
-                                return text
-                elif isinstance(content, str) and len(content) >= 20:
-                    return content
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return ""
-
-
-def _extract_agent_type_from_transcript(path: Path) -> str:
-    if not path.exists():
-        return ""
-    try:
-        for line in reversed(path.read_text(encoding="utf-8").splitlines()):
-            try:
-                entry = json.loads(line)
-                for block in entry.get("content", []):
-                    if (
-                        isinstance(block, dict)
-                        and block.get("type") == "tool_use"
-                        and block.get("name") == "Agent"
-                    ):
-                        t = block.get("input", {}).get("subagent_type", "")
-                        if t:
-                            return t
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return ""
-
 
 def classify_pre_tool_bash(cmd: str) -> str | None:
     rules = _load_classify_rules()
@@ -129,7 +80,7 @@ async def handle_hook(raw: str, config: Config) -> None:
     if not text:
         tp = _derive_transcript_path()
         if tp:
-            text = _extract_last_assistant_text(tp)
+            text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
         summary = await extract_summary(text, config.summary_model)
         await speak_hook(summary, config.voice, config.tts_speed,
@@ -155,7 +106,7 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
         if not agent_type:
             tp = data.get("transcript_path", "")
             if tp:
-                agent_type = _extract_agent_type_from_transcript(Path(tp))
+                agent_type = extract_last_agent_type(Path(tp))
     except Exception:
         pass
     if len(text) < config.min_chars:
@@ -425,9 +376,9 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
 async def handle_grafana(args: list[str], config_path: "Path | None" = None) -> None:
     """grafana 서브커맨드 — 알럿 감시 목록 관리."""
     import json
-    from .config import _DEFAULT_CONFIG_PATH
+    from .config import _find_default_config, _VOICE_JSON
 
-    target = config_path or _DEFAULT_CONFIG_PATH
+    target = config_path or _find_default_config() or _VOICE_JSON
 
     def _load_raw() -> dict:
         if not target.exists():
