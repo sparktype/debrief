@@ -162,7 +162,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | F4 | 셰릴 | ops | Sheryl Sandberg | 침착하고 명확하게 |
 | F5 | 리사 | specialist | Lisa Su | 전문적이고 자신감 있게 |
 | M1 | 스티브 | planner | Steve Jobs | 차분하고 논리적으로 |
-| M2 | 빌 | reviewer | Bill Gates | 천천히 신중하게 |
+| M2 | 빌 | reviewer | Bill Gates | 신중하게, 차분한 톤으로 |
 | M3 | 일론 | optimizer | Elon Musk | 군더더기 없이 빠르게 |
 | M4 | 리누스 | builder | Linus Torvalds | 빠르고 자신감 있게 |
 | M5 | 팀 | guardian | Tim Berners-Lee | 꼼꼼하고 신중하게 |
@@ -196,7 +196,7 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **summary-voice-mcp** (1715 symbols, 2706 relationships, 83 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **summary-voice-mcp** (1765 symbols, 2796 relationships, 83 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
