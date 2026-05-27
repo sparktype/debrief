@@ -77,6 +77,15 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
     → python -m hook_voice hook-suggest
       → read_recent_transcripts() → recommend_skill() (hook_voice/skill_recommender.py)
       → speak_hook() 로 스킬 음성 추천
+
+Whisper STT 음성 입력 (stt.enabled=true 시)
+  → Hammerspoon Cmd+Shift+Space 또는 /listen slash 명령
+    → HTTP POST localhost:7777/stt/toggle
+      → SpeechListener.toggle() (hook_voice/speech_listener.py)
+          ├─ idle → recording: sounddevice.InputStream 열기 (16kHz mono)
+          └─ recording → idle: InputStream 닫기
+               → numpy concatenate → mlx_whisper.transcribe(language="ko")
+               → 텍스트 → pbcopy → osascript Cmd+V (클립보드 주입)
 ```
 
 ### 파일별 역할
@@ -84,7 +93,7 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | 파일 | 역할 |
 |------|------|
 | `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
-| `hook_voice/config.py` | `.voice-persona.json` 로더, 기본값 관리 |
+| `hook_voice/config.py` | `.voice.json` 로더 (`.voice-persona.json` 폴백), SttConfig 포함 |
 | `hook_voice/llm_client.py` | HMG Hub LLM 클라이언트 (httpx AsyncClient) |
 | `hook_voice/last_message.py` | 마지막 TTS 텍스트 파일 영속화 |
 | `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
@@ -92,7 +101,9 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
 | `hook_voice/player.py` | EdgeTTS spool enqueue, speak_hook/speak_agent + 폴백 |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
-| `tts_server/server.py` | FastAPI TTS 서버 — 단일 워커 스레드로 MLX 모델 실행 |
+| `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 |
+| `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
+| `tts_server/server.py` | FastAPI TTS 서버 — `/stt/toggle`·`/stt/status` 엔드포인트 포함 |
 | `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
 
 ### TTS 서버 설계 포인트
@@ -116,7 +127,17 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
 | `ttsSpeed` | `1.1` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
 
-프로젝트 루트의 `.voice-persona.json` 으로 개별 오버라이드 가능.
+**STT 설정** (`stt` 블록):
+
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| `stt.enabled` | `false` | STT 기능 활성화 여부 |
+| `stt.model` | `mlx-community/whisper-small-mlx` | Whisper 모델 (244MB) |
+| `stt.language` | `ko` | 인식 언어 |
+| `stt.sampleRate` | `16000` | 마이크 샘플레이트 (Hz) |
+| `stt.announce` | `true` | 녹음 시작/완료 TTS 안내 여부 |
+
+프로젝트 루트의 `.voice.json`으로 개별 오버라이드 가능 (`.voice-persona.json` 폴백 지원).
 
 > **멘트 작성 규칙**: 모든 TTS 발화 텍스트(빌드·테스트 결과, 컨트롤 피드백 등)는 경어체(`-습니다/ㅂ니다`)를 사용합니다.
 
@@ -171,3 +192,47 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 - `edge_tts.Communicate.save()`는 `AsyncMock`으로 대체
 - 분류 함수(`classify_pre_tool_bash`, `classify_post_tool_bash`)는 순수 함수 — mock 불필요
 - 파일 I/O 테스트: `tmp_path` fixture (pytest 내장) 활용
+
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **summary-voice-mcp** (1715 symbols, 2706 relationships, 83 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+
+> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
+- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
+- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
+- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/summary-voice-mcp/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/summary-voice-mcp/clusters` | All functional areas |
+| `gitnexus://repo/summary-voice-mcp/processes` | All execution flows |
+| `gitnexus://repo/summary-voice-mcp/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

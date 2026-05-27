@@ -27,10 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/sparktype/voice-persona/main/instal
 - Claude Code 응답 완료 → 자동 요약 후 음성 재생
 - 서브에이전트 응답 → 에이전트 역할에 맞는 목소리로 발화
 - 세션 시작 / 프롬프트 입력 → 상황에 맞는 스킬 음성 추천
+- `/listen` slash 명령 또는 Hammerspoon 단축키 → Whisper STT 음성 입력 (선택 기능)
 
 ## 설정
 
-프로젝트 루트에 `.voice-persona.json` 파일을 만들면 기본값을 오버라이드할 수 있습니다.
+프로젝트 루트에 `.voice.json` 파일을 만들면 기본값을 오버라이드할 수 있습니다 (`.voice-persona.json`도 폴백으로 지원).
 
 ```json
 {
@@ -38,7 +39,13 @@ curl -fsSL https://raw.githubusercontent.com/sparktype/voice-persona/main/instal
   "minChars": 50,
   "voice": "Sohee",
   "ttsSpeed": 1.2,
-  "ttsInstruct": "밝고 활기차게 말해주세요"
+  "ttsInstruct": "밝고 활기차게 말해주세요",
+  "stt": {
+    "enabled": false,
+    "model": "mlx-community/whisper-small-mlx",
+    "language": "ko",
+    "announce": true
+  }
 }
 ```
 
@@ -52,6 +59,10 @@ curl -fsSL https://raw.githubusercontent.com/sparktype/voice-persona/main/instal
 | `skillCooldownMinutes` | `30` | 스킬 추천 재등장 최소 간격 |
 | `summaryModel` | `"gpt-5.4"` | 요약에 사용할 LLM 모델 |
 | `supertonicPort` | `7788` | Supertonic TTS 서버 포트 |
+| `stt.enabled` | `false` | Whisper STT 활성화 |
+| `stt.model` | `mlx-community/whisper-small-mlx` | Whisper 모델 |
+| `stt.language` | `"ko"` | 인식 언어 |
+| `stt.announce` | `true` | 녹음 시작/완료 TTS 안내 |
 
 ## 내장 목소리
 
@@ -72,6 +83,42 @@ Claude Code 내에서 직접 호출할 수 있는 도구:
 | `speak_last` | 마지막으로 재생한 텍스트 다시 재생 |
 | `set_config` | 런타임 설정 변경 (`autoSpeak`, `minChars`, `ttsInstruct`) |
 | `suggest_skill` | 대화 맥락 분석 후 스킬 음성 추천 |
+
+## Whisper STT 음성 입력
+
+마이크로 말하면 텍스트로 변환해 현재 포커스 위치에 자동 입력합니다 (Apple Silicon MLX 가속).
+
+**활성화 방법** — `.voice.json`에 추가:
+
+```json
+{
+  "stt": { "enabled": true }
+}
+```
+
+**사용법:**
+
+| 방법 | 동작 |
+|------|------|
+| `/listen` slash 명령 | 녹음 시작/중지 토글 |
+| Hammerspoon `Cmd+Shift+Space` | 동일 (단축키 방식) |
+| `curl -X POST localhost:7777/stt/toggle` | 직접 API 호출 |
+
+녹음 중지 시 Whisper가 전사 → 클립보드 경유 현재 위치에 자동 붙여넣기.
+
+**Hammerspoon 설정** (`~/.hammerspoon/init.lua` 추가):
+
+```lua
+hs.hotkey.bind({"cmd", "shift"}, "space", function()
+  hs.task.new("/usr/bin/curl", nil, {"-s", "-X", "POST", "http://localhost:7777/stt/toggle"}):start()
+end)
+```
+
+**초기 모델 다운로드** (최초 1회):
+
+```bash
+HF_HUB_OFFLINE=0 python -c "import mlx_whisper; mlx_whisper.load_models.load_model('mlx-community/whisper-small-mlx')"
+```
 
 ## 에이전트 음성 (다성 TTS)
 
@@ -164,12 +211,14 @@ Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 | 파일 | 역할 |
 |------|------|
 | `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
-| `hook_voice/config.py` | `.voice-persona.json` 로더 |
+| `hook_voice/config.py` | `.voice.json` 로더 (`.voice-persona.json` 폴백), SttConfig 포함 |
 | `hook_voice/player.py` | EdgeTTS spool + TTS 재생 폴백 체인 |
 | `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
 | `hook_voice/voice_router.py` | agentType → voice ID 변환 |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
-| `tts_server/server.py` | FastAPI MLX TTS 서버 |
+| `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·전사·클립보드 주입 |
+| `hooks/listen.sh` | `/listen` slash 명령 STT 토글 래퍼 |
+| `tts_server/server.py` | FastAPI MLX TTS 서버 (`/stt/toggle`, `/stt/status` 포함) |
 | `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
 
 </details>
