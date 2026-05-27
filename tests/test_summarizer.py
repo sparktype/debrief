@@ -63,11 +63,31 @@ async def test_extract_summary_returns_empty_for_blank():
 
 # ── select_expression_tag 테스트 ──────────────────────────────
 
+def test_select_tag_critical_keywords():
+    """치명·장애·다운 키워드 → cry (최우선)."""
+    assert select_expression_tag("서비스 장애 발생", "ops") == "<cry>"
+    assert select_expression_tag("치명적 오류", "builder") == "<cry>"
+    assert select_expression_tag("시스템 다운", "guardian") == "<cry>"
+
+
+def test_select_tag_surprise_keywords():
+    """예상치못·의외·갑자기 키워드 → gasp."""
+    assert select_expression_tag("예상치 못한 결과", "explorer") == "<gasp>"
+    assert select_expression_tag("갑자기 동작이 바뀜", "reviewer") == "<gasp>"
+    assert select_expression_tag("의외의 패턴 발견", "planner") == "<gasp>"
+
+
 def test_select_tag_caution_keywords():
-    """위험·삭제 키워드 → clear_throat (역할 무관)."""
+    """위험·삭제 키워드 → clear_throat."""
     assert select_expression_tag("파일 삭제 완료", "builder") == "<clear_throat>"
     assert select_expression_tag("주의가 필요합니다", "reviewer") == "<clear_throat>"
     assert select_expression_tag("되돌릴 수 없는 작업", "default") == "<clear_throat>"
+
+
+def test_select_tag_regret_keywords():
+    """아쉽·미완성·부족 키워드 → sniff."""
+    assert select_expression_tag("아쉽게도 미완성", "builder") == "<sniff>"
+    assert select_expression_tag("기능이 부족합니다", "reviewer") == "<sniff>"
 
 
 def test_select_tag_negative_keywords():
@@ -89,18 +109,30 @@ def test_select_tag_discovery_for_explorer():
     assert select_expression_tag("코드 분석 결과", "reviewer") == "<hmm>"
 
 
+def test_select_tag_ops_routine():
+    """ops + 정상·이상없음 → yawn."""
+    assert select_expression_tag("시스템 정상", "ops") == "<yawn>"
+    assert select_expression_tag("이상없음 확인", "ops") == "<yawn>"
+
+
 def test_select_tag_role_defaults():
     """콘텐츠 중립 → 역할 기본 태그."""
     assert select_expression_tag("작업 완료했습니다", "reviewer") == "<breath>"
     assert select_expression_tag("계획을 수립했습니다", "planner") == "<breath>"
-    assert select_expression_tag("explorer 중립", "explorer") == "<hmm>"
-    assert select_expression_tag("guardian 중립", "guardian") == "<clear_throat>"
+    assert select_expression_tag("중립 메시지", "explorer") == "<hmm>"
+    assert select_expression_tag("중립 메시지", "guardian") == "<clear_throat>"
+    assert select_expression_tag("보고합니다", "ops") == "<cough>"
 
 
 def test_select_tag_builder_optimizer_no_tag():
     """builder / optimizer는 중립 콘텐츠에서 태그 없음."""
     assert select_expression_tag("구현 완료", "builder") == ""
     assert select_expression_tag("최적화 완료", "optimizer") == ""
+
+
+def test_select_tag_priority_critical_beats_all():
+    """critical이 다른 모든 키워드보다 우선."""
+    assert select_expression_tag("장애 발생으로 삭제", "ops") == "<cry>"
 
 
 def test_select_tag_caution_beats_negative():

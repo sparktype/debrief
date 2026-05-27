@@ -24,22 +24,26 @@ def strip_markdown(text: str) -> str:
 
 # ── Expression Tag 자동 선택 ────────────────────────────────────────────────
 
-_CAUTION_RE = re.compile(r"주의|경고|위험|삭제|되돌릴|강제|초기화")
-_NEGATIVE_RE = re.compile(r"실패|에러|오류|문제|충돌|이슈|버그|안됨|불가")
-_SUCCESS_RE = re.compile(r"통과|성공|완벽|완료")
-_DISCOVERY_RE = re.compile(r"발견|분석|흥미|패턴|탐색|확인")
+_CRITICAL_RE  = re.compile(r"치명|장애|다운|크리티컬")
+_SURPRISE_RE  = re.compile(r"예상치\s*못|의외|갑자기|놀랍|충격")
+_CAUTION_RE   = re.compile(r"주의|경고|위험|삭제|되돌릴|강제|초기화")
+_REGRET_RE    = re.compile(r"아쉽|미완성|부족|개선.*필요")
+_NEGATIVE_RE  = re.compile(r"실패|에러|오류|문제|충돌|이슈|버그|안됨|불가")
+_SUCCESS_RE   = re.compile(r"통과|성공|완벽|완료")
+_DISCOVERY_RE = re.compile(r"발견|분석|흥미|패턴|탐색")
+_ROUTINE_RE   = re.compile(r"정상|이상없음|문제없음")
 
 _ROLE_DEFAULT_TAGS: dict[str, str] = {
-    "reviewer": "<breath>",
-    "planner": "<breath>",
-    "tester": "<breath>",
-    "explorer": "<hmm>",
-    "guardian": "<clear_throat>",
-    "builder": "",
-    "optimizer": "",
-    "ops": "",
+    "reviewer":   "<breath>",
+    "planner":    "<breath>",
+    "tester":     "<breath>",
+    "explorer":   "<hmm>",
+    "guardian":   "<clear_throat>",
+    "builder":    "",
+    "optimizer":  "",
+    "ops":        "<cough>",
     "specialist": "<breath>",
-    "default": "<breath>",
+    "default":    "<breath>",
 }
 
 
@@ -47,14 +51,22 @@ def select_expression_tag(one_liner: str, category: str) -> str:
     """one_liner 내용과 에이전트 카테고리 기반으로 Expression Tag를 선택한다.
     반환값: 태그 문자열 (e.g. '<breath>') 또는 빈 문자열."""
     c = one_liner
+    if _CRITICAL_RE.search(c):
+        return "<cry>"
+    if _SURPRISE_RE.search(c):
+        return "<gasp>"
     if _CAUTION_RE.search(c):
         return "<clear_throat>"
+    if _REGRET_RE.search(c):
+        return "<sniff>"
     if _NEGATIVE_RE.search(c):
         return "<sigh>"
     if category == "tester" and _SUCCESS_RE.search(c):
         return "<laugh>"
     if _DISCOVERY_RE.search(c) and category in ("explorer", "planner", "reviewer"):
         return "<hmm>"
+    if category == "ops" and _ROUTINE_RE.search(c):
+        return "<yawn>"
     return _ROLE_DEFAULT_TAGS.get(category, "<breath>")
 
 
