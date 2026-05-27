@@ -18,6 +18,9 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from hook_voice.config import load_config as _load_voice_config
+from hook_voice.speech_listener import SpeechListener
+
 
 def _log(level: str, message: str) -> None:
     """구조화 로그 출력 — [LEVEL] YYYY-MM-DD HH:MM:SS message 형식."""
@@ -188,15 +191,21 @@ def _tts_worker() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _worker_thread
+    global _worker_thread, _stt_listener
     _worker_thread = threading.Thread(target=_tts_worker, daemon=True, name="tts-worker")
     _worker_thread.start()
+    _voice_cfg = _load_voice_config()
+    if _voice_cfg.stt.enabled:
+        _stt_listener = SpeechListener(_voice_cfg.stt)
+        _log("INFO", f"[STT] SpeechListener 초기화 (model={_voice_cfg.stt.model})")
     yield
     _work_queue.put(None)
     if _worker_thread:
         _worker_thread.join(timeout=5)
     _log("INFO", "서버 종료.")
 
+
+_stt_listener: SpeechListener | None = None
 
 app = FastAPI(title="Siren TTS Server", lifespan=lifespan)
 
@@ -232,3 +241,20 @@ async def health():
     if not _model_ready.is_set():
         return JSONResponse({"status": "loading"}, status_code=503)
     return {"status": "ok"}
+
+
+@app.post("/stt/toggle")
+async def stt_toggle():
+    """STT 토글 — idle→recording 또는 recording→idle 전환."""
+    if _stt_listener is None:
+        return JSONResponse({"error": "STT 비활성화"}, status_code=503)
+    result = await _stt_listener.toggle()
+    return result
+
+
+@app.get("/stt/status")
+async def stt_status():
+    """STT 현재 상태 반환."""
+    if _stt_listener is None:
+        return {"state": "disabled"}
+    return {"state": _stt_listener.state}

@@ -119,6 +119,54 @@ fi
 
 
 from fastapi.testclient import TestClient
+from tts_server.server import app
+
+
+# ── STT 엔드포인트 테스트 ──────────────────────────────────────
+
+def test_stt_status_disabled():
+    """STT 비활성화 시 /stt/status → {"state": "disabled"}"""
+    import tts_server.server as srv
+    original = srv._stt_listener
+    srv._stt_listener = None
+    try:
+        with TestClient(app) as client:
+            resp = client.get("/stt/status")
+        assert resp.status_code == 200
+        assert resp.json() == {"state": "disabled"}
+    finally:
+        srv._stt_listener = original
+
+
+def test_stt_toggle_disabled_returns_503():
+    """STT 비활성화 시 /stt/toggle → 503"""
+    import tts_server.server as srv
+    original = srv._stt_listener
+    srv._stt_listener = None
+    try:
+        with TestClient(app) as client:
+            resp = client.post("/stt/toggle")
+        assert resp.status_code == 503
+    finally:
+        srv._stt_listener = original
+
+
+def test_stt_toggle_calls_listener():
+    """_stt_listener가 있을 때 /stt/toggle → toggle() 반환값 전달"""
+    from unittest.mock import AsyncMock
+    import tts_server.server as srv
+    mock_listener = AsyncMock()
+    mock_listener.toggle = AsyncMock(return_value={"state": "recording", "text": None})
+    mock_listener.state = "idle"
+    original = srv._stt_listener
+    srv._stt_listener = mock_listener
+    try:
+        with TestClient(app) as client:
+            resp = client.post("/stt/toggle")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "recording"
+    finally:
+        srv._stt_listener = original
 
 
 class TestModelLoadingFailure:
