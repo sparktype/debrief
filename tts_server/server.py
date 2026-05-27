@@ -36,6 +36,7 @@ _model_ready = threading.Event()
 _model_error = threading.Event()
 _model_error_message = ""
 _worker_thread: Optional[threading.Thread] = None
+_stt_listener: SpeechListener | None = None
 
 # 한국어 TTS에서 발음이 부자연스러운 영문 기술 용어 → 한국어 발음 치환 사전
 _TECH_PHONETICS: dict[str, str] = {
@@ -202,10 +203,10 @@ async def lifespan(app: FastAPI):
     _work_queue.put(None)
     if _worker_thread:
         _worker_thread.join(timeout=5)
+    if _stt_listener is not None and _stt_listener.state == "recording":
+        await _stt_listener.toggle()
     _log("INFO", "서버 종료.")
 
-
-_stt_listener: SpeechListener | None = None
 
 app = FastAPI(title="Siren TTS Server", lifespan=lifespan)
 
@@ -247,7 +248,7 @@ async def health():
 async def stt_toggle():
     """STT 토글 — idle→recording 또는 recording→idle 전환."""
     if _stt_listener is None:
-        return JSONResponse({"error": "STT 비활성화"}, status_code=503)
+        return JSONResponse({"status": "disabled", "detail": "STT 비활성화"}, status_code=503)
     result = await _stt_listener.toggle()
     return result
 

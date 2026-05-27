@@ -46,9 +46,13 @@ class SpeechListener:
 
     async def _stop_recording(self) -> dict:
         if self._stream is not None:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception as e:
+                _log.error("[STT] 스트림 종료 오류: %s", e)
+            finally:
+                self._stream = None
         self.state = "idle"
 
         if not self._buffer:
