@@ -119,10 +119,29 @@ async def test_handle_hook_skips_short_text():
         mock.assert_not_called()
 
 
+async def test_handle_hook_uses_transcript_fallback(tmp_path):
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        json.dumps({
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "충분히 긴 응답입니다. " * 4}],
+            }
+        }),
+        encoding="utf-8",
+    )
+    raw = json.dumps({"last_assistant_message": ""})
+    with patch("hook_voice.hook_handlers._derive_transcript_path", return_value=transcript), \
+         patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")), \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock:
+        await handle_hook(raw, _CFG)
+        mock.assert_called_once()
+
+
 # ── handle_subagent_stop 테스트 ──────────────────────────────
 
 MOCK_VOICE_MAP = {
-    "supertonic": {"lang": "ko"},
+    "supertonic": {"lang": "ko", "steps": 10},
     "voices": {"default": "F1", "reviewer": "M2", "builder": "M4"},
     "voice_names": {"F1": "연아", "M2": "빌", "M4": "리누스"},
     "instructs": {"default": "밝고 친절하게", "reviewer": "천천히 신중하게", "builder": "빠르고 자신감 있게"},
@@ -182,6 +201,45 @@ async def test_subagent_stop_empty_one_liner_still_speaks():
         spoken_text = call_args.args[0] if call_args.args else call_args[0][0]
     assert "빌더" in spoken_text
     assert "리누스" in spoken_text
+
+
+async def test_subagent_stop_passes_steps_from_voice_map():
+    """handle_subagent_stop이 voice-map의 supertonic.steps를 speak_agent로 전달한다."""
+    raw = json.dumps({"last_assistant_message": "C" * 60})
+    with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="완료"):
+        await handle_subagent_stop(raw, "feature-reviewer", _CFG)
+        mock_speak.assert_called_once()
+        used_steps = mock_speak.call_args.kwargs.get("steps")
+    assert used_steps == 10
+
+
+async def test_subagent_stop_recovers_agent_type_from_transcript(tmp_path):
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        json.dumps({
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "Agent",
+                    "input": {"subagent_type": "feature-reviewer"},
+                }
+            ]
+        }),
+        encoding="utf-8",
+    )
+    raw = json.dumps({
+        "last_assistant_message": "리뷰 완료 메시지입니다. " * 4,
+        "transcript_path": str(transcript),
+    })
+    with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
+         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="리뷰 완료"):
+        await handle_subagent_stop(raw, "", _CFG)
+        mock_speak.assert_called_once()
+        used_voice = mock_speak.call_args.args[1]
+    assert used_voice == "M2"
 
 
 # ── handle_config 테스트 ─────────────────────────────────────

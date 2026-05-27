@@ -1,6 +1,7 @@
 {
   "supertonic": {
-    "lang": "ko"
+    "lang": "ko",
+    "steps": 12
   },
   "voices": {
     "reviewer": "M2",

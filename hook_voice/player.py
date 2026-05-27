@@ -1,6 +1,7 @@
 # hook_voice/player.py
 # EdgeTTS → spool enqueue, speak_hook / speak_agent + HTTP / subprocess 폴백
 import asyncio
+import logging
 import os
 import random
 import ssl
@@ -14,6 +15,8 @@ import edge_tts.communicate as _ec
 import httpx
 
 from .last_message import save_last_message
+
+_log = logging.getLogger(__name__)
 
 # HMG 사내 SSL 프록시 우회 — edge_tts 내부 SSL 컨텍스트 교체
 _ssl_ctx = ssl.create_default_context()
@@ -58,7 +61,7 @@ async def _is_tts_server_alive() -> bool:
         return False
 
 
-async def _speak_http(text: str, voice: str, speed: float, instruct: str = "") -> None:
+async def _speak_http(text: str, voice: str, speed: float, instruct: str = "") -> bool:
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"{TTS_SERVER_URL}/speak",
@@ -66,35 +69,56 @@ async def _speak_http(text: str, voice: str, speed: float, instruct: str = "") -
             timeout=10.0,
         )
         if r.status_code == 429:
-            return
+            _log.warning("TTS HTTP server busy (429), subprocess fallback")
+            return False
         r.raise_for_status()
+        return True
+
+
+def _speed_to_wpm(speed: float) -> int:
+    return max(80, min(360, round(175 * speed)))
+
+
+async def _speak_with_mlx_cli(text: str, voice: str, speed: float) -> None:
+    py = _venv_python()
+    proc = await asyncio.create_subprocess_exec(
+        str(py), "-m", "mlx_audio.tts.generate",
+        "--model", MLX_MODEL,
+        "--text", text, "--voice", voice,
+        "--lang_code", "korean", "--speed", str(speed),
+        "--output_path", "/tmp", "--play",
+        env={**os.environ, "HF_HUB_OFFLINE": "1"},
+    )
+    await proc.wait()
+
+
+async def _speak_with_macos_say(text: str, voice: str, speed: float) -> None:
+    args = ["say", "-r", str(_speed_to_wpm(speed))]
+    if voice:
+        args.extend(["-v", voice])
+    args.append(text)
+    proc = await asyncio.create_subprocess_exec(*args)
+    await proc.wait()
 
 
 async def _speak_subprocess(text: str, voice: str, speed: float) -> None:
     py = _venv_python()
     if voice in MLX_SPEAKERS and py.exists():
-        proc = await asyncio.create_subprocess_exec(
-            str(py), "-m", "mlx_audio.tts.generate",
-            "--model", MLX_MODEL,
-            "--text", text, "--voice", voice,
-            "--lang_code", "korean", "--speed", str(speed),
-            "--output_path", "/tmp", "--play",
-            env={**os.environ, "HF_HUB_OFFLINE": "1"},
-        )
-        await proc.wait()
+        await _speak_with_mlx_cli(text, voice, speed)
     else:
-        proc = await asyncio.create_subprocess_exec("say", text)
-        await proc.wait()
+        await _speak_with_macos_say(text, voice, speed)
 
 
 async def _speak_without_edge(text: str, voice: str, speed: float, instruct: str = "") -> None:
     if await _is_tts_server_alive():
         try:
-            await _speak_http(text, voice, speed, instruct)
-            save_last_message(text)
-            return
-        except Exception:
-            pass
+            if await _speak_http(text, voice, speed, instruct):
+                save_last_message(text)
+                return
+        except Exception as e:
+            _log.warning("TTS HTTP failed, subprocess fallback: %s", type(e).__name__)
+    else:
+        _log.info("TTS server unavailable, subprocess fallback")
     await _speak_subprocess(text, voice, speed)
     save_last_message(text)
 
@@ -108,8 +132,8 @@ async def speak_hook(text: str, voice: str = "Sohee", speed: float = 1.2,
             _enqueue_spool(mp3, speed)
             save_last_message(text)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("Edge generation failed, local fallback: %s", type(e).__name__)
     await _speak_without_edge(text, voice, speed)
 
 
@@ -122,12 +146,14 @@ async def _is_supertonic_alive(port: int) -> bool:
         return False
 
 
-async def _generate_supertonic(text: str, voice: str, port: int, timeout: float = 20.0) -> bytes:
+async def _generate_supertonic(
+    text: str, voice: str, port: int, steps: int = 12, timeout: float = 20.0
+) -> bytes:
     async with httpx.AsyncClient() as client:
         r = await client.post(
-            f"http://localhost:{port}/v1/audio/speech",
-            json={"model": "supertonic-3", "input": text, "voice": voice,
-                  "response_format": "wav", "lang": "ko"},
+            f"http://localhost:{port}/v1/tts",
+            json={"text": text, "voice": voice, "lang": "ko",
+                  "steps": steps, "response_format": "wav"},
             timeout=timeout,
         )
         r.raise_for_status()
@@ -135,13 +161,13 @@ async def _generate_supertonic(text: str, voice: str, port: int, timeout: float 
 
 
 async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "",
-                      supertonic_timeout: float = 20.0) -> None:
+                      steps: int = 12, supertonic_timeout: float = 20.0) -> None:
     if not text.strip():
         return
     if await _is_supertonic_alive(port):
         try:
             wav_bytes = await asyncio.wait_for(
-                _generate_supertonic(text, voice, port, timeout=supertonic_timeout),
+                _generate_supertonic(text, voice, port, steps=steps, timeout=supertonic_timeout),
                 timeout=supertonic_timeout,
             )
             tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
@@ -149,6 +175,8 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
             _enqueue_spool(tmp, speed)
             save_last_message(text)
             return
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("Supertonic generation failed, generic fallback: %s", type(e).__name__)
+    else:
+        _log.info("Supertonic unavailable, generic fallback")
     await _speak_without_edge(text, voice, speed, instruct)

@@ -116,9 +116,10 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     voice_name = resolve_voice_name(agent_type, vm)
     label = get_agent_label(agent_type, vm)
     instruct = resolve_instruct(agent_type, vm)
+    steps = vm.get("supertonic", {}).get("steps", 12)
     one_liner = await extract_one_liner(text, config.summary_model)
     await speak_agent(f"{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
-                      supertonic_timeout=config.supertonic_timeout_ms / 1000)
+                      steps=steps, supertonic_timeout=config.supertonic_timeout_ms / 1000)
 
 
 async def handle_hook_suggest(raw: str, config: Config) -> None:

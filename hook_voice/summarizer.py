@@ -22,9 +22,26 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+# Supertonic Expression Tags — sanitize 시 보존
+_EXPR_TAG_RE = re.compile(
+    r"<(?:breath|laugh|sigh|clear_throat|hmm|cough|sniff|gasp|yawn|cry)>",
+    re.IGNORECASE,
+)
+
+
 def sanitize_for_speech(text: str) -> str:
+    tags: list[str] = []
+
+    def _save(m: re.Match) -> str:
+        tags.append(m.group())
+        return f"__ETAG{len(tags) - 1}__"
+
+    text = _EXPR_TAG_RE.sub(_save, text)
     text = re.sub(r"[^\w\s,.!?。:]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    for i, tag in enumerate(tags):
+        text = text.replace(f"__ETAG{i}__", tag)
+    return text
 
 
 def _fallback(text: str, sentence_count: int = 3) -> str:

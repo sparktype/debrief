@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from hook_voice.player import speak_hook, speak_agent, _enqueue_spool
+from hook_voice.player import speak_hook, speak_agent, _enqueue_spool, _speed_to_wpm
 
 
 def test_enqueue_spool_moves_file_and_encodes_speed(tmp_path):
@@ -71,10 +71,91 @@ async def test_speak_agent_enqueues_supertonic(tmp_path, monkeypatch):
     assert len(wav_files) == 1
 
 
+async def test_speak_agent_passes_steps_to_generate(tmp_path, monkeypatch):
+    """speak_agent가 steps 파라미터를 _generate_supertonic으로 전달한다."""
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    monkeypatch.setattr("hook_voice.player.SPOOL_DIR", spool)
+    monkeypatch.setattr("hook_voice.player.save_last_message", lambda t: None)
+
+    mock_gen = AsyncMock(return_value=b"RIFF")
+    with patch("hook_voice.player._is_supertonic_alive", new=AsyncMock(return_value=True)), \
+         patch("hook_voice.player._generate_supertonic", new=mock_gen):
+        await speak_agent("테스트 발화", "M2", 7788, 1.2, steps=10)
+
+    mock_gen.assert_called_once()
+    assert mock_gen.call_args.kwargs.get("steps") == 10
+
+
 async def test_speak_agent_skips_empty_text():
     with patch("hook_voice.player._is_supertonic_alive", new=AsyncMock()) as mock:
         await speak_agent("", "M4", 7788, 1.2)
         mock.assert_not_called()
+
+
+def test_speed_to_wpm_converts_multiplier():
+    assert _speed_to_wpm(1.0) == 175
+    assert _speed_to_wpm(1.2) == 210
+    assert _speed_to_wpm(0.9) == 158
+
+
+async def test_speak_subprocess_uses_macos_say_with_voice_and_speed(monkeypatch):
+    played = []
+
+    async def fake_exec(*args, **kwargs):
+        played.append(args)
+        proc = AsyncMock()
+        proc.wait = AsyncMock(return_value=0)
+        return proc
+
+    monkeypatch.setattr("hook_voice.player._venv_python", lambda: Path("/nonexistent/python3"))
+
+    with patch("hook_voice.player.asyncio.create_subprocess_exec", side_effect=fake_exec):
+        from hook_voice.player import _speak_subprocess
+        await _speak_subprocess("hello", "Yuna", 1.2)
+
+    assert played == [("say", "-r", "210", "-v", "Yuna", "hello")]
+
+
+async def test_speak_without_edge_falls_back_on_http_429(monkeypatch):
+    monkeypatch.setattr("hook_voice.player._is_tts_server_alive", AsyncMock(return_value=True))
+    monkeypatch.setattr("hook_voice.player._speak_http", AsyncMock(return_value=False))
+    monkeypatch.setattr("hook_voice.player.save_last_message", lambda t: None)
+
+    with patch("hook_voice.player._speak_subprocess", new=AsyncMock()) as mock_subprocess:
+        from hook_voice.player import _speak_without_edge
+        await _speak_without_edge("안녕", "Sohee", 1.2)
+        mock_subprocess.assert_called_once()
+
+
+async def test_generate_supertonic_uses_native_api():
+    """_generate_supertonic이 /v1/tts (Native API)를 호출하고 steps 파라미터를 포함한다."""
+    from hook_voice.player import _generate_supertonic
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        content = b"RIFF_WAV"
+        def raise_for_status(self): pass
+
+    class FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def post(self, url, json=None, timeout=None):
+            captured["url"] = url
+            captured["json"] = json
+            return FakeResponse()
+
+    with patch("hook_voice.player.httpx.AsyncClient", return_value=FakeClient()):
+        result = await _generate_supertonic("안녕하세요", "M4", 7788, steps=10)
+
+    assert result == b"RIFF_WAV"
+    assert "/v1/tts" in captured["url"], f"Expected /v1/tts URL, got: {captured['url']}"
+    assert captured["json"]["text"] == "안녕하세요"
+    assert captured["json"]["steps"] == 10
+    assert "input" not in captured["json"], "input 키는 Native API에 없어야 함"
+    assert "model" not in captured["json"], "model 키는 Native API에 없어야 함"
 
 
 from hook_voice.player import SPOOL_DIR

@@ -16,6 +16,30 @@ def test_sanitize_for_speech_removes_special_chars():
     assert "🎉" not in result
     assert "안녕" in result
 
+
+def test_sanitize_for_speech_preserves_expression_tags():
+    """Supertonic Expression Tags는 sanitize 후에도 보존되어야 한다."""
+    result = sanitize_for_speech("<breath> 안녕하세요 <laugh>")
+    assert "<breath>" in result
+    assert "<laugh>" in result
+    assert "안녕하세요" in result
+
+
+def test_sanitize_for_speech_preserves_all_known_tags():
+    tags = ["<breath>", "<laugh>", "<sigh>", "<clear_throat>", "<hmm>",
+            "<cough>", "<sniff>", "<gasp>", "<yawn>", "<cry>"]
+    for tag in tags:
+        result = sanitize_for_speech(f"{tag} 텍스트")
+        assert tag in result, f"{tag}가 sanitize 후 사라짐"
+
+
+def test_sanitize_for_speech_removes_unknown_angle_brackets():
+    """알 수 없는 꺾쇠 태그는 제거된다."""
+    result = sanitize_for_speech("<unknown> 텍스트 <br>")
+    assert "<unknown>" not in result
+    assert "<br>" not in result
+    assert "텍스트" in result
+
 async def test_extract_summary_uses_llm():
     with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="LLM 요약")) as mock:
         result = await extract_summary("긴 텍스트입니다.")
