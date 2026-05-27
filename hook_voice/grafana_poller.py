@@ -97,7 +97,7 @@ class GrafanaPoller:
 
     async def poll_once(self) -> PollResult:
         g = self._config.grafana
-        url = f"{g.url.rstrip('/')}/api/alertmanager/grafana/api/v2/alerts/grafana"
+        url = f"{g.url.rstrip('/')}/api/alertmanager/grafana/api/v2/alerts"
         headers = {"Authorization": f"Bearer {g.token}"}
         try:
             # HMG 사내 SSL 인터셉트 프록시 우회
