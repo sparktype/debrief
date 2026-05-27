@@ -2,7 +2,6 @@
 # 마이크 녹음 → mlx-whisper 전사 → 클립보드 붙여넣기 상태 기계
 import asyncio
 import logging
-import shlex
 import subprocess
 from typing import Literal
 
@@ -65,15 +64,22 @@ class SpeechListener:
         try:
             loop = asyncio.get_running_loop()
             text = await loop.run_in_executor(None, self._transcribe, audio)
+        except Exception as e:
+            _log.error("[STT] 전사 실패: %s", e)
+            return {"state": "idle", "error": "transcribe_failed", "text": None}
+
+        try:
             if text:
                 await loop.run_in_executor(None, self._type_text, text)
             _log.info("[STT] 전사 완료: %s", text[:40] if text else "(빈 결과)")
             return {"state": "idle", "text": text}
         except Exception as e:
-            _log.error("[STT] 전사 실패: %s", e)
-            return {"state": "idle", "error": "transcribe_failed", "text": None}
+            _log.error("[STT] 텍스트 주입 실패: %s", e)
+            return {"state": "idle", "error": "type_failed", "text": text}
 
     def _audio_callback(self, indata: np.ndarray, frames: int, time, status) -> None:
+        if status:
+            _log.warning("[STT] 오디오 콜백 상태: %s", status)
         self._buffer.append(indata.copy())
 
     def _transcribe(self, audio: np.ndarray) -> str:
@@ -87,7 +93,8 @@ class SpeechListener:
 
     def _type_text(self, text: str) -> None:
         subprocess.run(
-            ["bash", "-c", f"printf '%s' {shlex.quote(text)} | pbcopy"],
+            ["pbcopy"],
+            input=text.encode("utf-8"),
             check=False,
         )
         subprocess.run(
