@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>tts_server 패키지 심층 분석</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      padding: 32px;
+      line-height: 1.7;
+    }
+    h1 { font-size: 1.8rem; color: #58a6ff; margin-bottom: 8px; }
+    .subtitle { color: #8b949e; font-size: 0.9rem; margin-bottom: 40px; }
+    section { margin-bottom: 40px; }
+    h2 {
+      font-size: 1.25rem;
+      color: #f0883e;
+      border-left: 4px solid #f0883e;
+      padding-left: 12px;
+      margin-bottom: 16px;
+    }
+    h3 {
+      font-size: 1rem;
+      color: #79c0ff;
+      margin: 20px 0 10px;
+    }
+    p { margin-bottom: 10px; color: #c9d1d9; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 0.9rem;
+    }
+    th {
+      background: #161b22;
+      color: #58a6ff;
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 2px solid #30363d;
+    }
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid #21262d;
+      color: #c9d1d9;
+      vertical-align: top;
+    }
+    tr:hover td { background: #161b22; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .badge-green  { background: #1a4731; color: #3fb950; }
+    .badge-yellow { background: #3d2e00; color: #d29922; }
+    .badge-red    { background: #4d1f24; color: #f85149; }
+    .badge-blue   { background: #1e3a5f; color: #79c0ff; }
+    .badge-gray   { background: #21262d; color: #8b949e; }
+    .flow-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 12px 0;
+    }
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .step-num {
+      background: #1f6feb;
+      color: #fff;
+      border-radius: 50%;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .step-content { flex: 1; }
+    .step-title { font-weight: 600; color: #e6edf3; }
+    .step-desc { color: #8b949e; font-size: 0.9rem; }
+    .arch-diagram {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 12px 0;
+      white-space: pre;
+      font-family: 'JetBrains Mono', 'Menlo', monospace;
+      font-size: 0.82rem;
+      color: #c9d1d9;
+      overflow-x: auto;
+    }
+    .issue-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+    }
+    .issue-card.warn  { border-left: 4px solid #d29922; }
+    .issue-card.error { border-left: 4px solid #f85149; }
+    .issue-card.info  { border-left: 4px solid #58a6ff; }
+    .issue-title { font-weight: 600; margin-bottom: 6px; }
+    .issue-desc  { color: #8b949e; font-size: 0.92rem; }
+    .key-files {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin: 12px 0;
+    }
+    .file-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .file-name { font-family: monospace; color: #79c0ff; font-size: 0.9rem; font-weight: 600; }
+    .file-role { color: #c9d1d9; font-size: 0.88rem; margin-top: 4px; }
+    .file-note { color: #8b949e; font-size: 0.82rem; margin-top: 4px; }
+    code.inline {
+      background: #21262d;
+      color: #ff7b72;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.88em;
+    }
+    ul { padding-left: 20px; }
+    li { margin-bottom: 6px; color: #c9d1d9; }
+  </style>
+</head>
+<body>
+
+<h1>🔊 tts_server 패키지 심층 분석</h1>
+<p class="subtitle">summary-voice-mcp · 2026-05-26 · Code Explorer Agent</p>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>1. 전체 아키텍처 개요</h2>
+
+  <div class="arch-diagram">
+┌─────────────────────────────────────────────────────────────────────┐
+│  macOS launchd  (com.voice-persona.tts-server)                      │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  supervisor.py  (asyncio 이벤트 루프)                         │   │
+│  │                                                              │   │
+│  │   asyncio.gather()                                           │   │
+│  │    ├─ player_loop()    ← /tmp/tts-spool/ 폴링               │   │
+│  │    ├─ cleanup_loop()   ← 30분 주기 stale 파일 정리          │   │
+│  │    └─ monitor_children() ← 자식 프로세스 감시 (1초)         │   │
+│  │                                                              │   │
+│  │   Popen 자식 프로세스                                        │   │
+│  │    ├─ uvicorn  :7777  (tts_server.server:app)               │   │
+│  │    │    └─ FastAPI + 워커 스레드 (MLX TTS 추론)             │   │
+│  │    └─ supertonic :7788 (별도 TTS 엔진)                      │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+
+  hook_voice/player.py (상위 레이어 — Claude Hook에서 호출)
+    │
+    ├─ EdgeTTS → mp3 생성 → /tmp/tts-spool/ enqueue
+    ├─ Supertonic(:7788) → wav 생성 → /tmp/tts-spool/ enqueue
+    └─ 폴백: POST /speak → uvicorn(:7777) 직접 호출
+
+  /tmp/tts-spool/  (파일시스템 큐)
+    └─ {epoch_ms}_{uid5}_{speed100}.{wav|mp3}
+         예: 1748261234567_ab3kx_120.mp3  (speed=1.2x)
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>2. server.py — FastAPI 서버 구조</h2>
+
+  <h3>2-1. API 엔드포인트</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>메서드 + 경로</th>
+        <th>상태 코드</th>
+        <th>역할</th>
+        <th>특이사항</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code class="inline">POST /speak</code></td>
+        <td>
+          <span class="badge badge-green">202</span>
+          <span class="badge badge-yellow">429</span>
+          <span class="badge badge-red">503</span>
+        </td>
+        <td>TTS 재생 요청. 워커 큐에 추가 후 즉시 반환 (비동기)</td>
+        <td>큐 <code class="inline">maxsize=1</code> — 동시 1개 처리만 허용</td>
+      </tr>
+      <tr>
+        <td><code class="inline">GET /health</code></td>
+        <td>
+          <span class="badge badge-green">200</span>
+          <span class="badge badge-red">503</span>
+        </td>
+        <td>서버 상태 확인 — 로딩 중/에러/정상 구분</td>
+        <td>모델 로딩 실패 시 detail 메시지 포함</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>2-2. 요청/응답 데이터 모델</h3>
+  <pre><code class="language-python">class SpeakRequest(BaseModel):
+    text: str                              # TTS 변환 대상 텍스트
+    voice: str = "Sohee"                  # MLX 모델 화자 ID
+    lang_code: str = "korean"             # 언어 코드 ("korean" 시 발음 보정 활성화)
+    speed: float = 1.2                    # 재생 속도 (afplay -r 로 후처리)
+    instruct: str = "밝고 활기차게 말해주세요"  # 모델 instruct 파라미터
+
+# 응답 예시
+{"status": "accepted"}           # 202 — 큐 추가 성공
+{"status": "loading"}            # 503 — 모델 로딩 중
+{"status": "busy"}               # 429 — 큐 가득 참
+{"status": "error", "detail": "..."} # 503 — 모델 로딩 실패</code></pre>
+
+  <h3>2-3. 내부 상태 관리 (모듈 레벨 전역 변수)</h3>
+  <table>
+    <thead><tr><th>변수</th><th>타입</th><th>역할</th></tr></thead>
+    <tbody>
+      <tr><td><code class="inline">_work_queue</code></td><td><code class="inline">Queue(maxsize=1)</code></td><td>FastAPI → 워커 스레드 작업 전달 채널. 최대 1개 큐잉</td></tr>
+      <tr><td><code class="inline">_model_ready</code></td><td><code class="inline">threading.Event</code></td><td>모델 로딩 완료 신호. set 전까지 /speak 503 반환</td></tr>
+      <tr><td><code class="inline">_model_error</code></td><td><code class="inline">threading.Event</code></td><td>모델 로딩 실패 신호. set 시 /health에서 error 반환</td></tr>
+      <tr><td><code class="inline">_model_error_message</code></td><td><code class="inline">str</code></td><td>실패 메시지 보존 (스레드 간 공유)</td></tr>
+      <tr><td><code class="inline">_worker_thread</code></td><td><code class="inline">Optional[Thread]</code></td><td>단일 워커 스레드 참조 (lifespan에서 관리)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2-4. 워커 스레드 처리 흐름 (_tts_worker)</h3>
+  <div class="flow-box">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">모델 로딩</div>
+        <div class="step-desc"><code class="inline">mlx_audio.tts.utils.load_model()</code> 호출. MLX Metal GPU 스트림을 동일 스레드에서 유지하기 위해 별도 스레드에서 실행</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">_model_ready.set() → 서버 준비 완료</div>
+        <div class="step-desc">/health 200 응답, /speak 202 수용 시작</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">큐 대기 루프</div>
+        <div class="step-desc"><code class="inline">_work_queue.get()</code> 블로킹 대기. <code class="inline">None</code>은 종료 신호</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">발음 전처리 (lang_code=korean)</div>
+        <div class="step-desc"><code class="inline">_preprocess_for_tts()</code> — 70개 영문 기술 용어를 한국어 발음으로 치환 (정규식 + O(1) dict 조회)</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">오디오 생성</div>
+        <div class="step-desc"><code class="inline">generate_audio(speed=1.0)</code> → tmpdir에 wav 저장. speed는 항상 1.0 고정 (Qwen3-TTS 최적화 경로 유지)</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">6</div>
+      <div class="step-content">
+        <div class="step-title">재생 및 정리</div>
+        <div class="step-desc"><code class="inline">afplay -r {speed} file.wav</code>로 macOS 재생 (속도 후처리). <code class="inline">shutil.rmtree()</code>로 tmpdir 정리</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>3. supervisor.py — 프로세스/태스크 관리</h2>
+
+  <h3>3-1. asyncio Task 구조</h3>
+  <pre><code class="language-python">async def main():
+    shutdown = asyncio.Event()
+
+    # SIGTERM/SIGINT → shutdown.set()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown.set)
+
+    # 자식 프로세스 기동
+    uvicorn_proc   = _start_uvicorn()    # :7777 — FastAPI TTS 서버
+    supertonic_proc = _start_supertonic() # :7788 — supertonic TTS 엔진
+
+    # 3개 코루틴 동시 실행 (shutdown 이벤트로 공유 종료 제어)
+    await asyncio.gather(
+        player_loop(shutdown=shutdown),      # spool 파일 재생
+        cleanup_loop(shutdown=shutdown),     # 30분 주기 정리
+        monitor_children(procs, shutdown),   # 자식 프로세스 감시
+    )</code></pre>
+
+  <h3>3-2. 포트 역할 구분</h3>
+  <table>
+    <thead><tr><th>포트</th><th>프로세스</th><th>엔드포인트</th><th>역할</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-blue">7777</span></td>
+        <td>uvicorn → <code class="inline">tts_server.server:app</code></td>
+        <td><code class="inline">POST /speak</code>, <code class="inline">GET /health</code></td>
+        <td>MLX Qwen3-TTS 추론 서버. 직접 재생 (afplay). <code class="inline">HF_HUB_OFFLINE=1</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-yellow">7788</span></td>
+        <td>supertonic serve</td>
+        <td><code class="inline">POST /v1/audio/speech</code>, <code class="inline">GET /v1/health</code></td>
+        <td>supertonic-3 TTS 엔진. wav 반환 → spool enqueue. <code class="inline">HF_HUB_OFFLINE=0</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3-3. player_loop — /tmp/tts-spool/ 폴링 메커니즘</h3>
+  <div class="flow-box">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">파일 탐색</div>
+        <div class="step-desc"><code class="inline">spool.glob("*.wav") + glob("*.mp3")</code> → 알파벳 정렬 (= 시간순, 파일명이 epoch_ms 시작)</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">속도 파싱</div>
+        <div class="step-desc"><code class="inline">stem.rsplit("_", 1)[-1]</code> — 마지막 <code class="inline">_</code> 뒤 숫자 추출. <code class="inline">"120" → "1.2"</code></div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">재생 + PID 기록</div>
+        <div class="step-desc"><code class="inline">asyncio.create_subprocess_exec("afplay", "-r", speed, file)</code>. PID → <code class="inline">/tmp/tts-spool/.player.pid</code></div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">종료 대기 (동시)</div>
+        <div class="step-desc"><code class="inline">asyncio.wait([play_task, shutdown.wait()], FIRST_COMPLETED)</code> — shutdown 시 afplay terminate → 2초 timeout → kill</div>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">파일 삭제</div>
+        <div class="step-desc">재생 완료 시 <code class="inline">audio.unlink(missing_ok=True)</code>. 유휴 시 지수 백오프: <code class="inline">min(0.3 × 1.5^idle, 2.0)</code>초 대기</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>3-4. 자식 프로세스 종료 전략 (_graceful_shutdown)</h3>
+  <pre><code class="language-python">async def _graceful_shutdown(procs):
+    # 역순 종료: supertonic → uvicorn
+    for proc in reversed(procs):
+        proc.terminate()    # SIGTERM
+
+    # 5초 데드라인 — 응답 없으면 SIGKILL
+    deadline = loop.time() + 5.0
+    for proc in procs:
+        remaining = max(0.1, deadline - loop.time())
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, proc.wait),
+                timeout=remaining,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()   # SIGKILL</code></pre>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>4. 두 컴포넌트 간 상호작용</h2>
+
+  <h3>4-1. supervisor → uvicorn 관리 방식</h3>
+  <p>supervisor는 uvicorn을 <strong>subprocess.Popen</strong>으로 자식 프로세스로 기동합니다. 직접 코루틴이나 스레드로 실행하는 것이 아니라 독립 OS 프로세스로 분리되므로, uvicorn이 크래시해도 supervisor 이벤트 루프가 영향받지 않습니다. <code class="inline">monitor_children()</code>이 1초마다 <code class="inline">proc.poll()</code>으로 생존을 확인하고, 비정상 종료 감지 시 <code class="inline">shutdown.set()</code>으로 전체 종료를 트리거합니다.</p>
+
+  <h3>4-2. 파일시스템 큐를 통한 재생 파이프라인</h3>
+  <div class="arch-diagram">
+hook_voice/player.py                    supervisor.py
+        │                                     │
+  (1) TTS 생성                          player_loop()
+   EdgeTTS → .mp3                             │
+   Supertonic → .wav                    (4) glob("*.wav","*.mp3")
+        │                                     │
+  (2) _enqueue_spool()                  (5) rsplit("_",1) → speed
+   rename → /tmp/tts-spool/             (6) afplay -r {speed} file
+   {epoch}_{uid}_{speed100}.ext         (7) file.unlink()
+        │
+  (3) 파일이 spool에 안착
+   (파일명에 speed 인코딩)
+
+  폴백 경로:
+  player.py  ──HTTP──▶  POST /speak (:7777)
+                              │
+                         work_queue.put_nowait()
+                              │
+                         _tts_worker (스레드)
+                              │
+                         afplay -r {speed} /tmp/vp_tts_xxx.wav
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>5. 잠재적 문제점 및 개선 포인트</h2>
+
+  <div class="issue-card warn">
+    <div class="issue-title">⚠️ 개별 자식 프로세스 재시작 없음 — All-or-Nothing 종료</div>
+    <div class="issue-desc">
+      uvicorn 또는 supertonic 중 하나만 크래시해도 <code class="inline">monitor_children()</code>이 <code class="inline">shutdown.set()</code> → 전체 supervisor 종료 → launchd 재시작을 유발합니다. 
+      재시작 중 모델을 다시 로딩하는 시간(수십 초) 동안 TTS 서비스가 완전히 중단됩니다.
+      <br><br>
+      <strong>개선 방향:</strong> uvicorn/supertonic 개별 재시작 로직 추가. 예: <code class="inline">max_restarts=3</code>까지 재기동 시도 후 전체 종료.
+    </div>
+  </div>
+
+  <div class="issue-card error">
+    <div class="issue-title">🔴 work_queue maxsize=1 — 높은 429 발생 가능성</div>
+    <div class="issue-desc">
+      <code class="inline">_work_queue = queue.Queue(maxsize=1)</code>로 큐에 최대 1개만 허용합니다. 워커가 추론 중일 때(수 초 소요) 들어오는 모든 요청은 429가 됩니다. Claude Hook이 짧은 간격으로 여러 번 호출하는 상황에서 발화가 누락될 수 있습니다.
+      <br><br>
+      <strong>개선 방향:</strong> <code class="inline">maxsize=3~5</code>로 확장하거나, /speak를 spool 방식(파일 드롭)으로 전환하여 player_loop가 처리하도록 통일.
+    </div>
+  </div>
+
+  <div class="issue-card warn">
+    <div class="issue-title">⚠️ speed 파싱 취약성 — rsplit("_", 1)</div>
+    <div class="issue-desc">
+      파일명 파싱 로직: <code class="inline">stem.rsplit("_", 1)</code> → 마지막 <code class="inline">_</code> 뒤가 순수 숫자면 speed로 인식.
+      예: <code class="inline">1748261234567_ab3kx_120.wav</code> → speed=1.2 (정상).
+      하지만 uid5 랜덤 부분이 <code class="inline">12345</code> 같은 순수 숫자로 끝나는 경우(낮은 확률이지만 가능), 
+      <code class="inline">speed_tag</code> 없이 enqueue된 파일은 잘못 파싱될 수 있습니다.
+      <br><br>
+      <strong>개선 방향:</strong> 파일명 형식을 <code class="inline">{epoch}_spd{speed100}.ext</code>처럼 speed 구분자를 명시적으로 접두사화.
+    </div>
+  </div>
+
+  <div class="issue-card warn">
+    <div class="issue-title">⚠️ Supertonic HF_HUB_OFFLINE=0 — 사내망 SSL 실패 가능</div>
+    <div class="issue-desc">
+      <code class="inline">_start_supertonic()</code>에서 <code class="inline">HF_HUB_OFFLINE=0</code>으로 설정되어 있어 HuggingFace에 접근을 시도합니다.
+      HMG 사내망의 SSL 인터셉트 프록시 환경에서 supertonic이 모델을 다운로드하거나 메타데이터를 확인할 때 SSL 오류가 발생할 수 있습니다.
+      <br><br>
+      <strong>개선 방향:</strong> 모델을 미리 캐시해두고 <code class="inline">HF_HUB_OFFLINE=1</code>로 전환하거나, <code class="inline">REQUESTS_CA_BUNDLE</code> 환경변수로 HMG CA 번들 지정.
+    </div>
+  </div>
+
+  <div class="issue-card info">
+    <div class="issue-title">ℹ️ _model_error_message — 스레드 안전성 미확보</div>
+    <div class="issue-desc">
+      <code class="inline">_model_error_message</code>는 <code class="inline">str</code> 타입 전역 변수로, 워커 스레드에서 쓰고 FastAPI 스레드에서 읽습니다. CPython GIL 덕분에 실제 데이터 손상은 없지만, 원칙적으로 <code class="inline">threading.Lock</code>이나 <code class="inline">threading.Event</code>에 메시지를 번들로 묶는 것이 더 안전합니다.
+    </div>
+  </div>
+
+  <div class="issue-card info">
+    <div class="issue-title">ℹ️ .player.pid 파일 — 재생 중 예외 시 미삭제 엣지 케이스</div>
+    <div class="issue-desc">
+      <code class="inline">player_loop</code>의 예외 핸들러에서 <code class="inline">.player.pid</code> 삭제를 시도하지만, 예외가 <code class="inline">pid_file.unlink()</code> 이전에 발생하면 잔여 파일이 남을 수 있습니다. 다만 기능에 영향을 주지는 않으며 다음 루프에서 덮어써집니다.
+    </div>
+  </div>
+
+  <div class="issue-card info">
+    <div class="issue-title">ℹ️ /tmp/tts-spool/ 재부팅 시 초기화</div>
+    <div class="issue-desc">
+      macOS 재부팅 또는 <code class="inline">/tmp</code> 정리 시 spool 디렉터리가 사라집니다. <code class="inline">player_loop()</code>가 시작 시 <code class="inline">spool.mkdir(exist_ok=True)</code>로 자동 생성하므로 기능 장애는 없지만, 재부팅 전 큐에 남아있던 미재생 파일은 소실됩니다.
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>6. 주요 파일 요약</h2>
+  <div class="key-files">
+    <div class="file-card">
+      <div class="file-name">tts_server/server.py</div>
+      <div class="file-role">FastAPI TTS 추론 서버 (포트 7777)</div>
+      <div class="file-note">MLX Qwen3-TTS-12Hz 모델 · 단일 워커 스레드 · 발음 전처리 사전 70개 항목</div>
+    </div>
+    <div class="file-card">
+      <div class="file-name">tts_server/supervisor.py</div>
+      <div class="file-role">asyncio 수퍼바이저 — 자식 프로세스 관리 + Player Loop</div>
+      <div class="file-note">uvicorn(:7777) + supertonic(:7788) 기동 · launchd와 협력</div>
+    </div>
+    <div class="file-card">
+      <div class="file-name">hook_voice/player.py</div>
+      <div class="file-role">TTS 생성 + spool enqueue (상위 레이어)</div>
+      <div class="file-note">EdgeTTS / Supertonic / MLX 폴백 체인 · _enqueue_spool()로 supervisor와 연동</div>
+    </div>
+    <div class="file-card">
+      <div class="file-name">server.sh</div>
+      <div class="file-role">서비스 관리 스크립트 (start/stop/install/status)</div>
+      <div class="file-note">launchd LaunchAgent plist 생성 · 7종 Claude hook 등록</div>
+    </div>
+    <div class="file-card">
+      <div class="file-name">tts_server/test_server.py</div>
+      <div class="file-role">server.py 단위 테스트</div>
+      <div class="file-note">발음 보정 · 구조화 로그 · /health 503 시나리오 · mlx 없는 환경 stub</div>
+    </div>
+    <div class="file-card">
+      <div class="file-name">tts_server/test_supervisor.py</div>
+      <div class="file-role">supervisor.py 단위 테스트</div>
+      <div class="file-note">player_loop 속도 파싱 · 파일 정리 · monitor_children shutdown 시나리오</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section>
+  <h2>7. 의존성 정리</h2>
+  <table>
+    <thead><tr><th>라이브러리</th><th>용도</th><th>위치</th></tr></thead>
+    <tbody>
+      <tr><td><code class="inline">mlx_audio</code></td><td>MLX 기반 TTS 추론 (Apple Silicon GPU)</td><td>server.py — 워커 스레드 내에서만 import</td></tr>
+      <tr><td><code class="inline">fastapi</code></td><td>HTTP API 프레임워크</td><td>server.py</td></tr>
+      <tr><td><code class="inline">uvicorn</code></td><td>ASGI 서버 (자식 프로세스)</td><td>supervisor.py가 Popen으로 기동</td></tr>
+      <tr><td><code class="inline">supertonic</code></td><td>별도 TTS 엔진 (자식 프로세스)</td><td>supervisor.py가 Popen으로 기동</td></tr>
+      <tr><td><code class="inline">edge_tts</code></td><td>Microsoft Edge TTS (네트워크 필요)</td><td>hook_voice/player.py (상위 레이어)</td></tr>
+      <tr><td><code class="inline">httpx</code></td><td>비동기 HTTP 클라이언트</td><td>hook_voice/player.py</td></tr>
+      <tr><td><code class="inline">afplay</code></td><td>macOS 내장 오디오 재생 CLI</td><td>server.py, supervisor.py — subprocess로 호출</td></tr>
+      <tr><td><code class="inline">launchd</code></td><td>macOS 서비스 데몬 관리</td><td>server.sh — LaunchAgent plist 등록</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>hljs.highlightAll();</script>
+</body>
+</html>

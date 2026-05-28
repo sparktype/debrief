@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grafana Alert 통합 포인트 분석</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 24px; line-height: 1.7; }
+    h1 { color: #f0883e; border-bottom: 2px solid #30363d; padding-bottom: 12px; }
+    h2 { color: #79c0ff; margin-top: 2em; border-left: 4px solid #388bfd; padding-left: 12px; }
+    h3 { color: #d2a8ff; margin-top: 1.5em; }
+    section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px 24px; margin: 20px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th { background: #21262d; color: #79c0ff; text-align: left; padding: 10px 14px; border: 1px solid #30363d; }
+    td { padding: 9px 14px; border: 1px solid #30363d; vertical-align: top; }
+    tr:nth-child(even) td { background: #161b22; }
+    tr:nth-child(odd) td { background: #0d1117; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: bold; margin-left: 6px; }
+    .badge-green { background: #1a4731; color: #3fb950; }
+    .badge-yellow { background: #2d2a0f; color: #e3b341; }
+    .badge-red { background: #2d1218; color: #f85149; }
+    .badge-blue { background: #0c2d6b; color: #79c0ff; }
+    .highlight-box { background: #1c2a1c; border: 1px solid #2ea043; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+    .warn-box { background: #2d1e00; border: 1px solid #d29922; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+    .info-box { background: #0c2d6b; border: 1px solid #388bfd; border-radius: 6px; padding: 14px 18px; margin: 12px 0; }
+    code { background: #21262d; padding: 2px 6px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.9em; color: #f0883e; }
+    pre { margin: 0; border-radius: 6px; }
+    pre code { color: inherit; background: transparent; padding: 0; font-size: 0.88em; }
+    .file-ref { color: #58a6ff; font-family: monospace; }
+    .line-ref { color: #8b949e; font-size: 0.85em; }
+    ul li { margin: 6px 0; }
+    .flow-diagram { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 16px; white-space: pre; font-family: 'Fira Code', monospace; font-size: 0.85em; color: #8b949e; line-height: 1.6; overflow-x: auto; }
+    .flow-diagram .highlight { color: #f0883e; }
+  </style>
+</head>
+<body>
+
+<h1>Grafana Alert 통합 포인트 분석</h1>
+<p style="color:#8b949e;">summary-voice-mcp · 코드 탐색 결과 · 2026-05-26</p>
+
+<!-- ===== 1. 진입점 요약 ===== -->
+<section>
+<h2>1. TTS 발화 진입점 — speak_hook / speak_agent 시그니처</h2>
+
+<h3>speak_hook</h3>
+<pre><code class="language-python"># hook_voice/player.py : 102
+async def speak_hook(
+    text: str,
+    voice: str = "Sohee",
+    speed: float = 1.2,
+    edge_timeout: float = 10.0,
+) -> None:
+    # EdgeTTS MP3 생성 → /tmp/tts-spool/ 기록 (즉시 반환)
+    # 실패 시 HTTP(7777) → subprocess 폴백</code></pre>
+
+<ul>
+  <li>호출 패턴: <code>await speak_hook(text, config.voice, config.tts_speed, edge_timeout=...)</code></li>
+  <li>사용처: <code>handle_hook</code>, <code>handle_notification</code>, <code>handle_pre_tool_bash</code>, <code>handle_post_tool_bash</code>, <code>handle_hook_suggest</code></li>
+  <li>Grafana 알럿 발화에는 <strong>speak_hook이 적합</strong> — EdgeTTS(한국어 자연음) + spool 방식으로 다른 재생 중인 오디오와 직렬화됨</li>
+</ul>
+
+<h3>speak_agent</h3>
+<pre><code class="language-python"># hook_voice/player.py : 137
+async def speak_agent(
+    text: str,
+    voice: str,
+    port: int,
+    speed: float,
+    instruct: str = "",
+    supertonic_timeout: float = 20.0,
+) -> None:
+    # Supertonic WAV 생성 → spool 기록
+    # 실패 시 HTTP(7777) → subprocess 폴백</code></pre>
+
+<ul>
+  <li>서브에이전트 전용 — Supertonic 멀티 보이스 사용. Grafana 통합에는 불필요</li>
+</ul>
+
+<div class="highlight-box">
+  <strong>결론</strong>: Grafana 알럿 발화는 <code>speak_hook(alert_text, config.voice, config.tts_speed)</code> 단 한 줄로 충분. 별도 함수 불필요.
+</div>
+</section>
+
+<!-- ===== 2. 설정 시스템 ===== -->
+<section>
+<h2>2. 설정 시스템 확장 패턴</h2>
+
+<h3>현재 구조</h3>
+<table>
+  <tr><th>파일</th><th>역할</th><th>수정 범위</th></tr>
+  <tr>
+    <td><span class="file-ref">hook_voice/config.py</span></td>
+    <td>Config dataclass + _KEY_MAP + load_config()</td>
+    <td>새 필드 추가 시 반드시 수정</td>
+  </tr>
+  <tr>
+    <td><span class="file-ref">.voice-persona.json</span></td>
+    <td>사용자 오버라이드 (런타임)</td>
+    <td>새 키를 _KEY_MAP에 등록하면 자동 지원</td>
+  </tr>
+</table>
+
+<h3>Grafana 설정 추가 시 패턴</h3>
+<pre><code class="language-python"># hook_voice/config.py : 12–23  ← _KEY_MAP에 추가
+_KEY_MAP = {
+    ...
+    "grafanaEnabled":     "grafana_enabled",      # 추가
+    "grafanaWebhookPort": "grafana_webhook_port",  # 추가
+    "grafanaAlertFilter": "grafana_alert_filter",  # 추가 (선택)
+}
+
+# hook_voice/config.py : 27–37  ← Config 데이터클래스에 필드 추가
+@dataclass
+class Config:
+    ...
+    grafana_enabled: bool = False          # 추가
+    grafana_webhook_port: int = 8765       # 추가
+    grafana_alert_filter: str = ""         # 추가 (선택)</code></pre>
+
+<div class="info-box">
+  <strong>장점</strong>: <code>handle_config</code>(list/get/set/reset)가 _KEY_MAP 기반으로 동작하므로, 맵에 등록만 하면 CLI 설정 관리도 자동으로 지원됨. <span class="line-ref">(hook_handlers.py:374–422)</span>
+</div>
+</section>
+
+<!-- ===== 3. supervisor 확장 ===== -->
+<section>
+<h2>3. Supervisor 확장 포인트</h2>
+
+<h3>현재 asyncio.gather 구조</h3>
+<pre><code class="language-python"># tts_server/supervisor.py : 212–216
+await asyncio.gather(
+    player_loop(shutdown=shutdown),    # spool 폴링 재생
+    cleanup_loop(shutdown=shutdown),   # stale 파일 정리
+    monitor_children(procs, shutdown=shutdown),  # 자식 프로세스 감시
+)</code></pre>
+
+<h3>Grafana 폴링 루프 추가 방법</h3>
+
+<div class="highlight-box">
+  <code>asyncio.gather()</code>에 코루틴 하나만 추가하면 됨. 패턴이 완전히 정형화되어 있어 확장이 매우 자연스러움.
+</div>
+
+<pre><code class="language-python"># tts_server/supervisor.py 에 추가할 함수 (새 파일로 분리도 가능)
+async def grafana_alert_loop(
+    shutdown: asyncio.Event,
+    spool_dir: Path = SPOOL_DIR,
+    poll_interval: float = 30.0,
+) -> None:
+    """Grafana Webhook 또는 API 폴링 — 알럿 감지 시 spool에 오디오 기록."""
+    while not shutdown.is_set():
+        try:
+            # ... 알럿 체크 로직 ...
+            pass
+        except Exception as e:
+            log.error(f"[GrafanaAlert] 오류: {e}")
+        try:
+            await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
+        except asyncio.TimeoutError:
+            pass  # 정상 타임아웃, 다음 폴링 진행
+
+# supervisor.py : main() 내 gather에 추가
+await asyncio.gather(
+    player_loop(shutdown=shutdown),
+    cleanup_loop(shutdown=shutdown),
+    monitor_children(procs, shutdown=shutdown),
+    grafana_alert_loop(shutdown=shutdown),   # ← 여기에 추가
+)</code></pre>
+
+<ul>
+  <li>shutdown 이벤트를 파라미터로 받는 패턴을 그대로 따름 <span class="line-ref">(supervisor.py:49–51, 113–115, 129–131)</span></li>
+  <li><code>asyncio.wait_for(shutdown.wait(), timeout=interval)</code>가 표준 대기 패턴 <span class="line-ref">(supervisor.py:124–126)</span></li>
+  <li>supervisor 재시작 없이 루프 오류만으로 전체가 죽지 않게 try/except를 각 루프 내부에 배치</li>
+</ul>
+</section>
+
+<!-- ===== 4. FastAPI Webhook 엔드포인트 ===== -->
+<section>
+<h2>4. FastAPI 서버 Webhook 엔드포인트 추가</h2>
+
+<h3>현재 엔드포인트</h3>
+<table>
+  <tr><th>경로</th><th>메서드</th><th>역할</th></tr>
+  <tr><td><code>/speak</code></td><td>POST</td><td>TTS 재생 요청 (202 즉시 반환)</td></tr>
+  <tr><td><code>/health</code></td><td>GET</td><td>모델 상태 확인</td></tr>
+</table>
+
+<h3>Webhook 엔드포인트 추가 방법</h3>
+<pre><code class="language-python"># tts_server/server.py 에 추가
+
+class GrafanaAlertPayload(BaseModel):
+    title: str = ""
+    message: str = ""
+    state: str = ""   # "alerting" | "ok" | "no_data"
+    ruleName: str = ""
+
+@app.post("/grafana/webhook", status_code=202)
+async def grafana_webhook(payload: GrafanaAlertPayload):
+    """Grafana Contact Point Webhook 수신 — 알럿 상태를 TTS로 변환."""
+    if payload.state != "alerting":
+        return {"status": "ignored", "state": payload.state}
+    alert_text = f"그라파나 알럿. {payload.ruleName}. {payload.message}"
+    # spool에 직접 기록하거나 /speak 내부 큐로 전달
+    try:
+        _work_queue.put_nowait((alert_text, "Sohee", "korean", 1.1, "침착하게 전달해주세요"))
+        return {"status": "accepted"}
+    except queue.Full:
+        return JSONResponse({"status": "busy"}, status_code=429)</code></pre>
+
+<div class="warn-box">
+  <strong>주의</strong>: <code>/speak</code>는 MLX 워커 큐(<code>_work_queue</code>, maxsize=5)로 전달하는 방식. Grafana webhook도 같은 큐를 쓰면 TTS 발화가 MLX 서버(7777)를 통함. 반면 <strong>spool 방식</strong>(speak_hook이 하는 방식)은 hook_voice 모듈에 의존하므로 server.py에서 직접 import하면 순환 의존 위험 있음.
+</div>
+
+<h3>두 가지 통합 전략 비교</h3>
+<table>
+  <tr><th>전략</th><th>파일</th><th>장점</th><th>단점</th></tr>
+  <tr>
+    <td><strong>A. FastAPI Webhook</strong><br><span class="badge badge-green">추천</span></td>
+    <td>tts_server/server.py<br>+<br>supervisor.py (선택적 루프)</td>
+    <td>Grafana UI에서 직접 URL 설정. 외부 트리거 즉시 반응. uvicorn이 이미 떠 있음.</td>
+    <td>supervisor 재시작 시 등록된 URL 유지 필요</td>
+  </tr>
+  <tr>
+    <td><strong>B. supervisor 폴링 루프</strong></td>
+    <td>tts_server/supervisor.py</td>
+    <td>Grafana API 키만 있으면 pull 방식으로 동작. Webhook 설정 불필요.</td>
+    <td>폴링 지연(30초), Grafana API 접근 필요</td>
+  </tr>
+  <tr>
+    <td><strong>C. 새 hook_voice subcommand</strong></td>
+    <td>hook_voice/__main__.py<br>hook_voice/hook_handlers.py</td>
+    <td>기존 speak_hook 패턴 그대로 재사용. spool 방식으로 직렬화 보장.</td>
+    <td>외부에서 CLI 호출 필요 — cron 또는 launchd 별도 구성</td>
+  </tr>
+</table>
+</section>
+
+<!-- ===== 5. 기존 패턴 ===== -->
+<section>
+<h2>5. 기존 패턴 — 비동기, 에러 처리, 재시도</h2>
+
+<h3>비동기 루프 패턴</h3>
+<pre><code class="language-python"># supervisor.py : 120–126 — 표준 대기 패턴
+while not shutdown.is_set():
+    try:
+        await asyncio.wait_for(shutdown.wait(), timeout=interval)
+    except asyncio.TimeoutError:
+        _do_something()   # 주기 작업</code></pre>
+
+<h3>HTTP 호출 에러 처리 패턴</h3>
+<pre><code class="language-python"># player.py : 52–58, 116–122 — 헬스체크 + 폴백
+async def _is_tts_server_alive() -> bool:
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{TTS_SERVER_URL}/health", timeout=0.5)
+            return r.is_success
+    except Exception:
+        return False   # 실패 → 폴백으로 조용히 전환</code></pre>
+
+<h3>외부 호출 타임아웃 패턴</h3>
+<pre><code class="language-python"># player.py : 106–112 — asyncio.wait_for + Exception catch
+try:
+    mp3 = await asyncio.wait_for(_generate_edge(text), timeout=edge_timeout)
+    _enqueue_spool(mp3, speed)
+    return
+except Exception:
+    pass   # 실패 시 다음 폴백으로</code></pre>
+
+<ul>
+  <li>재시도 로직은 현재 없음 — 실패 즉시 다음 폴백으로 전환하는 단방향 흐름</li>
+  <li>Grafana API 호출에 재시도가 필요하면 <code>tenacity</code> 또는 수동 루프 필요 (신규 도입)</li>
+  <li>httpx.AsyncClient는 매 호출마다 새로 생성 — 장기 폴링이라면 모듈 레벨 싱글톤 고려</li>
+</ul>
+</section>
+
+<!-- ===== 6. 수정 파일 목록 ===== -->
+<section>
+<h2>6. 새 기능 추가 시 건드려야 할 파일</h2>
+
+<h3>전략 A (FastAPI Webhook) 기준</h3>
+<table>
+  <tr><th>파일</th><th>수정 내용</th><th>중요도</th></tr>
+  <tr>
+    <td><span class="file-ref">tts_server/server.py</span></td>
+    <td><code>POST /grafana/webhook</code> 엔드포인트 추가<br>GrafanaAlertPayload 모델 정의</td>
+    <td><span class="badge badge-red">필수</span></td>
+  </tr>
+  <tr>
+    <td><span class="file-ref">hook_voice/config.py</span></td>
+    <td>Config에 grafana_* 필드 추가<br>_KEY_MAP에 JSON 키 등록</td>
+    <td><span class="badge badge-red">필수</span></td>
+  </tr>
+  <tr>
+    <td><span class="file-ref">tts_server/supervisor.py</span></td>
+    <td>필요 시 grafana_alert_loop 추가 (폴링 방식 병행 시)</td>
+    <td><span class="badge badge-yellow">선택</span></td>
+  </tr>
+  <tr>
+    <td><span class="file-ref">voice-map.json</span></td>
+    <td>알럿 전용 instruct 추가 (예: "ops" 카테고리 재사용 가능)</td>
+    <td><span class="badge badge-yellow">선택</span></td>
+  </tr>
+  <tr>
+    <td><span class="file-ref">tts_server/test_server.py</span></td>
+    <td>webhook 엔드포인트 테스트 추가</td>
+    <td><span class="badge badge-blue">권장</span></td>
+  </tr>
+</table>
+
+<h3>추가 없어도 되는 파일</h3>
+<ul>
+  <li><span class="file-ref">hook_voice/__main__.py</span> — 새 subcommand 없으면 불필요</li>
+  <li><span class="file-ref">hook_voice/hook_handlers.py</span> — 동일</li>
+  <li><span class="file-ref">hook_voice/player.py</span> — speak_hook은 있는 그대로 재사용 가능</li>
+  <li><span class="file-ref">hook_voice/summarizer.py</span> — 알럿 텍스트는 이미 짧아 요약 불필요</li>
+  <li><span class="file-ref">hook_voice/voice_router.py</span> — 알럿용 고정 목소리 사용 시 불필요</li>
+  <li><span class="file-ref">hooks/*.sh</span> — 외부 trigger이므로 hook 불필요</li>
+</ul>
+</section>
+
+<!-- ===== 7. 충돌 위험 ===== -->
+<section>
+<h2>7. 기존 아키텍처와 충돌 가능 부분</h2>
+
+<div class="warn-box">
+  <strong>MLX 워커 큐 포화</strong><br>
+  <code>_work_queue</code>는 maxsize=5 (<span class="file-ref">server.py:31</span>). Grafana 알럿이 짧은 시간에 다수 발생하면 429가 쏟아짐. spool 방식(EdgeTTS)을 쓰면 이 문제 우회 가능.
+</div>
+
+<div class="warn-box">
+  <strong>spool 순서 보장</strong><br>
+  <code>player_loop</code>은 파일명의 타임스탬프 오름차순으로 재생(<span class="file-ref">supervisor.py:62</span>). Grafana 알럿이 spool에 들어가면 기존 Claude 응답 발화와 경합. 알럿에 높은 우선순위를 주려면 파일명 prefix 조정이 필요.
+</div>
+
+<div class="warn-box">
+  <strong>순환 의존 위험</strong><br>
+  <span class="file-ref">tts_server/server.py</span>에서 <code>hook_voice.player</code>를 import하면 순환 의존 가능성. Grafana webhook → spool 기록은 server.py 내에서 직접 <code>Path("/tmp/tts-spool")</code>에 파일 쓰거나, <code>/speak</code> 큐를 경유하는 방식으로 분리.
+</div>
+
+<div class="info-box">
+  <strong>HMG SSL 우회</strong><br>
+  Grafana가 사내망에 있으면 <code>httpx.AsyncClient(verify=False)</code>를 써야 함 (<span class="file-ref">llm_client.py:32</span> 참조). 외부 Grafana Cloud라면 시스템 CA 정상 동작.
+</div>
+</section>
+
+<!-- ===== 8. 추천 통합 경로 ===== -->
+<section>
+<h2>8. 추천 통합 경로</h2>
+
+<div class="flow-diagram"><span class="highlight">Grafana Alert 발생</span>
+  │
+  ▼  (Contact Point: Webhook)
+<span class="highlight">POST http://localhost:7777/grafana/webhook</span>
+  │  tts_server/server.py — 새 엔드포인트
+  │  GrafanaAlertPayload 파싱
+  │  state == "alerting" 필터링
+  │
+  ▼
+<span class="highlight">_work_queue.put_nowait(alert_text, "Sohee", ...)</span>
+  │  기존 MLX 워커 재사용
+  │
+  ▼
+<span class="highlight">afplay로 순차 재생</span>
+</div>
+
+<p>이 경로는 신규 파일 없이 <span class="file-ref">tts_server/server.py</span>와 <span class="file-ref">hook_voice/config.py</span> 두 파일만 수정하면 됩니다.</p>
+
+<h3>대안: spool 경유 (EdgeTTS 음질 원할 때)</h3>
+<div class="flow-diagram"><span class="highlight">Grafana Alert 발생</span>
+  │
+  ▼  (cron or launchd 1분 주기)
+<span class="highlight">python -m hook_voice grafana-alert</span>   ← 새 subcommand
+  │  hook_voice/__main__.py + hook_handlers.py
+  │  Grafana API 폴링 → 알럿 텍스트 추출
+  │  await speak_hook(text, ...)
+  │
+  ▼
+<span class="highlight">/tmp/tts-spool/*.mp3 기록</span>
+  │
+  ▼
+<span class="highlight">supervisor player_loop → afplay 재생</span>
+</div>
+</section>
+
+<script>hljs.highlightAll();</script>
+</body>
+</html>

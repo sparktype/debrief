@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Grafana Alert TTS — 사용 방법</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: -apple-system, "Helvetica Neue", sans-serif; background: #0d1117; color: #e6edf3; margin: 0; padding: 0; }
+    .container { max-width: 860px; margin: 0 auto; padding: 40px 32px 80px; }
+    h1 { font-size: 26px; font-weight: 700; color: #f0f6ff; border-bottom: 2px solid #21262d; padding-bottom: 14px; margin-bottom: 8px; }
+    .subtitle { color: #8b949e; font-size: 14px; margin-bottom: 36px; }
+    h2 { font-size: 18px; font-weight: 600; color: #79c0ff; margin: 40px 0 14px; display: flex; align-items: center; gap: 8px; }
+    h2 .badge { font-size: 11px; background: #1f6feb; color: #fff; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+    h3 { font-size: 15px; font-weight: 600; color: #d2a8ff; margin: 24px 0 10px; }
+    p { line-height: 1.75; color: #c9d1d9; margin: 0 0 12px; }
+    ul, ol { line-height: 1.8; color: #c9d1d9; padding-left: 24px; margin: 0 0 12px; }
+    li { margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px; }
+    th { background: #161b22; color: #79c0ff; text-align: left; padding: 10px 14px; border: 1px solid #30363d; }
+    td { padding: 9px 14px; border: 1px solid #21262d; color: #c9d1d9; vertical-align: top; }
+    tr:nth-child(even) td { background: #0d1117; }
+    tr:nth-child(odd) td { background: #111318; }
+    pre { margin: 12px 0 20px; border-radius: 8px; overflow: hidden; }
+    pre code { font-size: 13px; padding: 16px 18px !important; display: block; }
+    code:not(pre code) { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #f0883e; }
+    .section { background: #161b22; border: 1px solid #21262d; border-radius: 10px; padding: 22px 26px; margin-bottom: 28px; }
+    .callout { border-left: 4px solid #3fb950; background: #0d2118; border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 14px 0; font-size: 14px; color: #aff5b4; }
+    .callout.warn { border-color: #d29922; background: #1c1810; color: #e3b341; }
+    .callout.info { border-color: #1f6feb; background: #0c1a2e; color: #79c0ff; }
+    .flow { background: #161b22; border-radius: 8px; padding: 18px 20px; font-family: monospace; font-size: 13px; color: #c9d1d9; line-height: 1.9; border: 1px solid #21262d; white-space: pre; margin: 14px 0 20px; }
+    .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 12px; font-weight: 600; margin-right: 4px; }
+    .tag.new { background: #196127; color: #3fb950; }
+    .tag.mod { background: #1c2a1c; color: #56d364; border: 1px solid #2ea043; }
+    .step { display: flex; gap: 14px; margin-bottom: 16px; }
+    .step-num { min-width: 28px; height: 28px; background: #1f6feb; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 2px; }
+    .step-body { flex: 1; }
+    .step-body strong { color: #e6edf3; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 36px 0; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Grafana Alert → TTS 사용 방법</h1>
+  <p class="subtitle">HMG 사내 Grafana 알럿을 폴링하여 LLM 분석 요약을 음성으로 발화하는 기능</p>
+
+  <!-- 1. 개요 -->
+  <div class="section">
+    <h2>1. 동작 원리</h2>
+    <p>TTS Supervisor가 Grafana Alertmanager API를 주기적으로 폴링하여 알럿 상태 변화를 감지하고, LLM으로 원인·대응 방향을 요약한 뒤 TTS로 발화합니다.</p>
+    <div class="flow">GrafanaPoller (supervisor 내 asyncio Task)
+  │
+  ├─ GET /api/alertmanager/grafana/api/v2/alerts  (30초마다, verify=False)
+  │    ↓
+  ├─ fingerprint 기반 상태 변화 감지
+  │    ├─ 신규 Firing  → LLM 분석 (원인·대응 2~3문장) → TTS 발화
+  │    └─ Resolved     → 규칙 기반 "{이름} 알럿이 해소됐습니다. N분 만에 복구됐습니다."
+  │         ↓
+  └─ speak_hook() → /tmp/tts-spool/ → afplay 순차 재생</div>
+    <div class="callout info">첫 번째 폴링 사이클은 스냅샷 수집만 수행하고 발화하지 않습니다 — supervisor 재시작 시 기존 알럿이 중복 발화되는 것을 방지합니다.</div>
+  </div>
+
+  <!-- 2. 설정 -->
+  <div class="section">
+    <h2>2. 설정 방법 <span class="badge">필수</span></h2>
+    <p>프로젝트 루트의 <code>.voice-persona.json</code>에 <code>grafana</code> 섹션을 추가합니다.</p>
+
+    <pre><code class="language-json">{
+  "grafana": {
+    "enabled": true,
+    "url": "http://grafana.hmg-internal:3000",
+    "token": "glsa_xxxxxxxxxxxxxxxx",
+    "interval": 30,
+    "alerts": [
+      "Kafka Consumer Lag",
+      "Spark Job Failed"
+    ]
+  }
+}</code></pre>
+
+    <table>
+      <thead><tr><th>키</th><th>기본값</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><code>enabled</code></td><td><code>false</code></td><td>폴러 활성화 여부. <code>true</code>로 바꿔야 동작합니다.</td></tr>
+        <tr><td><code>url</code></td><td>""</td><td>Grafana 인스턴스 URL (예: <code>http://grafana.hmg-internal:3000</code>)</td></tr>
+        <tr><td><code>token</code></td><td>""</td><td>Grafana Service Account Token (<code>glsa_</code>로 시작)</td></tr>
+        <tr><td><code>interval</code></td><td><code>30</code></td><td>폴링 간격(초). 너무 짧으면 LLM 비용이 늘어납니다.</td></tr>
+        <tr><td><code>alerts</code></td><td><code>[]</code></td><td>감시할 alertname 목록. 빈 배열이면 아무것도 감지하지 않습니다.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Grafana Service Account Token 발급</h3>
+    <ol>
+      <li>Grafana → <strong>Administration &gt; Service accounts</strong></li>
+      <li><strong>Add service account</strong> → Role: <code>Viewer</code> (읽기 전용으로 충분)</li>
+      <li><strong>Add service account token</strong> → 토큰 복사 (<code>glsa_</code>로 시작)</li>
+    </ol>
+    <div class="callout warn">토큰을 <code>.voice-persona.json</code>에 평문 저장합니다. 해당 파일이 git에 커밋되지 않도록 <code>.gitignore</code>에 추가하세요.</div>
+  </div>
+
+  <!-- 3. CLI -->
+  <div class="section">
+    <h2>3. 감시 알럿 관리 (CLI)</h2>
+    <p>설정 파일을 직접 편집하는 대신 CLI로 감시 목록을 관리할 수 있습니다.</p>
+
+    <pre><code class="language-bash"># 현재 감시 중인 알럿 목록 확인
+python -m hook_voice grafana list
+
+# 알럿 추가
+python -m hook_voice grafana add "Kafka Consumer Lag"
+python -m hook_voice grafana add "Spark Job Failed"
+
+# 알럿 제거
+python -m hook_voice grafana remove "Kafka Consumer Lag"</code></pre>
+
+    <div class="callout warn">add / remove 후에는 반드시 TTS supervisor를 재시작해야 변경이 반영됩니다.<br><code>./server.sh restart</code></div>
+  </div>
+
+  <!-- 4. 적용 순서 -->
+  <div class="section">
+    <h2>4. 처음 설정하는 경우 — 단계별 순서</h2>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Grafana token 발급</strong><br>
+        Grafana → Service accounts → 토큰 생성
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong><code>.voice-persona.json</code> 작성</strong><br>
+        <code>enabled: true</code>, url, token 입력
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>감시할 알럿 등록</strong><br>
+        <code>python -m hook_voice grafana add "알럿명"</code>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>TTS supervisor 재시작</strong><br>
+        <code>./server.sh restart</code>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <strong>로그 확인</strong><br>
+        <code>./server.sh logs 30</code> → <code>[Grafana] 폴링 시작</code> 메시지 확인
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 발화 예시 -->
+  <div class="section">
+    <h2>5. 발화 예시</h2>
+
+    <h3>Firing 알럿 (LLM 분석)</h3>
+    <p style="background:#1c2a1c; border-radius:6px; padding:12px 16px; font-style:italic; color:#aff5b4;">
+      "Kafka Consumer Lag 알럿이 발생했습니다. Consumer group이 메시지 소비 속도를 따라가지 못하고 있습니다. 프로듀서 처리량을 확인하거나 파티션 수를 늘리는 방향을 검토하세요."
+    </p>
+
+    <h3>Resolved 알럿 (규칙 기반)</h3>
+    <p style="background:#1c2a1c; border-radius:6px; padding:12px 16px; font-style:italic; color:#aff5b4;">
+      "Kafka Consumer Lag 알럿이 해소되었습니다. 12분 만에 복구됐습니다."
+    </p>
+
+    <h3>Burst (3개 초과 동시 변화)</h3>
+    <p style="background:#1c2a1c; border-radius:6px; padding:12px 16px; font-style:italic; color:#aff5b4;">
+      "5개 알럿 상태가 변경됐습니다. 발생 3개, 해소 2개."
+    </p>
+  </div>
+
+  <!-- 6. 에러 처리 -->
+  <div class="section">
+    <h2>6. 에러 처리</h2>
+    <table>
+      <thead><tr><th>상황</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>네트워크 타임아웃 / 연결 실패</td><td>경고 로그 기록 후 다음 사이클에서 재시도. 발화 없음.</td></tr>
+        <tr><td>401 / 403 인증 실패</td><td>"Grafana 인증에 실패했습니다. 토큰을 확인해 주세요." 1회 발화 후 폴러 비활성화.</td></tr>
+        <tr><td>LLM 분석 실패</td><td>규칙 기반 폴백: "{알럿명} 알럿이 발생했습니다."</td></tr>
+        <tr><td>3개 초과 동시 알럿</td><td>개별 분석 대신 묶음 요약 1회 발화.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 7. 로그 확인 -->
+  <div class="section">
+    <h2>7. 로그 확인</h2>
+    <pre><code class="language-bash"># 실시간 로그 스트리밍
+./server.sh logs 50
+
+# 주요 로그 패턴
+# [Grafana] 폴링 시작 (interval=30s, alerts=['Kafka Consumer Lag'])
+# [Grafana] 첫 폴링 완료 — snapshot 수집 (발화 없음)
+# [Grafana] 폴링 실패: ConnectError   ← 네트워크 오류
+# [Grafana] Grafana 인증 실패 (HTTP 401) — 폴러를 비활성화합니다.</code></pre>
+  </div>
+
+  <hr>
+  <p style="color:#484f58; font-size:13px; text-align:center;">summary-voice-mcp · Grafana Alert TTS · 2026-05-26</p>
+</div>
+<script>hljs.highlightAll();</script>
+</body>
+</html>

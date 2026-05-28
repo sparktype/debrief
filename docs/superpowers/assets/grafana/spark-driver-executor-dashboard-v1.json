@@ -1,0 +1,1138 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Spark Job 전용 Driver / Executor 성능 대시보드 초안. Prometheus/Mimir + Tempo 연동, exemplars, span metrics, TraceQL drilldown을 전제로 한다.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "# Spark Driver / Executor Dashboard v1\n\n이 대시보드는 `Spark built-in Prometheus metrics + Tempo span metrics + Tempo trace search`를 전제로 한 초안입니다.\n\n조정 포인트:\n- Spark exporter metric 이름이 환경마다 다를 수 있으므로 `spark_job_duration_seconds`, `spark_executor_runtime_ms`, `spark_driver_gc_time_seconds_total` 계열은 환경 metric에 맞게 바꾸세요.\n- Tempo span metrics label은 `service_name`, `spark_app_id`, `spark_job_id`, `spark_executor_id`를 가정합니다.\n- exemplar drilldown은 Prometheus datasource와 Tempo datasource 연동이 끝난 후 활성화됩니다.",
+        "mode": "markdown"
+      },
+      "pluginVersion": "11.0.0",
+      "title": "Overview",
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 3
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource_metrics}"
+          },
+          "editorMode": "code",
+          "expr": "max(spark_job_duration_seconds{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_name=~\"$spark_app_name\", spark_app_id=~\"$spark_app_id\", spark_job_name=~\"$spark_job_name\", spark_job_id=~\"$spark_job_id\"})",
+          "instant": true,
+          "legendFormat": "job_duration",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Job Duration",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 3
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service_name=\"spark-driver\", cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_name=~\"$spark_app_name\", spark_app_id=~\"$spark_app_id\", spark_job_name=~\"$spark_job_name\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval])))",
+          "legendFormat": "driver_p95",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_latency_bucket{service_name=\"spark-driver\", cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_name=~\"$spark_app_name\", spark_app_id=~\"$spark_app_id\", spark_job_name=~\"$spark_job_name\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval])))",
+          "legendFormat": "driver_p99",
+          "refId": "B"
+        }
+      ],
+      "title": "Driver Span Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 3
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "count(count by (spark_executor_id) (spark_executor_running_tasks{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"} > 0))",
+          "instant": true,
+          "legendFormat": "active_executors",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Active Executors",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 4
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 3
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "clamp_min(max(sum by (spark_executor_id) (rate(spark_executor_runtime_ms{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval]))), 0) / clamp_min(quantile(0.5, sum by (spark_executor_id) (rate(spark_executor_runtime_ms{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval]))), 1)",
+          "instant": true,
+          "legendFormat": "skew_index",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Skew Index",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "rate(spark_driver_gc_time_seconds_total{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval])",
+          "legendFormat": "driver_gc_rate",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "spark_driver_jvm_heap_used_bytes{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}",
+          "legendFormat": "driver_heap_used",
+          "refId": "B"
+        }
+      ],
+      "title": "Driver GC / Heap Pressure",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(spark_shuffle_read_bytes_total{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval]))",
+          "legendFormat": "shuffle_read",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(spark_shuffle_write_bytes_total{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval]))",
+          "legendFormat": "shuffle_write",
+          "refId": "B"
+        }
+      ],
+      "title": "Shuffle Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(spark_memory_spill_bytes{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"})",
+          "legendFormat": "memory_spill",
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum(spark_disk_spill_bytes{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"})",
+          "legendFormat": "disk_spill",
+          "refId": "B"
+        }
+      ],
+      "title": "Spill Bytes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-RdYlGn"
+          },
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "id": 9,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "mode": "spectrum"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "show": true
+        },
+        "yAxis": {
+          "axisPlacement": "left"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (le) (rate(spark_executor_runtime_ms_bucket{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_executor_id=~\"$executor_id\"}[$__rate_interval]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Executor Runtime Heatmap",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-YlOrRd"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "id": 10,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "topk(10, avg by (spark_executor_id) (spark_executor_runtime_ms{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_executor_id=~\"$executor_id\"}))",
+          "legendFormat": "{{spark_executor_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Top Slow Executors",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-YlOrRd"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "id": 11,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "topk(10, sum by (spark_executor_id) (rate(spark_executor_gc_time_seconds_total{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_executor_id=~\"$executor_id\"}[$__rate_interval])))",
+          "legendFormat": "{{spark_executor_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Top GC Executors",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "id": 12,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "topk(20, sum by (spark_executor_id) (spark_shuffle_read_bytes_total{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_executor_id=~\"$executor_id\"}))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{spark_executor_id}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Executor Shuffle Read",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "id": 13,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "spark_stage_duration_seconds{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_stage_id=~\"$stage_id\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{spark_stage_id}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Stage Duration Table",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "max by (spark_stage_id) (spark_executor_runtime_ms{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_stage_id=~\"$stage_id\"}) - min by (spark_stage_id) (spark_executor_runtime_ms{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\", spark_stage_id=~\"$stage_id\"})",
+          "legendFormat": "stage_{{spark_stage_id}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Stage Max-Min Executor Delta",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource_metrics}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service_name=~\"spark-driver|spark-executor\", cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}[$__rate_interval])))",
+          "legendFormat": "p95_with_exemplars",
+          "refId": "A"
+        }
+      ],
+      "title": "Exemplar Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "${datasource_traces}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "id": 16,
+      "options": {
+        "dedupStrategy": "none",
+        "showTime": true,
+        "showTraceName": true,
+        "showWarnings": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${datasource_traces}"
+          },
+          "limit": 20,
+          "query": "{ span:status = error && spark.app.id = \"$spark_app_id\" && spark.job.id = \"$spark_job_id\" }",
+          "queryType": "traceqlSearch",
+          "refId": "A"
+        }
+      ],
+      "title": "Error Spans",
+      "type": "traces"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "${datasource_traces}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "id": 17,
+      "options": {
+        "dedupStrategy": "none",
+        "showTime": true,
+        "showTraceName": true,
+        "showWarnings": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${datasource_traces}"
+          },
+          "limit": 20,
+          "query": "{ resource.service.name = \"spark-driver\" && spark.app.id = \"$spark_app_id\" && spark.job.id = \"$spark_job_id\" }",
+          "queryType": "traceqlSearch",
+          "refId": "A"
+        }
+      ],
+      "title": "Driver Traces",
+      "type": "traces"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "${datasource_traces}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "id": 18,
+      "options": {
+        "dedupStrategy": "none",
+        "showTime": true,
+        "showTraceName": true,
+        "showWarnings": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "${datasource_traces}"
+          },
+          "limit": 20,
+          "query": "{ resource.service.name = \"spark-executor\" && spark.app.id = \"$spark_app_id\" && spark.job.id = \"$spark_job_id\" && spark.executor.id = \"$executor_id\" }",
+          "queryType": "traceqlSearch",
+          "refId": "A"
+        }
+      ],
+      "title": "Selected Executor Traces",
+      "type": "traces"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "spark",
+    "tempo",
+    "prometheus",
+    "driver",
+    "executor",
+    "performance"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics DS",
+        "multi": false,
+        "name": "datasource_metrics",
+        "options": [],
+        "pluginId": "prometheus",
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "Tempo",
+          "value": "Tempo"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces DS",
+        "multi": false,
+        "name": "datasource_traces",
+        "options": [],
+        "pluginId": "tempo",
+        "query": "tempo",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_job_duration_seconds, cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": false,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_job_duration_seconds, cluster)",
+          "refId": "PromVarCluster"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_job_duration_seconds{cluster=~\"$cluster\"}, spark_cluster)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Spark Cluster",
+        "multi": false,
+        "name": "spark_cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_job_duration_seconds{cluster=~\"$cluster\"}, spark_cluster)",
+          "refId": "PromVarSparkCluster"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_job_duration_seconds{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\"}, spark_app_name)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "App Name",
+        "multi": false,
+        "name": "spark_app_name",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_job_duration_seconds{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\"}, spark_app_name)",
+          "refId": "PromVarAppName"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_job_duration_seconds{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_name=~\"$spark_app_name\"}, spark_app_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "App ID",
+        "multi": false,
+        "name": "spark_app_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_job_duration_seconds{cluster=~\"$cluster\", spark_cluster=~\"$spark_cluster\", spark_app_name=~\"$spark_app_name\"}, spark_app_id)",
+          "refId": "PromVarAppId"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_job_duration_seconds{spark_app_id=~\"$spark_app_id\"}, spark_job_name)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Job Name",
+        "multi": false,
+        "name": "spark_job_name",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_job_duration_seconds{spark_app_id=~\"$spark_app_id\"}, spark_job_name)",
+          "refId": "PromVarJobName"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_job_duration_seconds{spark_app_id=~\"$spark_app_id\", spark_job_name=~\"$spark_job_name\"}, spark_job_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Job ID",
+        "multi": false,
+        "name": "spark_job_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_job_duration_seconds{spark_app_id=~\"$spark_app_id\", spark_job_name=~\"$spark_job_name\"}, spark_job_id)",
+          "refId": "PromVarJobId"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_stage_duration_seconds{spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}, spark_stage_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Stage ID",
+        "multi": true,
+        "name": "stage_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_stage_duration_seconds{spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}, spark_stage_id)",
+          "refId": "PromVarStageId"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource_metrics}"
+        },
+        "definition": "label_values(spark_executor_runtime_ms{spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}, spark_executor_id)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Executor ID",
+        "multi": true,
+        "name": "executor_id",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(spark_executor_runtime_ms{spark_app_id=~\"$spark_app_id\", spark_job_id=~\"$spark_job_id\"}, spark_executor_id)",
+          "refId": "PromVarExecutorId"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "hide": 2,
+        "label": "Trace ID",
+        "name": "trace_id",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Spark Driver Executor Performance v1",
+  "uid": "spark-driver-executor-v1",
+  "version": 1,
+  "weekStart": ""
+}

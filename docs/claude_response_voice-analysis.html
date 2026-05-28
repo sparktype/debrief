@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>발화 불량 원인 분석</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #0d1117; color: #c9d1d9; line-height: 1.6; }
+    .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+    h1 { color: #f0f6fc; border-bottom: 2px solid #21262d; padding-bottom: 12px; font-size: 1.8rem; }
+    h2 { color: #58a6ff; font-size: 1.2rem; margin-top: 2rem; }
+    h3 { color: #e3b341; font-size: 1rem; }
+
+    .verdict-box {
+      background: #3d1a1a; border: 2px solid #f85149; border-radius: 8px;
+      padding: 20px 24px; margin: 24px 0;
+    }
+    .verdict-box h2 { color: #f85149; margin-top: 0; font-size: 1.3rem; }
+
+    .ok-box {
+      background: #0d2818; border: 1px solid #3fb950; border-radius: 8px;
+      padding: 16px 20px; margin: 16px 0;
+    }
+    .ok-box h3 { color: #3fb950; margin-top: 0; }
+
+    .warn-box {
+      background: #2a1f00; border: 1px solid #e3b341; border-radius: 8px;
+      padding: 16px 20px; margin: 16px 0;
+    }
+    .warn-box h3 { color: #e3b341; margin-top: 0; }
+
+    .section { background: #161b22; border-radius: 8px; padding: 20px 24px; margin: 20px 0; border: 1px solid #21262d; }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th { background: #21262d; color: #58a6ff; padding: 10px 14px; text-align: left; font-size: 0.85rem; }
+    td { padding: 9px 14px; border-bottom: 1px solid #21262d; font-size: 0.9rem; }
+    tr:last-child td { border-bottom: none; }
+
+    .badge-ok   { background: #0d2818; color: #3fb950; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    .badge-fail { background: #3d1a1a; color: #f85149; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    .badge-warn { background: #2a1f00; color: #e3b341; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+
+    .flow-item { display: flex; align-items: flex-start; gap: 12px; margin: 8px 0; }
+    .flow-num  { background: #21262d; color: #58a6ff; min-width: 28px; height: 28px; border-radius: 50%;
+                 display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; flex-shrink: 0; }
+    .flow-arrow { color: #f85149; font-size: 1.2rem; margin: 4px 0; text-align: center; }
+
+    pre { margin: 0; }
+    code.inline { background: #21262d; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', monospace; font-size: 0.85em; color: #79c0ff; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🔇 발화 불량 원인 분석 — 2026-05-27</h1>
+
+  <!-- ───────── 최종 판정 ───────── -->
+  <div class="verdict-box">
+    <h2>🔴 루트 원인 — <code>No module named hook_voice</code></h2>
+    <p>
+      <code>stop.sh</code>는 PYTHONPATH를 설정하지 않고 <code>.venv/bin/python -m hook_voice</code>를 실행합니다.
+      Python의 <code>-m</code> 플래그는 <strong>현재 작업 디렉토리(CWD)</strong>를 sys.path에 추가하여 패키지를 탐색합니다.
+      hook이 <code>summary-voice-mcp</code>가 아닌 다른 CWD에서 실행되면 <code>hook_voice</code> 패키지를 찾지 못해
+      즉시 종료되고, 발화가 일어나지 않습니다.
+    </p>
+    <p><strong>에러 발생 횟수 (오늘 하루):</strong> <span style="color:#f85149; font-size:1.2rem; font-weight:bold;">2,000회 이상</span></p>
+  </div>
+
+  <!-- ───────── 서버 상태 ───────── -->
+  <h2>서버 컴포넌트 상태</h2>
+  <div class="section">
+    <table>
+      <tr><th>컴포넌트</th><th>포트</th><th>상태</th></tr>
+      <tr><td>TTS Supervisor (launchd)</td><td>—</td><td><span class="badge-ok">정상</span></td></tr>
+      <tr><td>FastAPI TTS 서버 (/speak)</td><td>7777</td><td><span class="badge-ok">정상</span></td></tr>
+      <tr><td>Supertonic (서브에이전트 목소리)</td><td>7788</td><td><span class="badge-ok">정상</span></td></tr>
+      <tr><td>TTS Player Loop (스풀 소비)</td><td>—</td><td><span class="badge-ok">정상 · 대기 0건</span></td></tr>
+      <tr><td>Stop hook 등록 (Claude Code)</td><td>—</td><td><span class="badge-ok">등록됨</span></td></tr>
+      <tr><td>Grafana Poller (AlertManager)</td><td>—</td><td><span class="badge-warn">404 반복 (URL 오류)</span></td></tr>
+      <tr><td>hook_voice 모듈 (CWD = 프로젝트 루트)</td><td>—</td><td><span class="badge-ok">작동</span></td></tr>
+      <tr><td>hook_voice 모듈 (CWD = 다른 디렉토리)</td><td>—</td><td><span class="badge-fail">실패 — No module</span></td></tr>
+    </table>
+  </div>
+
+  <!-- ───────── 실행 흐름 ───────── -->
+  <h2>발화 실패 경로 (실제 관찰)</h2>
+  <div class="section">
+    <div class="flow-item"><div class="flow-num">1</div><div>Claude 응답 완료 → Stop hook 발동</div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-item"><div class="flow-num">2</div><div><code class="inline">stop.sh</code> 실행 — CWD = 현재 세션의 프로젝트 디렉토리</div></div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-item"><div class="flow-num">3</div>
+      <div>
+        CWD가 <code class="inline">/arch-delphi</code> 또는 <code class="inline">/.claude/worktrees/keen-elm-t40y</code> 등일 때<br>
+        <code class="inline">.venv/bin/python -m hook_voice hook</code> → 탐색 실패<br>
+        → <span style="color:#f85149;"><code>No module named hook_voice</code></span> → 즉시 종료
+      </div>
+    </div>
+    <div class="flow-arrow">↓</div>
+    <div class="flow-item"><div class="flow-num">4</div><div>스풀에 파일 없음 → TTS Player 재생 없음 → 침묵</div></div>
+  </div>
+
+  <!-- ───────── 두 가지 실패 케이스 ───────── -->
+  <h2>실패 케이스 상세</h2>
+  <div class="section">
+    <h3>케이스 A — arch-delphi 프로젝트 세션 (대부분)</h3>
+    <p>
+      오늘 대부분의 에러는 <code class="inline">cwd: /Workspaces/arch-delphi</code> 세션에서 발생했습니다.
+      이 세션에서 Stop, SubagentStop, Notification hook이 실행될 때마다 hook_voice를 찾지 못해 실패합니다.
+    </p>
+    <pre><code class="language-text"># /tmp/voice-notification-debug.log 발췌 (2000회 반복)
+.venv/bin/python: No module named hook_voice   ← arch-delphi CWD에서 실행
+.venv/bin/python: No module named hook_voice
+...
+21:42:27 [notification] {"cwd":"/Workspaces/arch-delphi", ...}
+.venv/bin/python: No module named hook_voice   ← 반복</code></pre>
+
+    <h3>케이스 B — 워크트리 세션 (keen-elm-t40y)</h3>
+    <p>
+      어제(05-26) 이 프로젝트의 워크트리 세션에서도 동일하게 실패했습니다.
+      워크트리 디렉토리(<code class="inline">.claude/worktrees/keen-elm-t40y</code>)에는 <code>hook_voice</code> 폴더가 없습니다.
+    </p>
+    <pre><code class="language-text"># 마지막 성공적 발화 시점
+[INFO] 2026-05-26 20:18:28 재생 완료: '클로드 needs your permission'
+# → 이 이후 모든 hook 실행 실패</code></pre>
+  </div>
+
+  <!-- ───────── 기술적 원인 ───────── -->
+  <h2>기술적 원인 — Python -m 동작 방식</h2>
+  <div class="section">
+    <pre><code class="language-bash"># stop.sh 현재 코드 (문제 있음)
+VENV_PY="$SCRIPT_DIR/../.venv/bin/python"
+echo "$PAYLOAD" | nohup "$VENV_PY" -m hook_voice hook ...
+# CWD가 어디든 -m은 CWD를 sys.path[0]으로 추가 → CWD에 hook_voice 없으면 실패</code></pre>
+
+    <pre><code class="language-bash"># 직접 테스트 결과
+cd /tmp && .venv/bin/python -m hook_voice hook → 실패 (No module named hook_voice)
+cd /project && .venv/bin/python -m hook_voice hook → 성공 (정상 실행)</code></pre>
+
+    <p>
+      <code>hook_voice</code>는 pyproject.toml / setup.py 없이 순수 디렉토리 패키지로만 존재합니다.
+      <code>pip install -e .</code>로 site-packages에 설치된 게 아니므로 CWD에 의존합니다.
+    </p>
+  </div>
+
+  <!-- ───────── 부가 문제 ───────── -->
+  <h2>부가 문제 — Grafana Poller 404</h2>
+  <div class="warn-box">
+    <h3>⚠️ AlertManager URL 오류로 30초마다 404</h3>
+    <p>
+      <code>GET https://hubble-krnw-platform.hmg-corp.io/api/alertmanager/grafana/api/v2/alerts → 404</code><br>
+      로그 전체(9,213줄)의 약 24%를 Grafana 폴링 에러가 차지합니다. 발화 자체와는 무관하지만
+      로그 분석을 방해하고 불필요한 HTTP 부하를 만듭니다.
+    </p>
+  </div>
+
+  <!-- ───────── 해결 방안 ───────── -->
+  <h2>해결 방안</h2>
+  <div class="section">
+    <h3>방안 1 (권장) — stop.sh에 PYTHONPATH 추가</h3>
+    <pre><code class="language-bash">#!/usr/bin/env bash
+PAYLOAD=$(cat)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR/.."
+VENV_PY="$PROJECT_DIR/.venv/bin/python"
+echo "$PAYLOAD" | nohup env PYTHONPATH="$PROJECT_DIR" \
+  "$VENV_PY" -m hook_voice hook \
+  >> /tmp/voice-notification-debug.log 2>&1 &
+disown $!; exit 0</code></pre>
+    <p>모든 hook 스크립트(subagent-stop.sh, session-start.sh, prompt-submit.sh, notification.sh)에 동일하게 적용 필요.</p>
+
+    <h3>방안 2 — pip install -e . (영구적 해결)</h3>
+    <pre><code class="language-bash"># pyproject.toml 최소 생성 후 개발 모드 설치
+.venv/bin/pip install -e .
+# → hook_voice가 site-packages에 링크 → CWD 무관하게 작동</code></pre>
+    <p>이 방법은 CWD에 완전히 독립적으로 작동합니다.</p>
+  </div>
+
+  <!-- ───────── 요약 ───────── -->
+  <h2>한 줄 요약</h2>
+  <div class="verdict-box">
+    <p style="font-size:1.1rem; margin:0;">
+      TTS 서버·Supertonic·Player는 모두 정상이지만,
+      <strong>hook 실행 CWD가 summary-voice-mcp가 아닌 경우</strong>
+      <code>hook_voice</code> 모듈을 찾지 못해 발화가 일어나지 않습니다.
+      특히 arch-delphi 세션과 워크트리 세션에서 오늘만 2,000회 이상 실패했습니다.
+    </p>
+  </div>
+
+</div>
+<script>hljs.highlightAll();</script>
+</body>
+</html>

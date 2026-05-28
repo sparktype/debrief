@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>summary-voice-mcp 3차 개선 분석 결과</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; line-height: 1.7; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 2rem; font-weight: 700; color: #f0f6fc; margin-bottom: 8px; }
+  .subtitle { color: #8b949e; margin-bottom: 40px; font-size: 0.95rem; }
+  h2 { font-size: 1.3rem; font-weight: 600; color: #58a6ff; margin: 40px 0 16px; padding-left: 12px; border-left: 3px solid #58a6ff; }
+  h3 { font-size: 1.05rem; font-weight: 600; color: #e6edf3; margin: 24px 0 10px; }
+  p { color: #c9d1d9; margin-bottom: 10px; }
+
+  /* 요약 카드 */
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 40px; }
+  .summary-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; text-align: center; }
+  .summary-card .num { font-size: 2.2rem; font-weight: 700; }
+  .summary-card .label { font-size: 0.8rem; color: #8b949e; margin-top: 4px; }
+  .card-arch .num { color: #58a6ff; }
+  .card-quality .num { color: #f0883e; }
+  .card-perf .num { color: #ff7b72; }
+  .card-feature .num { color: #3fb950; }
+
+  /* 분석 섹션 */
+  .analyst-section { background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin-bottom: 24px; overflow: hidden; }
+  .analyst-header { padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #30363d; }
+  .analyst-badge { font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; }
+  .badge-arch { background: #1f3a5f; color: #58a6ff; }
+  .badge-quality { background: #3d2800; color: #f0883e; }
+  .badge-perf { background: #3d1c1c; color: #ff7b72; }
+  .badge-feature { background: #1a3d1a; color: #3fb950; }
+  .analyst-header h3 { margin: 0; font-size: 1rem; }
+  .analyst-body { padding: 20px; }
+
+  /* 이슈 아이템 */
+  .issue-list { display: flex; flex-direction: column; gap: 12px; }
+  .issue-item { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 14px 16px; }
+  .issue-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .severity { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .sev-critical { background: #490202; color: #ff7b72; }
+  .sev-high { background: #3d1c00; color: #f0883e; }
+  .sev-medium { background: #2d2a00; color: #e3b341; }
+  .sev-low { background: #1a2a1a; color: #3fb950; }
+  .issue-title { font-size: 0.9rem; font-weight: 600; color: #e6edf3; }
+  .issue-location { font-size: 0.78rem; color: #8b949e; font-family: 'SF Mono', monospace; }
+  .issue-desc { font-size: 0.85rem; color: #c9d1d9; }
+  .issue-fix { font-size: 0.82rem; color: #58a6ff; margin-top: 6px; }
+  .issue-fix::before { content: "→ "; }
+
+  /* 기능 제안 */
+  .feature-list { display: flex; flex-direction: column; gap: 12px; }
+  .feature-item { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 14px 16px; }
+  .feature-priority { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-right: 8px; }
+  .priority-1 { background: #1a3d1a; color: #3fb950; }
+  .priority-2 { background: #1f3a5f; color: #58a6ff; }
+  .priority-3 { background: #2d2a00; color: #e3b341; }
+  .feature-title { font-size: 0.9rem; font-weight: 600; color: #e6edf3; }
+  .feature-now { font-size: 0.82rem; color: #8b949e; margin-top: 6px; }
+  .feature-suggest { font-size: 0.83rem; color: #c9d1d9; margin-top: 4px; }
+  .feature-effect { font-size: 0.8rem; color: #3fb950; margin-top: 4px; }
+
+  /* 설계 접근법 */
+  .approach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .approach-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; }
+  .approach-card.recommended { border-color: #58a6ff; }
+  .approach-title { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+  .approach-subtitle { font-size: 0.8rem; color: #8b949e; margin-bottom: 12px; }
+  .approach-pros { font-size: 0.82rem; color: #3fb950; margin-bottom: 4px; }
+  .approach-cons { font-size: 0.82rem; color: #f0883e; }
+  .recommended-badge { font-size: 0.72rem; background: #1f3a5f; color: #58a6ff; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+
+  /* 우선순위 표 */
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  th { background: #21262d; color: #8b949e; font-size: 0.78rem; font-weight: 600; text-align: left; padding: 10px 12px; }
+  td { border-top: 1px solid #21262d; padding: 10px 12px; font-size: 0.82rem; color: #c9d1d9; vertical-align: top; }
+  tr:hover td { background: #161b22; }
+  .tag { display: inline-block; font-size: 0.7rem; padding: 1px 7px; border-radius: 4px; margin-right: 4px; }
+  .tag-bug { background: #3d1c1c; color: #ff7b72; }
+  .tag-ux { background: #1a3d1a; color: #3fb950; }
+  .tag-arch { background: #1f3a5f; color: #58a6ff; }
+  .tag-test { background: #2d2a00; color: #e3b341; }
+  .diff-easy { color: #3fb950; }
+  .diff-medium { color: #e3b341; }
+  .diff-hard { color: #f0883e; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>summary-voice-mcp 3차 개선 분석</h1>
+  <p class="subtitle">4명의 분석가가 병렬로 수행한 분석 결과 취합 — 아키텍처·코드품질·성능보안·기능UX</p>
+
+  <div class="summary-grid">
+    <div class="summary-card card-arch"><div class="num">6</div><div class="label">아키텍처·신뢰성 이슈</div></div>
+    <div class="summary-card card-quality"><div class="num">12</div><div class="label">코드품질·테스트 이슈</div></div>
+    <div class="summary-card card-perf"><div class="num">10</div><div class="label">성능·보안 이슈</div></div>
+    <div class="summary-card card-feature"><div class="num">10</div><div class="label">기능·UX 개선 제안</div></div>
+  </div>
+
+  <!-- 아키텍처 -->
+  <h2>아키텍처·신뢰성 분석</h2>
+  <div class="analyst-section">
+    <div class="analyst-header">
+      <span class="analyst-badge badge-arch">arch-analyst</span>
+      <h3>아키텍처·신뢰성 — 구조적 개선점</h3>
+    </div>
+    <div class="analyst-body">
+      <div class="issue-list">
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">HTTP vs Spool 이중 재생 경로 — 동시 발화 가능</span></div>
+          <div class="issue-location">player.py:95-96, supervisor.py player_loop</div>
+          <p class="issue-desc">speak_hook의 spool 경로와 _speak_http의 서버 직접 재생 경로가 분리되어, 폴백 발생 시 두 afplay가 동시에 실행될 수 있다. save_last_message 호출 위치도 불일치.</p>
+          <p class="issue-fix">spool을 단일 재생 경로로 통일. HTTP /speak 엔드포인트는 spool 기록 API로 변경하거나 제거.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">Supervisor 전체 재시작 전략 — 가용성 손실</span></div>
+          <div class="issue-location">supervisor.py monitor_children</div>
+          <p class="issue-desc">supertonic 하나가 죽으면 정상 동작 중인 uvicorn까지 내려간다. 모델 재로딩 시간 동안 EdgeTTS 폴백도 불가.</p>
+          <p class="issue-fix">자식별 독립 재시작 카운터 추가. N회 실패 시에만 supervisor 전체 종료.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">Config timeout 값들이 실제 코드에서 무시됨</span></div>
+          <div class="issue-location">player.py:53, 105, 128 — timeout 하드코딩</div>
+          <p class="issue-desc">edge_timeout_ms·supertonic_timeout_ms를 .voice-persona.json에서 설정해도 player.py의 하드코딩된 10.0/20.0/0.5초에 전혀 반영되지 않는다.</p>
+          <p class="issue-fix">speak_hook/speak_agent에 config를 전달하고, 모든 timeout을 config 값으로 교체.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">_ec._SSL_CTX 모듈 레벨 패치 — 버전 업그레이드 시 조용히 깨짐</span></div>
+          <div class="issue-location">player.py:19-22</div>
+          <p class="issue-desc">edge_tts 내부 구현 변경 시 _SSL_CTX 속성이 사라져 AttributeError. hasattr 가드 없음.</p>
+          <p class="issue-fix">hasattr 확인 후 패치. 장기적으로 HMG CA를 신뢰 번들에 추가하는 방향으로 이행.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">_FALLBACK_MAP voice_names.F1 = "멜린다" — voice-map.json과 불일치</span></div>
+          <div class="issue-location">voice_router.py:34</div>
+          <p class="issue-desc">최근 커밋에서 연아로 변경됐으나 코드 내 폴백값은 멜린다 그대로. voice-map.json 로드 실패 시 다른 이름으로 발화.</p>
+          <p class="issue-fix">_FALLBACK_MAP의 F1을 "연아"로 동기화.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">확장성 — hook 추가 시 5개 파일 동시 수정 필요</span></div>
+          <div class="issue-location">__main__.py, hook_handlers.py, hooks/, server.sh install/uninstall</div>
+          <p class="issue-desc">새 hook 타입 추가 시 모든 파일을 동시에 건드려야 한다. TTS 엔진도 player.py에 모두 하드코딩.</p>
+          <p class="issue-fix">server.sh의 hook 등록을 HOOKS 배열+루프로 리팩터. _TECH_PHONETICS를 phonetics.json으로 분리.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 코드 품질 -->
+  <h2>코드 품질·테스트 분석</h2>
+  <div class="analyst-section">
+    <div class="analyst-header">
+      <span class="analyst-badge badge-quality">quality-analyst</span>
+      <h3>코드품질·테스트 — 12개 이슈</h3>
+    </div>
+    <div class="analyst-body">
+      <div class="issue-list">
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">전 폴백 체인에서 Exception을 로그 없이 삼킴</span></div>
+          <div class="issue-location">player.py:95-96, hook_handlers.py:44, voice_router.py:48</div>
+          <p class="issue-desc">except Exception: pass 패턴이 반복되어 운영 중 어떤 경로가 실패했는지 추적 불가. 장기 기술부채.</p>
+          <p class="issue-fix">최소한 logging.debug 또는 logging.warning으로 실패 원인 기록.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">asyncio.get_event_loop() 사용 — Python 3.12에서 RuntimeError</span></div>
+          <div class="issue-location">__main__.py:20</div>
+          <p class="issue-desc">asyncio.run() 내부에서 get_event_loop() 대신 get_running_loop() 사용해야 함. 3.12+에서 RuntimeError.</p>
+          <p class="issue-fix">loop = asyncio.get_running_loop() 로 교체.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">VoiceMap TypedDict 선언과 검증 불일치</span></div>
+          <div class="issue-location">voice_router.py:22-28, load_voice_map:45</div>
+          <p class="issue-desc">TypedDict 필수 필드로 선언한 voice_names·instructs를 유효성 검사에서 확인하지 않아 타입 선언이 거짓말을 함.</p>
+          <p class="issue-fix">load_voice_map 검증에 voice_names·instructs 포함, 또는 TypedDict를 Optional 필드로 변경.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">handle_subagent_stop agent_type="" 시 무음 처리</span></div>
+          <div class="issue-location">hook_handlers.py:126-145</div>
+          <p class="issue-desc">agent_type 인식 실패 시 조용히 default로 폴백. 에이전트 타입 인식 실패인지 의도적 default인지 구분 불가.</p>
+          <p class="issue-fix">복구 실패 시 logging.warning("agent_type 인식 실패, default 사용") 추가.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">transcript 파일 전체 메모리 로드</span></div>
+          <div class="issue-location">hook_handlers.py:29, skill_recommender.py:88</div>
+          <p class="issue-desc">장기 세션에서 수십 MB JSONL을 전체 읽은 뒤 splitlines()[-N] 적용. 불필요한 메모리 피크.</p>
+          <p class="issue-fix">역방향 readline 방식으로 교체. 마지막 N줄만 읽기.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">handle_subagent_stop 테스트 전무</span></div>
+          <div class="issue-location">tests/test_hook_handlers.py</div>
+          <p class="issue-desc">agent_type 없는 경우, extract_one_liner 빈 반환, speak_agent 폴백 경로 등 핵심 분기 미검증.</p>
+          <p class="issue-fix">handle_subagent_stop 파라미터화 테스트 추가. transcript 복구 경로 포함.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">_transcript_cache가 프로세스 내에서만 유효</span></div>
+          <div class="issue-location">skill_recommender.py:14</div>
+          <p class="issue-desc">hook_voice는 매 호출마다 새 프로세스로 실행. 모듈 레벨 캐시는 실제 캐시 효과 0. 코드가 오해를 유발.</p>
+          <p class="issue-fix">캐시 제거 또는 주석으로 "현재 프로세스 수명 내 캐시" 명시.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 성능·보안 -->
+  <h2>성능·보안·안정성 분석</h2>
+  <div class="analyst-section">
+    <div class="analyst-header">
+      <span class="analyst-badge badge-perf">perf-analyst</span>
+      <h3>성능·보안·안정성 — 10개 이슈</h3>
+    </div>
+    <div class="analyst-body">
+      <div class="issue-list">
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-critical">CRITICAL</span><span class="issue-title">전역 SSL 검증 비활성화</span></div>
+          <div class="issue-location">player.py:19-22, llm_client.py:25-28</div>
+          <p class="issue-desc">edge_tts 모듈 전체에 CERT_NONE 적용 + httpx verify=False. MITM으로 TTS 응답 조작 또는 LLM API 응답 위조 가능.</p>
+          <p class="issue-fix">HMG CA PEM을 신뢰 번들에 추가. httpx는 verify=hmg_ca_pem_path 사용.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">tempfile.mktemp() TOCTOU 취약점</span></div>
+          <div class="issue-location">player.py:45, 141</div>
+          <p class="issue-desc">mktemp()는 경로 반환만 하고 파일을 생성하지 않아 TOCTOU. 공격자가 심볼릭 링크 삽입 가능.</p>
+          <p class="issue-fix">tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")으로 전환.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">spool Race Condition — meta 없이 오디오 파일만 있는 상태</span></div>
+          <div class="issue-location">supervisor.py:64-84, player.py:36-41</div>
+          <p class="issue-desc">_enqueue_spool에서 rename 후 meta write 사이 비원자성. Player가 meta 없는 파일을 읽으면 config tts_speed 무시하고 기본값 1.2 적용.</p>
+          <p class="issue-fix">파일명에 speed 인코딩: {uid}_{speed}.wav. meta 파일 제거.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-high">HIGH</span><span class="issue-title">모듈 레벨 asyncio.Event — 테스트 격리 문제</span></div>
+          <div class="issue-location">supervisor.py:20</div>
+          <p class="issue-desc">_shutdown_event가 모듈 임포트 시 생성. asyncio.run() 여러 번 호출 시 이벤트 루프 교체로 shutdown 전달 실패.</p>
+          <p class="issue-fix">main() 내부에서 asyncio.Event() 생성 후 명시적으로 각 코루틴에 전달.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">stop.sh stdin payload 미전달</span></div>
+          <div class="issue-location">hooks/stop.sh:5</div>
+          <p class="issue-desc">subagent-stop.sh는 PAYLOAD=$(cat)로 보존하는데 stop.sh만 누락. handle_hook이 빈 raw로 폴백해 추가 파일 I/O 발생.</p>
+          <p class="issue-fix">PAYLOAD=$(cat) + echo "$PAYLOAD" | nohup ... 추가.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">API 키 누락 시 무음 처리 — 인증 없이 요청 전송</span></div>
+          <div class="issue-location">llm_client.py:10-11</div>
+          <p class="issue-desc">HUB_API_KEY 미설정 시 "Bearer " 빈값으로 요청. 오류 로그 없어 개발자가 인지 불가.</p>
+          <p class="issue-fix">api_key 비어있으면 logging.warning 후 조기 반환.</p>
+        </div>
+        <div class="issue-item">
+          <div class="issue-top"><span class="severity sev-medium">MEDIUM</span><span class="issue-title">afplay terminate 후 proc.wait() 없어 좀비 프로세스 위험</span></div>
+          <div class="issue-location">supervisor.py:80-84</div>
+          <p class="issue-desc">proc.terminate() 후 바로 audio.unlink(). 명시적 wait 없어 좀비 프로세스 남을 수 있음.</p>
+          <p class="issue-fix">terminate 후 asyncio.wait_for(proc.wait(), timeout=2.0) 추가. 타임아웃 시 kill().</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 기능·UX -->
+  <h2>기능·UX 개선 제안</h2>
+  <div class="analyst-section">
+    <div class="analyst-header">
+      <span class="analyst-badge badge-feature">feature-analyst</span>
+      <h3>기능·UX — 10개 개선 제안</h3>
+    </div>
+    <div class="analyst-body">
+      <div class="feature-list">
+        <div class="feature-item">
+          <span class="feature-priority priority-1">P1 — 즉시</span><span class="feature-title">큐 제어 커맨드 (pause/resume/flush/skip)</span>
+          <p class="feature-now">현재: 재생 중인 TTS를 멈추거나 큐를 비울 방법이 없음</p>
+          <p class="feature-suggest">python -m hook_voice control [pause|resume|flush|skip] + server.sh 래퍼 추가</p>
+          <p class="feature-effect">집중 중 TTS를 즉시 끌 수 있어 체감 효과 가장 큼</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-1">P1 — 즉시</span><span class="feature-title">CLI 설정 변경 인터페이스</span>
+          <p class="feature-now">현재: .voice-persona.json 직접 편집 필요. JSON 문법 오류 시 전체 기본값 복원</p>
+          <p class="feature-suggest">python -m hook_voice config get/set/list/reset 서브커맨드 신설</p>
+          <p class="feature-effect">onboarding 마찰 제거, JSON 오타 사고 방지</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-1">P1 — 즉시</span><span class="feature-title">상태 가시성 — 큐 길이·재생 중 여부 조회</span>
+          <p class="feature-now">현재: server.sh status가 포트 리스닝만 확인. "왜 안 나오지?" 진단이 어려움</p>
+          <p class="feature-suggest">server.sh status에 큐 대기 수·재생 중 여부·마지막 발화 텍스트 추가</p>
+          <p class="feature-effect">디버깅 시간 분→초 단축</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-1">P1 — 버그</span><span class="feature-title">prompt-submit.sh stdin 미전달 버그 수정</span>
+          <p class="feature-now">현재: handle_hook_suggest의 prompt_hint가 항상 비어 있어 transcript 히스토리만으로 추천</p>
+          <p class="feature-suggest">PAYLOAD=$(cat) + echo "$PAYLOAD" | nohup ... 추가 (stop.sh와 동일 패턴)</p>
+          <p class="feature-effect">스킬 추천 정확도 즉시 개선. 현재 입력 맥락 반영</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-2">P2 — 단기</span><span class="feature-title">notification.sh 자동 등록</span>
+          <p class="feature-now">현재: server.sh install이 stop.sh만 등록. notification.sh는 수동 등록 필요해 사실상 미사용</p>
+          <p class="feature-suggest">install 시 지원 hook 전체 일괄 등록 (subagent-stop, pre/post-tool-bash, notification 포함)</p>
+          <p class="feature-effect">notification 음성 기능이 실제로 활성화됨</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-2">P2 — 단기</span><span class="feature-title">health 진단 커맨드</span>
+          <p class="feature-now">현재: hook 오류가 완전히 무음. /tmp/voice-notification-debug.log를 직접 열어야 원인 파악 가능</p>
+          <p class="feature-suggest">python -m hook_voice health: EdgeTTS·supertonic·LLM API를 순서대로 테스트하고 결과 출력</p>
+          <p class="feature-effect">"작동 안 함" 문의를 자력 해결 가능하게 함</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-2">P2 — 단기</span><span class="feature-title">발화 히스토리 기록</span>
+          <p class="feature-now">현재: last_message.py가 마지막 텍스트 하나만 저장</p>
+          <p class="feature-suggest">history.jsonl에 타임스탬프+발화텍스트 append. python -m hook_voice history 조회</p>
+          <p class="feature-effect">"아까 Claude가 뭐라고 했더라" 텍스트로 확인 가능</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-2">P2 — 단기</span><span class="feature-title">pre-tool-bash 위험 명령 패턴 확장</span>
+          <p class="feature-now">현재: rm -rf, git reset --hard, DROP TABLE만 탐지. kubectl delete, git push --force 등 누락</p>
+          <p class="feature-suggest">위험 패턴 확장 + 분류 규칙을 외부 JSON으로 분리</p>
+          <p class="feature-effect">실제 위험 명령 탐지율 향상</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-3">P3 — 중기</span><span class="feature-title">프로젝트별 voice persona 자동 전환</span>
+          <p class="feature-now">현재: .voice-persona.json 계층 구조는 있지만 자동 전환 로직 없음</p>
+          <p class="feature-suggest">CLAUDE_PROJECT_DIR 기반으로 프로젝트별 .voice-persona.json 우선 적용</p>
+          <p class="feature-effect">Kafka 프로젝트 ↔ PKM 프로젝트 간 목소리·속도 자동 변경</p>
+        </div>
+        <div class="feature-item">
+          <span class="feature-priority priority-3">P3 — 중기</span><span class="feature-title">에이전트 발화 포맷 개선 — 성공/경고 분기</span>
+          <p class="feature-now">현재: "{label} {name}입니다. {one_liner}" 고정 패턴으로 반복 청취 피로도 높음</p>
+          <p class="feature-suggest">결과 키워드 감지로 성공/경고 템플릿 분기. one_liner 길이 40자로 완화</p>
+          <p class="feature-effect">발화만으로 작업 결과 성격 파악 가능</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 설계 접근법 -->
+  <h2>설계 접근법 제안</h2>
+  <div class="approach-grid">
+    <div class="approach-card">
+      <div class="approach-title">A — 버그·보안 집중</div>
+      <div class="approach-subtitle">Critical·HIGH 이슈만 수정 (15개)</div>
+      <p class="approach-pros">✓ 범위 작고 리스크 낮음<br>✓ 1~2일 내 완료 가능</p>
+      <p class="approach-cons">✗ UX 개선 없어 사용성 변화 없음<br>✗ 기능 추가 없음</p>
+    </div>
+    <div class="approach-card recommended">
+      <div class="approach-title">B — 단계적 종합 <span class="recommended-badge">추천</span></div>
+      <div class="approach-subtitle">Sprint 1: 버그+안정성 / Sprint 2: UX+기능</div>
+      <p class="approach-pros">✓ 버그 먼저 잡고 기능 추가<br>✓ 각 스프린트를 독립 검증 가능<br>✓ 완성도·사용성 동시 향상</p>
+      <p class="approach-cons">✗ 2~3일 소요<br>✗ 범위가 넓어 계획 관리 필요</p>
+    </div>
+    <div class="approach-card">
+      <div class="approach-title">C — UX 기능 집중</div>
+      <div class="approach-subtitle">P1·P2 신규 기능 추가 우선</div>
+      <p class="approach-pros">✓ 즉시 체감 가능한 변화<br>✓ 팀 데모 효과 높음</p>
+      <p class="approach-cons">✗ 기저 버그 미해결<br>✗ TOCTOU·asyncio.Event 등 안정성 우선 수정 필요</p>
+    </div>
+  </div>
+
+  <!-- 우선순위 통합 표 -->
+  <h2>구현 우선순위 통합표 (Sprint 1 + Sprint 2)</h2>
+  <table>
+    <thead><tr><th>#</th><th>항목</th><th>분류</th><th>난이도</th><th>효과</th></tr></thead>
+    <tbody>
+      <tr><td>S1-1</td><td>stop.sh + prompt-submit.sh stdin payload 전달</td><td><span class="tag tag-bug">버그</span></td><td class="diff-easy">낮음</td><td>즉각적 안정성·추천 정확도</td></tr>
+      <tr><td>S1-2</td><td>tempfile.mktemp() → NamedTemporaryFile 교체</td><td><span class="tag tag-bug">보안</span></td><td class="diff-easy">낮음</td><td>TOCTOU 취약점 제거</td></tr>
+      <tr><td>S1-3</td><td>asyncio.get_event_loop() → get_running_loop()</td><td><span class="tag tag-bug">버그</span></td><td class="diff-easy">낮음</td><td>Python 3.12 호환성</td></tr>
+      <tr><td>S1-4</td><td>모듈 레벨 asyncio.Event → main() 내부로 이동</td><td><span class="tag tag-arch">아키텍처</span></td><td class="diff-easy">낮음</td><td>테스트 격리 보장</td></tr>
+      <tr><td>S1-5</td><td>spool meta 파일 제거 → 파일명에 speed 인코딩</td><td><span class="tag tag-bug">안정성</span></td><td class="diff-medium">중간</td><td>Race Condition 제거</td></tr>
+      <tr><td>S1-6</td><td>terminate 후 proc.wait() 추가 (좀비 방지)</td><td><span class="tag tag-bug">버그</span></td><td class="diff-easy">낮음</td><td>리소스 정리 보장</td></tr>
+      <tr><td>S1-7</td><td>API 키 누락 시 warning 로그 + 조기 반환</td><td><span class="tag tag-bug">보안</span></td><td class="diff-easy">낮음</td><td>미설정 상태 즉시 인지</td></tr>
+      <tr><td>S1-8</td><td>config timeout 값들을 player.py에 실제 적용</td><td><span class="tag tag-arch">아키텍처</span></td><td class="diff-medium">중간</td><td>설정 = 동작 일치</td></tr>
+      <tr><td>S1-9</td><td>_FALLBACK_MAP "멜린다" → "연아" 동기화</td><td><span class="tag tag-bug">버그</span></td><td class="diff-easy">낮음</td><td>voice-map.json과 일관성</td></tr>
+      <tr><td>S1-10</td><td>handle_subagent_stop 테스트 추가</td><td><span class="tag tag-test">테스트</span></td><td class="diff-medium">중간</td><td>핵심 경로 회귀 방지</td></tr>
+      <tr><td>S2-1</td><td>python -m hook_voice control (pause/flush/skip)</td><td><span class="tag tag-ux">UX</span></td><td class="diff-medium">중간</td><td>체감 효과 1위</td></tr>
+      <tr><td>S2-2</td><td>python -m hook_voice config get/set/list</td><td><span class="tag tag-ux">UX</span></td><td class="diff-medium">중간</td><td>JSON 직접 편집 제거</td></tr>
+      <tr><td>S2-3</td><td>server.sh status 큐 길이·재생 중 상태 추가</td><td><span class="tag tag-ux">UX</span></td><td class="diff-easy">낮음</td><td>진단 가시성</td></tr>
+      <tr><td>S2-4</td><td>python -m hook_voice health 진단 커맨드</td><td><span class="tag tag-ux">UX</span></td><td class="diff-easy">낮음</td><td>장애 자력 진단</td></tr>
+      <tr><td>S2-5</td><td>server.sh install 전체 hook 자동 등록</td><td><span class="tag tag-ux">UX</span></td><td class="diff-easy">낮음</td><td>notification.sh 활성화</td></tr>
+      <tr><td>S2-6</td><td>발화 히스토리 기록 (history.jsonl)</td><td><span class="tag tag-ux">UX</span></td><td class="diff-easy">낮음</td><td>발화 내용 사후 확인</td></tr>
+      <tr><td>S2-7</td><td>pre-tool-bash 위험 패턴 확장 + 외부 JSON</td><td><span class="tag tag-ux">UX</span></td><td class="diff-medium">중간</td><td>실제 위험 명령 탐지율</td></tr>
+    </tbody>
+  </table>
+</div>
+<script>hljs.highlightAll();</script>
+</body>
+</html>
