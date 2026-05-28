@@ -464,6 +464,8 @@ async def test_handle_subagent_stop_calls_retouch_when_enabled():
          patch("hook_voice.hook_handlers.resolve_category", return_value="default"), \
          patch("hook_voice.hook_handlers.extract_one_liner", new=AsyncMock(return_value="작업 완료")), \
          patch("hook_voice.hook_handlers.retouch_for_speech", new=AsyncMock(return_value="작업 완료")) as mock_retouch, \
-         patch("hook_voice.hook_handlers.speak_agent", new=AsyncMock()):
+         patch("hook_voice.hook_handlers.speak_agent", new=AsyncMock()) as mock_speak_agent:
         await handle_subagent_stop('{"last_assistant_message": "충분히 긴 내용입니다"}', "default", config)
         mock_retouch.assert_called_once_with("작업 완료", config.summary_model)
+        mock_speak_agent.assert_called_once()
+        assert "작업 완료" in mock_speak_agent.call_args[0][0]
