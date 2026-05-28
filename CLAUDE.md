@@ -126,6 +126,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `summaryModel` | `gpt-5.4` | HMG Hub LLM 모델 |
 | `ttsSpeed` | `1.1` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
+| `speechRetouch` | `true` | LLM으로 마크다운 제거·IT 용어 한국어 발음 변환 후 TTS 전달 |
 
 **STT 설정** (`stt` 블록):
 
