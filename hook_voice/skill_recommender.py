@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from .llm_client import chat_completion, DEFAULT_MODEL
+from .transcript_parser import get_recent_dialogue
 
 _CATALOG_FILE = Path(__file__).parent.parent / "skills-catalog.json"
 _CACHE_TTL = 60.0
@@ -59,18 +60,6 @@ def load_catalog() -> list[SkillEntry]:
     except Exception:
         return []
 
-
-def _extract_content(raw: object) -> str:
-    if isinstance(raw, str):
-        return raw[:300]
-    if isinstance(raw, list):
-        return " ".join(
-            b["text"] for b in raw
-            if isinstance(b, dict) and isinstance(b.get("text"), str)
-        )[:300]
-    return ""
-
-
 def read_recent_transcripts(
     transcripts_dir: Path | None = None,
     max_files: int = 3,
@@ -85,22 +74,12 @@ def read_recent_transcripts(
     if not scan_dir.exists():
         return ""
     try:
-        glob_fn = scan_dir.glob if transcripts_dir else scan_dir.rglob
-        files = sorted(glob_fn("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)[:max_files]
-        parts: list[str] = []
-        for f in files:
-            for line in f.read_text(encoding="utf-8").splitlines()[-max_lines_per_file:]:
-                try:
-                    entry = json.loads(line)
-                    content = _extract_content(entry.get("content", ""))
-                    if entry.get("type") == "user":
-                        parts.append(f"User: {content}")
-                    elif entry.get("type") == "assistant":
-                        parts.append(f"Assistant: {content}")
-                except Exception:
-                    pass
-            parts.append("---")
-        result = "\n".join(parts)
+        result = get_recent_dialogue(
+            scan_dir=scan_dir,
+            recursive=transcripts_dir is None,
+            max_files=max_files,
+            max_lines_per_file=max_lines_per_file,
+        )
         _transcript_cache[cache_key] = (result, time.time())
         return result
     except Exception:

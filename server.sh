@@ -177,9 +177,12 @@ print('true' if any('$SCRIPT_DIR' in str(h) for h in stops) else 'false')
   [[ -d "/tmp/tts-spool" ]] && \
     queue_count=$(find /tmp/tts-spool -maxdepth 1 \( -name "*.wav" -o -name "*.mp3" \) 2>/dev/null | wc -l | tr -d ' ')
 
-  local data_dir="${VOICE_PERSONA_DATA_DIR:-$HOME/.local/share/voice-persona}"
   local last_msg=""
-  [[ -f "$data_dir/last_message.txt" ]] && last_msg=$(head -c 60 "$data_dir/last_message.txt" 2>/dev/null)
+  local last_msg_file=""
+  if [[ -x "$VENV_PY" ]]; then
+    last_msg_file=$("$VENV_PY" -c "from hook_voice.last_message import _get_last_msg_file; print(_get_last_msg_file())" 2>/dev/null || true)
+  fi
+  [[ -n "$last_msg_file" && -f "$last_msg_file" ]] && last_msg=$(head -c 60 "$last_msg_file" 2>/dev/null)
 
   echo ""
   echo "[TTS 큐]"

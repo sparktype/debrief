@@ -73,3 +73,18 @@ def test_read_recent_transcripts_empty_dir(tmp_path):
 def test_read_recent_transcripts_nonexistent_dir(tmp_path):
     result = read_recent_transcripts(transcripts_dir=tmp_path / "no-such-dir")
     assert result == ""
+
+
+def test_read_recent_transcripts_supports_message_role_schema(tmp_path):
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text(
+        "\n".join([
+            json.dumps({"message": {"role": "user", "content": [{"type": "text", "text": "사용자 질문"}]}}),
+            json.dumps({"message": {"role": "assistant", "content": [{"type": "text", "text": "어시스턴트 답변"}]}}),
+        ]),
+        encoding="utf-8",
+    )
+
+    result = read_recent_transcripts(transcripts_dir=tmp_path)
+    assert "User: 사용자 질문" in result
+    assert "Assistant: 어시스턴트 답변" in result

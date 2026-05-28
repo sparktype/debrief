@@ -48,3 +48,21 @@ async def test_chat_completion_warns_on_missing_api_key(caplog):
             result = await chat_completion([{"role": "user", "content": "ping"}])
     assert result == ""
     assert "HUB_API_KEY" in caplog.text
+
+
+async def test_chat_completion_logs_http_status_error(caplog):
+    with patch.dict(os.environ, {"HUB_API_KEY": "test-key", "HUB_BASE_URL": "http://test"}):
+        with patch("hook_voice.llm_client.httpx.AsyncClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            response = MagicMock()
+            response.status_code = 500
+            error = httpx.HTTPStatusError("boom", request=MagicMock(), response=response)
+            mock_client.post = AsyncMock(side_effect=error)
+
+            with caplog.at_level(logging.WARNING, logger="hook_voice.llm_client"):
+                result = await chat_completion([{"role": "user", "content": "ping"}])
+
+    assert result == ""
+    assert "HTTP error" in caplog.text

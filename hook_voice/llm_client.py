@@ -4,6 +4,8 @@ import logging
 import os
 import httpx
 
+from .config import load_config
+
 DEFAULT_MODEL = "gpt-5.4"
 
 _log = logging.getLogger(__name__)
@@ -16,6 +18,13 @@ def _make_headers() -> dict[str, str]:
     if project_id:
         headers["X-Project-Id"] = project_id
     return headers
+
+
+def _verify_tls() -> bool:
+    try:
+        return not load_config().allow_insecure_tls
+    except Exception:
+        return False
 
 
 async def chat_completion(
@@ -32,7 +41,7 @@ async def chat_completion(
     async with httpx.AsyncClient(
         base_url=base_url,
         headers=_make_headers(),
-        verify=False,
+        verify=_verify_tls(),
         timeout=30.0,
     ) as client:
         try:
@@ -42,5 +51,18 @@ async def chat_completion(
             )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"].strip()
-        except Exception:
+        except httpx.TimeoutException as e:
+            _log.warning("LLM timeout: %s", type(e).__name__)
+            return ""
+        except httpx.ConnectError as e:
+            _log.warning("LLM connect error: %s", type(e).__name__)
+            return ""
+        except httpx.HTTPStatusError as e:
+            _log.warning("LLM HTTP error: %s", e.response.status_code)
+            return ""
+        except (KeyError, IndexError, TypeError, AttributeError) as e:
+            _log.warning("LLM response schema error: %s", type(e).__name__)
+            return ""
+        except Exception as e:
+            _log.warning("LLM unknown error: %s", type(e).__name__)
             return ""
