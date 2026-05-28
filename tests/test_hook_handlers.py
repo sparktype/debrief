@@ -421,3 +421,49 @@ class TestHandleControl:
         out = capsys.readouterr().out
         assert "이미 종료" in out
         assert not pid_file.exists()
+
+
+async def test_handle_hook_calls_retouch_when_enabled():
+    """speech_retouch=True이면 retouch_for_speech가 호출된다."""
+    from hook_voice.config import Config
+    from hook_voice.hook_handlers import handle_hook
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=True)
+    with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")) as _mock_sum, \
+         patch("hook_voice.hook_handlers.retouch_for_speech", new=AsyncMock(return_value="정제됨")) as mock_retouch, \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak:
+        await handle_hook('{"last_assistant_message": "충분히 긴 텍스트입니다"}', config)
+        mock_retouch.assert_called_once_with("요약", config.summary_model)
+        mock_speak.assert_called_once()
+        assert mock_speak.call_args[0][0] == "정제됨"
+
+
+async def test_handle_hook_skips_retouch_when_disabled():
+    """speech_retouch=False이면 retouch_for_speech가 호출되지 않는다."""
+    from hook_voice.config import Config
+    from hook_voice.hook_handlers import handle_hook
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=False)
+    with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")), \
+         patch("hook_voice.hook_handlers.retouch_for_speech", new=AsyncMock()) as mock_retouch, \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak:
+        await handle_hook('{"last_assistant_message": "충분히 긴 텍스트입니다"}', config)
+        mock_retouch.assert_not_called()
+        assert mock_speak.call_args[0][0] == "요약"
+
+
+async def test_handle_subagent_stop_calls_retouch_when_enabled():
+    """handle_subagent_stop에서 speech_retouch=True이면 retouch가 호출된다."""
+    from hook_voice.config import Config
+    from hook_voice.hook_handlers import handle_subagent_stop
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=True)
+    vm = {"voices": {}, "supertonic": {"steps": 12}}
+    with patch("hook_voice.hook_handlers.load_voice_map", return_value=vm), \
+         patch("hook_voice.hook_handlers.resolve_voice", return_value="F1"), \
+         patch("hook_voice.hook_handlers.resolve_voice_name", return_value="연아"), \
+         patch("hook_voice.hook_handlers.get_agent_label", return_value="기본"), \
+         patch("hook_voice.hook_handlers.resolve_instruct", return_value=""), \
+         patch("hook_voice.hook_handlers.resolve_category", return_value="default"), \
+         patch("hook_voice.hook_handlers.extract_one_liner", new=AsyncMock(return_value="작업 완료")), \
+         patch("hook_voice.hook_handlers.retouch_for_speech", new=AsyncMock(return_value="작업 완료")) as mock_retouch, \
+         patch("hook_voice.hook_handlers.speak_agent", new=AsyncMock()):
+        await handle_subagent_stop('{"last_assistant_message": "충분히 긴 내용입니다"}', "default", config)
+        mock_retouch.assert_called_once_with("작업 완료", config.summary_model)

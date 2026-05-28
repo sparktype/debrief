@@ -22,7 +22,7 @@ def _load_classify_rules() -> list[dict]:
 
 from .config import Config
 from .player import speak_hook, speak_agent, SPOOL_DIR
-from .summarizer import extract_summary, extract_one_liner, select_expression_tag
+from .summarizer import extract_summary, extract_one_liner, select_expression_tag, retouch_for_speech
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
@@ -83,6 +83,8 @@ async def handle_hook(raw: str, config: Config) -> None:
             text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
         summary = await extract_summary(text, config.summary_model)
+        if config.speech_retouch:
+            summary = await retouch_for_speech(summary, config.summary_model)
         await speak_hook(summary, config.voice, config.tts_speed,
                          edge_timeout=config.edge_timeout_ms / 1000)
 
@@ -119,6 +121,8 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     category = resolve_category(agent_type, vm)
     steps = vm.get("supertonic", {}).get("steps", 12)
     one_liner = await extract_one_liner(text, config.summary_model)
+    if config.speech_retouch:
+        one_liner = await retouch_for_speech(one_liner, config.summary_model)
     tag = select_expression_tag(one_liner, category)
     prefix = f"{tag} " if tag else ""
     await speak_agent(f"{prefix}{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
