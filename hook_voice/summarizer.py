@@ -8,6 +8,16 @@ _SUMMARY_SYSTEM = (
     "코드·마크다운 기호 없이 자연스러운 한국어 평문으로 작성합니다."
 )
 _ONE_LINER_SYSTEM = "작업 결과를 한 문장(25자 이내)으로 요약하세요. 마침표·특수기호 없이, 간결하게."
+_RETOUCH_SYSTEM = (
+    "다음 텍스트를 한국어 TTS 발화에 적합하게 정제하세요.\n"
+    "1. 마크다운 기호(** * # ` [] | > —) 완전 제거\n"
+    "2. 영문 IT 용어를 한국어 발음으로 변환 (API→에이피아이, GPU→지피유, HTTP→에이치티티피, LLM→엘엘엠)\n"
+    "3. 코드 블록·URL은 '[코드 생략]' / '[링크 생략]'으로\n"
+    "4. 특수 기호(→ ← ≥ ± © ® ™ …) 제거 또는 한국어로\n"
+    "5. <breath> <laugh> <sigh> <clear_throat> <hmm> <cough> <sniff> <gasp> <yawn> <cry> 태그는 그대로 보존\n"
+    "6. 의미 변경 없이 정제만 — 새 내용 추가 금지\n"
+    "출력: 정제된 텍스트만, 설명 없이"
+)
 
 
 def strip_markdown(text: str) -> str:
@@ -100,6 +110,25 @@ def _fallback(text: str, sentence_count: int = 3) -> str:
         return ""
     sentences = [s.strip() for s in re.split(r"(?<=[.!?。])\s*", cleaned) if len(s.strip()) > 1]
     return " ".join(sentences[-sentence_count:]) if sentences else cleaned
+
+
+async def retouch_for_speech(text: str, model: str = DEFAULT_MODEL) -> str:
+    """LLM으로 TTS 발화용 텍스트 정제 — 마크다운 제거, IT 용어 발음 변환."""
+    if not text.strip():
+        return text
+    try:
+        result = await chat_completion(
+            messages=[
+                {"role": "system", "content": _RETOUCH_SYSTEM},
+                {"role": "user", "content": text},
+            ],
+            model=model,
+            max_completion_tokens=300,
+            temperature=0.0,
+        )
+        return sanitize_for_speech(result) if result else sanitize_for_speech(text)
+    except Exception:
+        return sanitize_for_speech(text)
 
 
 async def extract_summary(text: str, model: str = DEFAULT_MODEL) -> str:

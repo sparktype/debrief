@@ -1,7 +1,7 @@
 # tests/test_summarizer.py
 import pytest
 from unittest.mock import patch, AsyncMock
-from hook_voice.summarizer import strip_markdown, sanitize_for_speech, extract_summary, extract_one_liner, select_expression_tag
+from hook_voice.summarizer import strip_markdown, sanitize_for_speech, extract_summary, extract_one_liner, select_expression_tag, retouch_for_speech
 
 def test_strip_markdown_removes_code_blocks():
     result = strip_markdown("앞\n```python\ncode\n```\n뒤")
@@ -153,3 +153,41 @@ async def test_extract_summary_sanitizes_fallback():
     with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="")):
         result = await extract_summary("첫 문장. 두 번째!? 마지막.")
         assert result  # 비어 있지 않음
+
+
+async def test_retouch_removes_markdown():
+    """LLM이 마크다운 제거 결과를 반환하면 그대로 전달."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="굵은글씨")):
+        result = await retouch_for_speech("**굵은글씨**")
+        assert result == "굵은글씨"
+
+
+async def test_retouch_converts_it_terms():
+    """LLM이 IT 용어를 한국어 발음으로 변환한 결과를 반환."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="에이피아이 호출 완료")):
+        result = await retouch_for_speech("API 호출 완료")
+        assert "에이피아이" in result
+
+
+async def test_retouch_preserves_expression_tags():
+    """Expression Tag는 sanitize 후에도 보존된다."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="<breath> 안녕하세요")):
+        result = await retouch_for_speech("<breath> 안녕하세요")
+        assert "<breath>" in result
+        assert "안녕하세요" in result
+
+
+async def test_retouch_fallback_on_llm_failure():
+    """LLM 예외 시 sanitize_for_speech 결과를 반환한다."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(side_effect=Exception("network error"))):
+        result = await retouch_for_speech("**굵은글씨** 텍스트")
+        assert "**" not in result
+        assert "텍스트" in result
+
+
+async def test_retouch_returns_blank_for_blank_input():
+    """빈 문자열 입력은 LLM 호출 없이 그대로 반환."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock()) as mock_llm:
+        result = await retouch_for_speech("   ")
+        mock_llm.assert_not_called()
+        assert result.strip() == ""
