@@ -114,7 +114,7 @@ async def extract_summary(text: str, model: str = DEFAULT_MODEL) -> str:
         max_completion_tokens=200,
         temperature=0.3,
     )
-    return result or _fallback(text)
+    return sanitize_for_speech(result or _fallback(text))
 
 
 async def extract_one_liner(text: str, model: str = DEFAULT_MODEL) -> str:

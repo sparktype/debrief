@@ -138,3 +138,18 @@ def test_select_tag_priority_critical_beats_all():
 def test_select_tag_caution_beats_negative():
     """경고 키워드가 실패 키워드보다 우선순위 높음."""
     assert select_expression_tag("삭제 실패", "builder") == "<clear_throat>"
+
+
+async def test_extract_summary_sanitizes_markdown_in_llm_result():
+    """LLM이 마크다운을 반환해도 sanitize 후 반환된다."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="결과는 **중요함**")):
+        result = await extract_summary("텍스트")
+        assert "**" not in result
+        assert "중요함" in result
+
+
+async def test_extract_summary_sanitizes_fallback():
+    """LLM 결과가 없을 때 fallback도 sanitize된다."""
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="")):
+        result = await extract_summary("첫 문장. 두 번째!? 마지막.")
+        assert result  # 비어 있지 않음
