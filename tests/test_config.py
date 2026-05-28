@@ -114,3 +114,17 @@ def test_load_config_voice_json_takes_priority(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg_mod, "_VOICE_PERSONA_JSON", persona_json)
     cfg = load_config()  # 경로 미지정 — _find_default_config() 경유
     assert cfg.min_chars == 10
+
+
+def test_load_config_speech_retouch_default():
+    """speech_retouch 기본값은 True."""
+    cfg = load_config(None)
+    assert cfg.speech_retouch is True
+
+
+def test_load_config_speech_retouch_from_file(tmp_path):
+    """speechRetouch=false 설정 파일에서 올바르게 로드."""
+    f = tmp_path / ".voice.json"
+    f.write_text('{"speechRetouch": false}', encoding="utf-8")
+    cfg = load_config(f)
+    assert cfg.speech_retouch is False

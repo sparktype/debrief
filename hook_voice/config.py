@@ -22,6 +22,7 @@ _KEY_MAP = {
     "edgeTimeoutMs": "edge_timeout_ms",
     "supertonicTimeoutMs": "supertonic_timeout_ms",
     "allowInsecureTls": "allow_insecure_tls",
+    "speechRetouch": "speech_retouch",
 }
 
 
@@ -56,6 +57,7 @@ class Config:
     edge_timeout_ms: int = 10000
     supertonic_timeout_ms: int = 20000
     allow_insecure_tls: bool = True
+    speech_retouch: bool = True
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
 
@@ -95,6 +97,7 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
 
     _normalize_bool("auto_speak")
     _normalize_bool("allow_insecure_tls")
+    _normalize_bool("speech_retouch")
     _normalize_int("min_chars", 0)
     _normalize_float("tts_speed", 0.0)
     _normalize_int("skill_cooldown_minutes", 0)
