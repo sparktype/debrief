@@ -22,7 +22,8 @@ def _load_classify_rules() -> list[dict]:
 
 from .config import Config
 from .player import speak_hook, speak_agent, SPOOL_DIR
-from .summarizer import extract_summary, extract_one_liner, select_expression_tag, retouch_for_speech
+from .summarizer import extract_summary, extract_one_liner, select_expression_tag
+from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
@@ -84,7 +85,9 @@ async def handle_hook(raw: str, config: Config) -> None:
     if config.auto_speak and len(text) >= config.min_chars:
         summary = await extract_summary(text, config.summary_model)
         if config.speech_retouch:
-            summary = await retouch_for_speech(summary, config.summary_model)
+            pipeline = get_default_pipeline()
+            ctx = await pipeline.process(summary)
+            summary = ctx.text  # EdgeTTS는 SSML 미지원 — ctx.ssml의 break 태그가 텍스트로 발화되는 것 방지
         await speak_hook(summary, config.voice, config.tts_speed,
                          edge_timeout=config.edge_timeout_ms / 1000)
 
@@ -122,7 +125,9 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     steps = vm.get("supertonic", {}).get("steps", 12)
     one_liner = await extract_one_liner(text, config.summary_model)
     if config.speech_retouch:
-        one_liner = await retouch_for_speech(one_liner, config.summary_model)
+        pipeline = get_default_pipeline()
+        ctx = await pipeline.process(one_liner)
+        one_liner = ctx.text  # 정제된 텍스트 (expression tag 제외)
     tag = select_expression_tag(one_liner, category)
     prefix = f"{tag} " if tag else ""
     await speak_agent(f"{prefix}{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
