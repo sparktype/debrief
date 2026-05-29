@@ -19,6 +19,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from hook_voice.config import load_config as _load_voice_config
+from hook_voice.observability.metrics import get_registry as _get_metrics
+from hook_voice.observability.dlq import get_dlq_store as _get_dlq_store, ReplayStatus
 from hook_voice.speech_listener import SpeechListener
 
 
@@ -259,3 +261,67 @@ async def stt_status():
     if _stt_listener is None:
         return {"state": "disabled"}
     return {"state": _stt_listener.state}
+
+
+@app.get("/metrics")
+async def metrics_prometheus():
+    """Prometheus text exposition format 메트릭 반환."""
+    from fastapi.responses import PlainTextResponse
+    text = _get_metrics().to_prometheus_text()
+    return PlainTextResponse(text, media_type="text/plain; version=0.0.4")
+
+
+@app.get("/metrics/json")
+async def metrics_json():
+    """메트릭 스냅샷 JSON 반환."""
+    return _get_metrics().snapshot()
+
+
+class DLQReplayRequest(BaseModel):
+    entry_ids: list[int] = []
+    replay_all_pending: bool = False
+
+
+@app.post("/admin/dlq/replay")
+async def dlq_replay(req: DLQReplayRequest):
+    """DLQ 항목 재시도 마킹 — 실제 재전송은 소비자가 처리."""
+    store = _get_dlq_store()
+    if req.replay_all_pending:
+        pending = store.list_pending(limit=200)
+        ids = [e.id for e in pending if e.id is not None]
+    else:
+        ids = req.entry_ids
+
+    results = []
+    for eid in ids:
+        ok = store.mark_replayed(eid)
+        results.append({"id": eid, "status": "replayed" if ok else "not_found"})
+    return {"replayed": len([r for r in results if r["status"] == "replayed"]), "details": results}
+
+
+@app.get("/admin/dlq")
+async def dlq_list(limit: int = 50, status: str | None = None):
+    """DLQ 항목 조회."""
+    store = _get_dlq_store()
+    if status == "pending":
+        entries = store.list_pending(limit=limit)
+    else:
+        entries = store.list_all(limit=limit)
+    return {
+        "stats": store.stats(),
+        "entries": [
+            {
+                "id": e.id,
+                "event_id": e.event_id,
+                "failure_stage": e.failure_stage,
+                "failure_detail": e.failure_detail,
+                "source": e.source,
+                "severity": e.severity,
+                "priority_score": e.priority_score,
+                "replay_status": e.replay_status.value,
+                "created_at": e.created_at,
+                "replayed_at": e.replayed_at,
+            }
+            for e in entries
+        ],
+    }
