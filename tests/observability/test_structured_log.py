@@ -22,7 +22,8 @@ def test_outputs_valid_json(ctx, capsys):
     assert data["event"] == "hook_start"
     assert data["correlation_id"] == "abcdef12:0007"
     assert data["level"] == "INFO"
-    assert "ts" in data
+    import re
+    assert re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", data["ts"])
 
 
 def test_includes_extra_fields(ctx, capsys):

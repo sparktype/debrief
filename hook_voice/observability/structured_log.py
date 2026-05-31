@@ -37,7 +37,8 @@ def log_event(
         "event": event,
     }
     if extra:
-        record.update(extra)
+        safe_extra = {k: v for k, v in extra.items() if k not in record}
+        record.update(safe_extra)
 
     try:
         print(json.dumps(record, ensure_ascii=False), file=sys.stderr)
