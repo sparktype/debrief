@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time as _time
 from pathlib import Path
 
 _CLASSIFY_RULES_PATH = Path(__file__).parent.parent / "classify-rules.json"
@@ -19,8 +20,6 @@ def _load_classify_rules() -> list[dict]:
     except Exception:
         _classify_rules_cache = []
     return _classify_rules_cache
-
-import time as _time
 
 from .config import Config
 from .observability.context import get_or_create_context
