@@ -20,7 +20,13 @@ def _load_classify_rules() -> list[dict]:
         _classify_rules_cache = []
     return _classify_rules_cache
 
+import time as _time
+
 from .config import Config
+from .observability.context import get_or_create_context
+from .observability.structured_log import log_event
+from .observability.metrics import get_registry
+from .observability.dlq import get_dlq_store
 from .player import speak_hook, speak_agent, SPOOL_DIR
 from .summarizer import extract_summary, extract_one_liner, select_expression_tag
 from .speech.pipeline import get_default_pipeline
@@ -72,6 +78,10 @@ def classify_post_tool_bash(cmd: str, output: str, exit_code: int) -> str | None
 
 
 async def handle_hook(raw: str, config: Config) -> None:
+    hook_ctx = get_or_create_context()
+    log_event("hook_start", hook_ctx, {"source": "stop_hook"})
+    get_registry().record_event("hook", "stop")
+
     text = ""
     try:
         data = json.loads(raw)
@@ -86,10 +96,27 @@ async def handle_hook(raw: str, config: Config) -> None:
         summary = await extract_summary(text, config.summary_model)
         if config.speech_retouch:
             pipeline = get_default_pipeline()
-            ctx = await pipeline.process(summary)
-            summary = ctx.text  # EdgeTTS는 SSML 미지원 — ctx.ssml의 break 태그가 텍스트로 발화되는 것 방지
-        await speak_hook(summary, config.voice, config.tts_speed,
-                         edge_timeout=config.edge_timeout_ms / 1000)
+            speech_ctx = await pipeline.process(summary)
+            summary = speech_ctx.text  # EdgeTTS는 SSML 미지원 — speech_ctx.ssml의 break 태그가 텍스트로 발화되는 것 방지
+        start = _time.time()
+        try:
+            await speak_hook(summary, config.voice, config.tts_speed,
+                             edge_timeout=config.edge_timeout_ms / 1000)
+            latency_ms = (_time.time() - start) * 1000
+            get_registry().record_tts_latency(latency_ms)
+            log_event("tts_completed", hook_ctx, {
+                "latency_ms": round(latency_ms, 1),
+                "text_len": len(summary),
+            })
+        except Exception as exc:
+            log_event("tts_failed", hook_ctx, {"error": str(exc)}, level="WARNING")
+            get_dlq_store().push(
+                event_id=hook_ctx.correlation_id,
+                failure_stage="speak_hook",
+                failure_detail=str(exc),
+                raw_text=summary[:200],
+                source="stop_hook",
+            )
 
 
 async def handle_notification(raw: str, config: Config) -> None:
@@ -104,6 +131,10 @@ async def handle_notification(raw: str, config: Config) -> None:
 
 
 async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> None:
+    hook_ctx = get_or_create_context()
+    log_event("hook_start", hook_ctx, {"source": "subagent_stop", "agent_type": agent_type})
+    get_registry().record_event("subagent", "stop")
+
     text = raw
     try:
         data = json.loads(raw)
@@ -126,12 +157,31 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     one_liner = await extract_one_liner(text, config.summary_model)
     if config.speech_retouch:
         pipeline = get_default_pipeline()
-        ctx = await pipeline.process(one_liner)
-        one_liner = ctx.text  # 정제된 텍스트 (expression tag 제외)
+        speech_ctx = await pipeline.process(one_liner)
+        one_liner = speech_ctx.text  # 정제된 텍스트 (expression tag 제외)
     tag = select_expression_tag(one_liner, category)
     prefix = f"{tag} " if tag else ""
-    await speak_agent(f"{prefix}{label} {voice_name}입니다. {one_liner}", voice, config.supertonic_port, config.tts_speed, instruct,
-                      steps=steps, supertonic_timeout=config.supertonic_timeout_ms / 1000)
+    speak_text = f"{prefix}{label} {voice_name}입니다. {one_liner}"
+    start = _time.time()
+    try:
+        await speak_agent(speak_text, voice, config.supertonic_port, config.tts_speed, instruct,
+                          steps=steps, supertonic_timeout=config.supertonic_timeout_ms / 1000)
+        latency_ms = (_time.time() - start) * 1000
+        get_registry().record_tts_latency(latency_ms)
+        log_event("tts_completed", hook_ctx, {
+            "latency_ms": round(latency_ms, 1),
+            "text_len": len(speak_text),
+            "agent_type": agent_type,
+        })
+    except Exception as exc:
+        log_event("tts_failed", hook_ctx, {"error": str(exc), "agent_type": agent_type}, level="WARNING")
+        get_dlq_store().push(
+            event_id=hook_ctx.correlation_id,
+            failure_stage="speak_agent",
+            failure_detail=str(exc),
+            raw_text=speak_text[:200],
+            source="subagent_stop",
+        )
 
 
 async def handle_hook_suggest(raw: str, config: Config) -> None:
