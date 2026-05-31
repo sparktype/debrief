@@ -80,27 +80,21 @@ def reset_llm_cb():
     _breakers.clear()
 
 
-@pytest.mark.asyncio
 async def test_chat_completion_cb_opens_after_failures(monkeypatch):
     """LLM API가 3회 연속 실패하면 CB가 OPEN으로 전환된다."""
     from hook_voice import llm_client as _lc
 
     _breakers["llm_api"] = CircuitBreaker("llm_api", CircuitBreakerConfig(failure_threshold=3))
 
-    async def fail(*args, **kwargs):
-        raise Exception("LLM down")
-
-    monkeypatch.setattr(_lc, "_do_chat_completion", fail)
     monkeypatch.setenv("HUB_API_KEY", "testkey")
-
-    for _ in range(3):
-        result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
-        assert result == ""
+    with patch("hook_voice.llm_client._do_chat_completion", new=AsyncMock(side_effect=Exception("LLM down"))):
+        for _ in range(3):
+            result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
+            assert result == ""
 
     assert _breakers["llm_api"].state == CBState.OPEN
 
 
-@pytest.mark.asyncio
 async def test_chat_completion_cb_open_returns_empty_without_call(monkeypatch):
     """CB OPEN 상태에서 _do_chat_completion을 호출하지 않고 빈 문자열을 반환한다."""
     from hook_voice import llm_client as _lc
@@ -110,15 +104,9 @@ async def test_chat_completion_cb_open_returns_empty_without_call(monkeypatch):
     cb._opened_at = _time.time()
     _breakers["llm_api"] = cb
 
-    called = []
-
-    async def should_not_call(*args, **kwargs):
-        called.append(True)
-        return "should_not_reach"
-
-    monkeypatch.setattr(_lc, "_do_chat_completion", should_not_call)
+    spy = AsyncMock(return_value="should_not_reach")
     monkeypatch.setenv("HUB_API_KEY", "testkey")
-
-    result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
+    with patch("hook_voice.llm_client._do_chat_completion", new=spy):
+        result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
     assert result == ""
-    assert called == []
+    spy.assert_not_called()
