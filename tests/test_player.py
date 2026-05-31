@@ -72,16 +72,18 @@ async def test_speak_agent_enqueues_supertonic(tmp_path, monkeypatch):
 
 
 async def test_speak_agent_passes_steps_to_generate(tmp_path, monkeypatch):
-    """speak_agent가 steps 파라미터를 _generate_supertonic으로 전달한다."""
+    """speak_agent가 _dynamic_steps로 조정된 steps를 _generate_supertonic으로 전달한다."""
     spool = tmp_path / "spool"
     spool.mkdir()
     monkeypatch.setattr("hook_voice.player.SPOOL_DIR", spool)
     monkeypatch.setattr("hook_voice.player.save_last_message", lambda t: None)
 
+    # 100자 이상 텍스트 → _dynamic_steps가 base_steps(10)를 그대로 반환
+    long_text = "가" * 110
     mock_gen = AsyncMock(return_value=b"RIFF")
     with patch("hook_voice.player._is_supertonic_alive", new=AsyncMock(return_value=True)), \
          patch("hook_voice.player._generate_supertonic", new=mock_gen):
-        await speak_agent("테스트 발화", "M2", 7788, 1.2, steps=10)
+        await speak_agent(long_text, "M2", 7788, 1.2, steps=10)
 
     mock_gen.assert_called_once()
     assert mock_gen.call_args.kwargs.get("steps") == 10

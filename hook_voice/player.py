@@ -167,16 +167,26 @@ async def _generate_supertonic(
         return r.content
 
 
+def _dynamic_steps(text: str, base_steps: int) -> int:
+    """텍스트 길이에 따라 diffusion steps 동적 조정 — 짧은 발화일수록 빠르게."""
+    n = len(text)
+    if n < 30:  return min(4, base_steps)
+    if n < 60:  return min(6, base_steps)
+    if n < 100: return min(8, base_steps)
+    return base_steps
+
+
 async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "",
                       steps: int = 12, supertonic_timeout: float = 20.0) -> None:
     if not text.strip():
         return
+    actual_steps = _dynamic_steps(text, steps)
     if await _is_supertonic_alive(port):
         st_cb = get_circuit_breaker("supertonic")
 
         async def _st_call() -> bytes:
             return await asyncio.wait_for(
-                _generate_supertonic(text, voice, port, steps=steps, timeout=supertonic_timeout),
+                _generate_supertonic(text, voice, port, steps=actual_steps, timeout=supertonic_timeout),
                 timeout=supertonic_timeout,
             )
 

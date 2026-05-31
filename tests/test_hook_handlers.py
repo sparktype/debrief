@@ -209,7 +209,7 @@ async def test_subagent_stop_adds_sigh_on_failure():
     raw = json.dumps({"last_assistant_message": "D" * 60})
     with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
          patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
-         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="빌드 실패"):
+         patch("hook_voice.hook_handlers.rule_one_liner", return_value="빌드 실패"):
         await handle_subagent_stop(raw, "feature-builder", _CFG)
         spoken_text = mock_speak.call_args.args[0]
     assert spoken_text.startswith("<sigh>")
@@ -220,7 +220,7 @@ async def test_subagent_stop_adds_laugh_for_tester_success():
     raw = json.dumps({"last_assistant_message": "E" * 60})
     with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
          patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
-         patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="전체 테스트 통과"):
+         patch("hook_voice.hook_handlers.rule_one_liner", return_value="전체 테스트 통과"):
         await handle_subagent_stop(raw, "feature-tester", _CFG)
         spoken_text = mock_speak.call_args.args[0]
     assert spoken_text.startswith("<laugh>")
@@ -459,17 +459,13 @@ async def test_handle_hook_skips_pipeline_when_retouch_disabled():
         assert mock_speak.call_args[0][0] == "요약"
 
 
-async def test_handle_subagent_stop_calls_pipeline_when_retouch_enabled():
-    """handle_subagent_stop에서 speech_retouch=True이면 SpeechPipeline이 호출된다."""
+async def test_handle_subagent_stop_uses_rule_one_liner():
+    """handle_subagent_stop이 rule_one_liner로 요약해 speak_agent를 호출한다."""
     from hook_voice.config import Config
     from hook_voice.hook_handlers import handle_subagent_stop
-    from hook_voice.speech.pipeline import SpeechContext
 
     config = Config(auto_speak=True, min_chars=5, speech_retouch=True)
     vm = {"voices": {}, "supertonic": {"steps": 12}}
-    mock_ctx = SpeechContext(text="작업 완료", ssml="<breath> 작업 완료")
-    mock_pipeline = AsyncMock()
-    mock_pipeline.process = AsyncMock(return_value=mock_ctx)
 
     with patch("hook_voice.hook_handlers.load_voice_map", return_value=vm), \
          patch("hook_voice.hook_handlers.resolve_voice", return_value="F1"), \
@@ -477,10 +473,9 @@ async def test_handle_subagent_stop_calls_pipeline_when_retouch_enabled():
          patch("hook_voice.hook_handlers.get_agent_label", return_value="기본"), \
          patch("hook_voice.hook_handlers.resolve_instruct", return_value=""), \
          patch("hook_voice.hook_handlers.resolve_category", return_value="default"), \
-         patch("hook_voice.hook_handlers.extract_one_liner", new=AsyncMock(return_value="작업 완료")), \
-         patch("hook_voice.hook_handlers.get_default_pipeline", return_value=mock_pipeline), \
+         patch("hook_voice.hook_handlers.rule_one_liner", return_value="작업 완료") as mock_rule, \
          patch("hook_voice.hook_handlers.speak_agent", new=AsyncMock()) as mock_speak_agent:
         await handle_subagent_stop('{"last_assistant_message": "충분히 긴 내용입니다"}', "default", config)
-        mock_pipeline.process.assert_called_once_with("작업 완료")
+        mock_rule.assert_called_once()
         mock_speak_agent.assert_called_once()
         assert "작업 완료" in mock_speak_agent.call_args[0][0]

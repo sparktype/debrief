@@ -146,6 +146,16 @@ async def extract_summary(text: str, model: str = DEFAULT_MODEL) -> str:
     return sanitize_for_speech(result or _fallback(text))
 
 
+def rule_one_liner(text: str, max_chars: int = 25) -> str:
+    """LLM 없이 규칙 기반으로 한 줄 요약 — 서브에이전트 발화용."""
+    cleaned = strip_markdown(text)
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?。])\s*", cleaned) if len(s.strip()) > 1]
+    candidate = sentences[-1] if sentences else cleaned
+    if len(candidate) > max_chars:
+        candidate = candidate[:max_chars].rsplit(" ", 1)[0]
+    return sanitize_for_speech(candidate)
+
+
 async def extract_one_liner(text: str, model: str = DEFAULT_MODEL) -> str:
     if not text.strip():
         return ""
