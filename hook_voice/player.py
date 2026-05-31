@@ -15,6 +15,7 @@ import edge_tts.communicate as _ec
 import httpx
 
 from .last_message import save_last_message
+from .observability.circuit_breaker import get_circuit_breaker
 
 _log = logging.getLogger(__name__)
 
@@ -127,11 +128,17 @@ async def speak_hook(text: str, voice: str = "Sohee", speed: float = 1.2,
                      edge_timeout: float = 10.0) -> None:
     skip_edge = os.environ.get("VOICE_PERSONA_OFFLINE") == "1"
     if not skip_edge and _venv_python().exists():
+        edge_cb = get_circuit_breaker("edge_tts")
+
+        async def _edge_call() -> Path:
+            return await asyncio.wait_for(_generate_edge(text), timeout=edge_timeout)
+
         try:
-            mp3 = await asyncio.wait_for(_generate_edge(text), timeout=edge_timeout)
-            _enqueue_spool(mp3, speed)
-            save_last_message(text)
-            return
+            mp3 = await edge_cb.call(_edge_call, fallback=None)
+            if mp3 is not None:
+                _enqueue_spool(mp3, speed)
+                save_last_message(text)
+                return
         except Exception as e:
             _log.warning("Edge generation failed, local fallback: %s", type(e).__name__)
     await _speak_without_edge(text, voice, speed)
@@ -165,16 +172,22 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
     if not text.strip():
         return
     if await _is_supertonic_alive(port):
-        try:
-            wav_bytes = await asyncio.wait_for(
+        st_cb = get_circuit_breaker("supertonic")
+
+        async def _st_call() -> bytes:
+            return await asyncio.wait_for(
                 _generate_supertonic(text, voice, port, steps=steps, timeout=supertonic_timeout),
                 timeout=supertonic_timeout,
             )
-            tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
-            tmp.write_bytes(wav_bytes)
-            _enqueue_spool(tmp, speed)
-            save_last_message(text)
-            return
+
+        try:
+            wav_bytes = await st_cb.call(_st_call, fallback=None)
+            if wav_bytes is not None:
+                tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
+                tmp.write_bytes(wav_bytes)
+                _enqueue_spool(tmp, speed)
+                save_last_message(text)
+                return
         except Exception as e:
             _log.warning("Supertonic generation failed, generic fallback: %s", type(e).__name__)
     else:

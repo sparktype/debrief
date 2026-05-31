@@ -158,6 +158,94 @@ async def test_generate_supertonic_uses_native_api():
     assert "model" not in captured["json"], "model 키는 Native API에 없어야 함"
 
 
+from hook_voice.observability.circuit_breaker import _breakers, CBState
+
+
+@pytest.fixture(autouse=True)
+def reset_cbs():
+    yield
+    for cb in list(_breakers.values()):
+        cb.reset()
+    _breakers.clear()
+
+
+@pytest.mark.asyncio
+async def test_speak_hook_edge_cb_opens_after_failures(monkeypatch, tmp_path):
+    """EdgeTTS가 연속 3회 실패하면 CB가 OPEN으로 전환된다."""
+    from hook_voice import player as _player
+    from hook_voice.observability.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+
+    _breakers["edge_tts"] = CircuitBreaker("edge_tts", CircuitBreakerConfig(failure_threshold=3))
+
+    call_count = 0
+
+    async def fail_edge(text):
+        nonlocal call_count
+        call_count += 1
+        raise OSError("edge fail")
+
+    monkeypatch.setattr(_player, "_generate_edge", fail_edge)
+    monkeypatch.setattr(_player, "_venv_python", lambda: tmp_path / "python3")
+    (tmp_path / "python3").touch()
+    monkeypatch.setattr(_player, "_speak_without_edge", AsyncMock())
+    monkeypatch.delenv("VOICE_PERSONA_OFFLINE", raising=False)
+
+    for _ in range(3):
+        await _player.speak_hook("test", voice="Sohee", speed=1.0, edge_timeout=1.0)
+
+    assert _breakers["edge_tts"].state == CBState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_speak_hook_edge_cb_open_skips_generate(monkeypatch, tmp_path):
+    """EdgeTTS CB가 OPEN 상태이면 _generate_edge를 호출하지 않는다."""
+    import time
+    from hook_voice import player as _player
+    from hook_voice.observability.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CBState
+
+    cb = CircuitBreaker("edge_tts", CircuitBreakerConfig(failure_threshold=3, recovery_timeout=60.0))
+    cb._state = CBState.OPEN
+    cb._opened_at = time.time()
+    _breakers["edge_tts"] = cb
+
+    called = []
+
+    async def should_not_be_called(text):
+        called.append(text)
+        raise RuntimeError("should not be called")
+
+    monkeypatch.setattr(_player, "_generate_edge", should_not_be_called)
+    monkeypatch.setattr(_player, "_venv_python", lambda: tmp_path / "python3")
+    (tmp_path / "python3").touch()
+    monkeypatch.setattr(_player, "_speak_without_edge", AsyncMock())
+    monkeypatch.delenv("VOICE_PERSONA_OFFLINE", raising=False)
+
+    await _player.speak_hook("test", voice="Sohee", speed=1.0, edge_timeout=1.0)
+    assert called == []
+
+
+@pytest.mark.asyncio
+async def test_speak_agent_supertonic_cb_opens_after_failures(monkeypatch):
+    """Supertonic이 연속 3회 실패하면 CB가 OPEN으로 전환된다."""
+    from hook_voice import player as _player
+    from hook_voice.observability.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+
+    _breakers["supertonic"] = CircuitBreaker("supertonic", CircuitBreakerConfig(failure_threshold=3))
+
+    monkeypatch.setattr(_player, "_is_supertonic_alive", AsyncMock(return_value=True))
+
+    async def fail_st(*args, **kwargs):
+        raise OSError("supertonic fail")
+
+    monkeypatch.setattr(_player, "_generate_supertonic", fail_st)
+    monkeypatch.setattr(_player, "_speak_without_edge", AsyncMock())
+
+    for _ in range(3):
+        await _player.speak_agent("test", "M2", port=7788, speed=1.0)
+
+    assert _breakers["supertonic"].state == CBState.OPEN
+
+
 from hook_voice.player import SPOOL_DIR
 import hook_voice.player as player_module
 
