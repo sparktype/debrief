@@ -234,7 +234,8 @@ do_install() {
   <key>ProgramArguments</key>
   <array>
     <string>${SCRIPT_DIR}/.venv/bin/python</string>
-    <string>${SCRIPT_DIR}/tts_server/supervisor.py</string>
+    <string>-m</string>
+    <string>tts_server.supervisor</string>
   </array>
 
   <key>RunAtLoad</key>

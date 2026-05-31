@@ -1,4 +1,4 @@
-# summary-voice-mcp 3차 개선 설계
+# chorus 3차 개선 설계
 
 날짜: 2026-05-25  
 접근법: B — 단계적 종합 (Sprint 1: 버그·안정성 → Sprint 2: UX·기능)

@@ -18,7 +18,7 @@ Top MCP Servers:
 ## Your Setup Checklist
 
 ### Codebases
-- [ ] summary-voice-mcp — github.com/sparktype/summary-voice-mcp
+- [ ] chorus — github.com/sparktype/chorus
 
 ### MCP Servers to Activate
   _(none recorded in the last 30 days)_

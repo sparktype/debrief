@@ -1,4 +1,4 @@
-# context-notes.md — summary-voice-mcp Phase 1
+# context-notes.md — chorus Phase 1
 
 ## 아키텍처 결정 원칙
 

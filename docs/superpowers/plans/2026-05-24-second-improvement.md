@@ -31,7 +31,7 @@
 
 # Section A — Shell 팀
 
-> 작업 디렉토리: `/Users/hmc7102758/Develop/Workspaces/summary-voice-mcp`
+> 작업 디렉토리: `/Users/hmc7102758/Develop/Workspaces/chorus`
 > 전제: `npm run build`는 건드리지 않음. Shell 파일만 수정.
 
 ---
@@ -415,7 +415,7 @@ git commit -m "refactor: tts_player.sh ls 배열 파싱 → find + mapfile로 �
 
 # Section B — TypeScript 팀
 
-> 작업 디렉토리: `/Users/hmc7102758/Develop/Workspaces/summary-voice-mcp`
+> 작업 디렉토리: `/Users/hmc7102758/Develop/Workspaces/chorus`
 > 모든 스텝 후 `npm test` 로 71개 테스트 통과 확인.
 
 ---
@@ -998,7 +998,7 @@ Expected: 75 tests passed, 0 failed.
 - [ ] **Step 2: Python 테스트**
 
 ```bash
-cd /Users/hmc7102758/Develop/Workspaces/summary-voice-mcp
+cd /Users/hmc7102758/Develop/Workspaces/chorus
 python3 -m pytest tts_server/test_server.py -v
 ```
 

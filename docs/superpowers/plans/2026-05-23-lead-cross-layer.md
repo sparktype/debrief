@@ -251,7 +251,7 @@ git commit -m "docs: .siren.json.example 추가 — 팀원 초기 설정 가이�
 
 ```typescript
 const server = new Server(
-  { name: "summary-voice-mcp", version: "0.1.0" },
+  { name: "chorus", version: "0.1.0" },
   { capabilities: { tools: {} } }
 );
 ```
@@ -271,7 +271,7 @@ const { version } = require("../package.json") as { version: string };
 
 ```typescript
 const server = new Server(
-  { name: "summary-voice-mcp", version },
+  { name: "chorus", version },
   { capabilities: { tools: {} } }
 );
 ```

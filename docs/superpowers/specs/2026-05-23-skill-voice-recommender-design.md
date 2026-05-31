@@ -1,7 +1,7 @@
 # 스킬 음성 추천 기능 설계
 
 **날짜**: 2026-05-23  
-**프로젝트**: summary-voice-mcp  
+**프로젝트**: chorus  
 **범위**: 사용자의 Claude 사용 습관(transcript 분석)을 기반으로 현재 상황에 맞는 스킬을 voice로 추천
 
 ---
@@ -47,8 +47,8 @@ Claude Code transcript를 HMG LLM API로 분석해 현재 작업 맥락에 맞�
 
 | 파일 | 내용 |
 |------|------|
-| `~/.local/share/summary-voice-mcp/skill-cooldowns.json` | `{ "스킬명": ISO타임스탬프 }` |
-| `~/.local/share/summary-voice-mcp/last-message.txt` | 마지막 TTS 재생 텍스트 |
+| `~/.local/share/chorus/skill-cooldowns.json` | `{ "스킬명": ISO타임스탬프 }` |
+| `~/.local/share/chorus/last-message.txt` | 마지막 TTS 재생 텍스트 |
 | `skills-catalog.json` (프로젝트 루트) | 스킬명 + 설명 목록 |
 
 hook이 독립 프로세스로 실행되므로 상태는 파일 기반으로 공유한다.

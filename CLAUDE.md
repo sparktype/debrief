@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **팀**: 개발생산성본부  
 **오너**: 박상선 책임매니저  
-**리포**: github.com/sparktype/summary-voice-mcp
+**리포**: github.com/sparktype/chorus
 
 TTS Supervisor(`./server.sh status`)가 실행 중이면 Supertonic이 자동으로 켜져 에이전트별 다성 TTS가 활성화됩니다.  
 에이전트 타입 → 목소리 매핑은 `voice-map.json`에서 편집하며, 코드 변경 없이 JSON만 수정하면 됩니다.
@@ -197,7 +197,7 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **summary-voice-mcp** (2667 symbols, 4529 relationships, 111 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **summary-voice-mcp** (2824 symbols, 4664 relationships, 96 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

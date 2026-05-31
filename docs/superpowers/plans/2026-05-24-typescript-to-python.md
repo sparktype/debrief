@@ -34,7 +34,7 @@
 | `tests/test_player.py` | player 테스트 |
 | `tests/test_hook_handlers.py` | hook_handlers 테스트 |
 
-**환경:** 모든 명령은 `tts-venv/bin/python` / `tts-venv/bin/pytest` 사용. 프로젝트 루트 `/Users/hmc7102758/Develop/Workspaces/summary-voice-mcp` 기준.
+**환경:** 모든 명령은 `tts-venv/bin/python` / `tts-venv/bin/pytest` 사용. 프로젝트 루트 `/Users/hmc7102758/Develop/Workspaces/chorus` 기준.
 
 ---
 

@@ -108,7 +108,7 @@ class TestDoCleanup:
 - [ ] **Step 2:** 아래 명령 실행, `ImportError: cannot import name '_do_cleanup'` 류 오류 확인
 
 ```bash
-cd /Users/hmc7102758/Develop/Workspaces/summary-voice-mcp
+cd /Users/hmc7102758/Develop/Workspaces/chorus
 ./tts-venv/bin/pytest tts_server/test_supervisor.py::TestDoCleanup -v
 ```
 
@@ -637,7 +637,7 @@ supertonic이 없는 환경에서 uvicorn만 기동되는지 확인한다.
 - [ ] **Step 2:** 터미널에서 아래 명령 실행 (Ctrl+C로 종료)
 
 ```bash
-cd /Users/hmc7102758/Develop/Workspaces/summary-voice-mcp
+cd /Users/hmc7102758/Develop/Workspaces/chorus
 ./tts-venv/bin/python tts_server/supervisor.py
 ```
 

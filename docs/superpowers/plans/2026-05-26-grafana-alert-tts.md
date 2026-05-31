@@ -86,7 +86,7 @@ def test_load_config_without_grafana(tmp_path):
 - [ ] **Step 2: 테스트 실패 확인**
 
 ```bash
-cd /Users/hmc7102758/Develop/Workspaces/summary-voice-mcp
+cd /Users/hmc7102758/Develop/Workspaces/chorus
 .venv/bin/pytest tests/test_grafana_config.py -v
 ```
 

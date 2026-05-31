@@ -1,4 +1,4 @@
-# summary-voice-mcp Phase 1 구현 체크리스트
+# chorus Phase 1 구현 체크리스트
 
 기준: Delphi 아키텍처 결정 (2026-05-28)
 설계 문서: docs/claude_response_design-plan.html

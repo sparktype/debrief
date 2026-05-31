@@ -1,7 +1,7 @@
 # Safety Net + Observability 설계 스펙
 
 **날짜**: 2026-05-31  
-**프로젝트**: summary-voice-mcp  
+**프로젝트**: chorus  
 **델파이 세션**: 289fff346984450ba3ab7a858e056395  
 **방식**: 점진적 통합 (방식 A)
 

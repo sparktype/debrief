@@ -885,7 +885,7 @@ Expected:
 ✓ Stop hook 등록 완료
 ✓ SubagentStop hook 등록 완료
 [Supertonic] 서버 시작 (PID ..., 포트 7788, 로그 /tmp/supertonic.log)
-✓ summary-voice-mcp 설치 완료
+✓ chorus 설치 완료
 ```
 
 - [ ] **Step 4: 상태 확인**

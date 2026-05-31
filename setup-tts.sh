@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# summary-voice-mcp TTS 환경 자동 설치 스크립트
+# chorus TTS 환경 자동 설치 스크립트
 
 set -euo pipefail
 

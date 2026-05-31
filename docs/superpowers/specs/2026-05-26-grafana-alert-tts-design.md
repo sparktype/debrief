@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-HMG 사내 Grafana에서 발생하는 알럿을 폴링 방식으로 수신하고, LLM으로 분석·요약해 TTS로 발화하는 기능을 summary-voice-mcp에 추가한다.
+HMG 사내 Grafana에서 발생하는 알럿을 폴링 방식으로 수신하고, LLM으로 분석·요약해 TTS로 발화하는 기능을 chorus에 추가한다.
 
 ### 목표
 

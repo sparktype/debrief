@@ -25,7 +25,7 @@
 | `tests/last-message-store.test.ts` | 신규 — 저장/읽기 단위 테스트 |
 | `tests/skill-recommender.test.ts` | 신규 — 파싱/쿨다운/catalog 매칭 단위 테스트 |
 
-상태 저장 경로: `~/.local/share/summary-voice-mcp/` (hook 간 공유)
+상태 저장 경로: `~/.local/share/chorus/` (hook 간 공유)
 
 ---
 
@@ -59,7 +59,7 @@
 - [ ] **Step 2: 커밋**
 
 ```bash
-cd ~/Develop/Workspaces/summary-voice-mcp
+cd ~/Develop/Workspaces/chorus
 git add skills-catalog.json
 git commit -m "feat: 스킬 카탈로그 JSON 추가"
 ```
@@ -167,7 +167,7 @@ import { existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const DATA_DIR = join(homedir(), ".local", "share", "summary-voice-mcp-test");
+const DATA_DIR = join(homedir(), ".local", "share", "chorus-test");
 process.env.SIREN_DATA_DIR = DATA_DIR;
 
 import { saveLastMessage, loadLastMessage } from "../src/last-message-store.js";
@@ -216,7 +216,7 @@ import { homedir } from "os";
 import { join } from "path";
 
 function getDataDir(): string {
-  return process.env.SIREN_DATA_DIR ?? join(homedir(), ".local", "share", "summary-voice-mcp");
+  return process.env.SIREN_DATA_DIR ?? join(homedir(), ".local", "share", "chorus");
 }
 
 function getLastMsgFile(): string {
@@ -472,7 +472,7 @@ const HUB_PROJECT_ID = process.env.HUB_PROJECT_ID ?? "";
 const CATALOG_FILE = join(__dirname, "..", "skills-catalog.json");
 
 function getDataDir(): string {
-  return process.env.SIREN_DATA_DIR ?? join(homedir(), ".local", "share", "summary-voice-mcp");
+  return process.env.SIREN_DATA_DIR ?? join(homedir(), ".local", "share", "chorus");
 }
 
 function getCooldownsFile(): string {
@@ -774,7 +774,7 @@ exit 0
 - [ ] **Step 2: 실행 권한 부여**
 
 ```bash
-chmod +x ~/Develop/Workspaces/summary-voice-mcp/hooks/session-start.sh
+chmod +x ~/Develop/Workspaces/chorus/hooks/session-start.sh
 ```
 
 - [ ] **Step 3: 커밋**
@@ -829,7 +829,7 @@ exit 0
 - [ ] **Step 2: 실행 권한 부여**
 
 ```bash
-chmod +x ~/Develop/Workspaces/summary-voice-mcp/hooks/prompt-submit.sh
+chmod +x ~/Develop/Workspaces/chorus/hooks/prompt-submit.sh
 ```
 
 - [ ] **Step 3: 커밋**
@@ -859,7 +859,7 @@ git commit -m "feat(hooks): UserPromptSubmit hook — 프롬프트 입력 시 �
     "hooks": [
       {
         "type": "command",
-        "command": "/Users/hmc7102758/Develop/Workspaces/summary-voice-mcp/hooks/session-start.sh",
+        "command": "/Users/hmc7102758/Develop/Workspaces/chorus/hooks/session-start.sh",
         "timeout": 5
       }
     ]
@@ -871,7 +871,7 @@ git commit -m "feat(hooks): UserPromptSubmit hook — 프롬프트 입력 시 �
     "hooks": [
       {
         "type": "command",
-        "command": "/Users/hmc7102758/Develop/Workspaces/summary-voice-mcp/hooks/prompt-submit.sh",
+        "command": "/Users/hmc7102758/Develop/Workspaces/chorus/hooks/prompt-submit.sh",
         "timeout": 5
       }
     ]
@@ -882,7 +882,7 @@ git commit -m "feat(hooks): UserPromptSubmit hook — 프롬프트 입력 시 �
 - [ ] **Step 2: 빌드 및 smoke test**
 
 ```bash
-cd ~/Develop/Workspaces/summary-voice-mcp
+cd ~/Develop/Workspaces/chorus
 npm run build
 node dist/index.js hook-suggest "버그를 디버깅하고 싶습니다"
 ```
@@ -900,7 +900,7 @@ Expected: 모든 테스트 PASS
 - [ ] **Step 4: 커밋**
 
 ```bash
-cd ~/Develop/Workspaces/summary-voice-mcp
+cd ~/Develop/Workspaces/chorus
 git add -A
 git commit -m "feat: 스킬 음성 추천 기능 완성 — SessionStart·UserPromptSubmit hook 등록"
 ```

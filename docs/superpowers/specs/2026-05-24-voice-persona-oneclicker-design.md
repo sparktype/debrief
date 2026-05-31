@@ -1,7 +1,7 @@
 # voice-persona 원클릭 설치 + 리네이밍 설계
 
 **날짜**: 2026-05-24  
-**프로젝트**: voice-persona (구 summary-voice-mcp / siren-mcp)  
+**프로젝트**: voice-persona (구 chorus / siren-mcp)  
 **목표**: 공개 배포를 위한 원클릭 설치, hook 최적화, 프로젝트 전면 리네이밍, README 사용자 가이드 개편
 
 ---
@@ -10,7 +10,7 @@
 
 | 변경 전 | 변경 후 |
 |---------|---------|
-| `summary-voice-mcp` / `siren-mcp` / `siren` | `voice-persona` |
+| `chorus` / `siren-mcp` / `siren` | `voice-persona` |
 | `.siren.json` | `.voice-persona.json` |
 | `SirenConfig` (TypeScript 인터페이스) | `VoicePersonaConfig` |
 | `/tmp/siren-tts.lock` | `/tmp/voice-persona.lock` |
@@ -18,9 +18,9 @@
 | `SIREN_DATA_DIR` | `VOICE_PERSONA_DATA_DIR` |
 | `SIREN_OFFLINE` | `VOICE_PERSONA_OFFLINE` |
 | `SIREN_VENV_PYTHON` | `VOICE_PERSONA_VENV_PYTHON` |
-| `~/.local/share/summary-voice-mcp/` | `~/.local/share/voice-persona/` |
-| `com.summary-voice-mcp.tts-server` (launchd label) | `com.voice-persona.tts-server` |
-| `/tmp/summary-voice-mcp-tts.log` | `/tmp/voice-persona-tts.log` |
+| `~/.local/share/chorus/` | `~/.local/share/voice-persona/` |
+| `com.chorus.tts-server` (launchd label) | `com.voice-persona.tts-server` |
+| `/tmp/chorus-tts.log` | `/tmp/voice-persona-tts.log` |
 
 ### 영향 파일 목록
 

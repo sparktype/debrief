@@ -1,7 +1,7 @@
 # 설계: 에이전트별 Supertonic 다성 TTS
 
 **날짜**: 2026-05-23  
-**프로젝트**: summary-voice-mcp  
+**프로젝트**: chorus  
 **상태**: 승인됨
 
 ---
