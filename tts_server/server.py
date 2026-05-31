@@ -273,8 +273,12 @@ async def metrics_prometheus():
 
 @app.get("/metrics/json")
 async def metrics_json():
-    """메트릭 스냅샷 JSON 반환."""
-    return _get_metrics().snapshot()
+    """메트릭 스냅샷 JSON 반환 — circuit_breaker 상태·DLQ pending 포함."""
+    from hook_voice.observability.circuit_breaker import _breakers
+    snap = _get_metrics().snapshot()
+    snap["circuit_breakers"] = {name: cb.state.value for name, cb in _breakers.items()}
+    snap["dlq_pending"] = _get_dlq_store().stats().get("pending", 0)
+    return snap
 
 
 class DLQReplayRequest(BaseModel):

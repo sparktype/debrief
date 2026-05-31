@@ -184,3 +184,16 @@ class TestModelLoadingFailure:
         finally:
             srv._model_error.clear()
             srv._model_error_message = ""
+
+
+def test_metrics_json_includes_cb_and_dlq():
+    """/metrics/json 응답에 circuit_breakers와 dlq_pending 필드가 포함되어야 한다."""
+    with TestClient(app) as client:
+        response = client.get("/metrics/json")
+    assert response.status_code == 200
+    data = response.json()
+    assert "circuit_breakers" in data
+    assert isinstance(data["circuit_breakers"], dict)
+    assert "dlq_pending" in data
+    assert isinstance(data["dlq_pending"], int)
+    assert "uptime_seconds" in data
