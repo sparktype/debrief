@@ -197,7 +197,7 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **summary-voice-mcp** (2824 symbols, 4664 relationships, 96 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **chorus** (2824 symbols, 4664 relationships, 96 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -220,10 +220,10 @@ This project is indexed by GitNexus as **summary-voice-mcp** (2824 symbols, 4664
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/summary-voice-mcp/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/summary-voice-mcp/clusters` | All functional areas |
-| `gitnexus://repo/summary-voice-mcp/processes` | All execution flows |
-| `gitnexus://repo/summary-voice-mcp/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/chorus/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/chorus/clusters` | All functional areas |
+| `gitnexus://repo/chorus/processes` | All execution flows |
+| `gitnexus://repo/chorus/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
