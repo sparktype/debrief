@@ -5,6 +5,7 @@ import os
 import httpx
 
 from .config import load_config
+from .observability.circuit_breaker import get_circuit_breaker
 
 DEFAULT_MODEL = "gpt-5.4"
 
@@ -27,6 +28,27 @@ def _verify_tls() -> bool:
         return False
 
 
+async def _do_chat_completion(
+    messages: list[dict],
+    model: str,
+    **kwargs,
+) -> str:
+    """실제 HTTP 호출. chat_completion의 CB 내부 실행 함수."""
+    base_url = os.environ.get("HUB_BASE_URL", "")
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        headers=_make_headers(),
+        verify=_verify_tls(),
+        timeout=30.0,
+    ) as client:
+        resp = await client.post(
+            "/chat/completions",
+            json={"model": model, "messages": messages, **kwargs},
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+
+
 async def chat_completion(
     messages: list[dict],
     model: str = DEFAULT_MODEL,
@@ -37,32 +59,20 @@ async def chat_completion(
     if not api_key:
         _log.warning("HUB_API_KEY 미설정 — LLM 호출 건너뜀")
         return ""
-    base_url = os.environ.get("HUB_BASE_URL", "")
-    async with httpx.AsyncClient(
-        base_url=base_url,
-        headers=_make_headers(),
-        verify=_verify_tls(),
-        timeout=30.0,
-    ) as client:
-        try:
-            resp = await client.post(
-                "/chat/completions",
-                json={"model": model, "messages": messages, **kwargs},
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
-        except httpx.TimeoutException as e:
-            _log.warning("LLM timeout: %s", type(e).__name__)
-            return ""
-        except httpx.ConnectError as e:
-            _log.warning("LLM connect error: %s", type(e).__name__)
-            return ""
-        except httpx.HTTPStatusError as e:
-            _log.warning("LLM HTTP error: %s", e.response.status_code)
-            return ""
-        except (KeyError, IndexError, TypeError, AttributeError) as e:
-            _log.warning("LLM response schema error: %s", type(e).__name__)
-            return ""
-        except Exception as e:
-            _log.warning("LLM unknown error: %s", type(e).__name__)
-            return ""
+
+    cb = get_circuit_breaker("llm_api")
+    try:
+        result = await cb.call(_do_chat_completion, messages, model, fallback="", **kwargs)
+        return result or ""
+    except httpx.TimeoutException as e:
+        _log.warning("LLM timeout: %s", type(e).__name__)
+        return ""
+    except httpx.ConnectError as e:
+        _log.warning("LLM connect error: %s", type(e).__name__)
+        return ""
+    except httpx.HTTPStatusError as e:
+        _log.warning("LLM HTTP error %s: %.100s", e.response.status_code, e.response.text)
+        return ""
+    except Exception as e:
+        _log.warning("LLM unexpected error: %s", type(e).__name__)
+        return ""

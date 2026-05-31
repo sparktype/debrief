@@ -66,3 +66,59 @@ async def test_chat_completion_logs_http_status_error(caplog):
 
     assert result == ""
     assert "HTTP error" in caplog.text
+
+
+import time as _time
+from hook_voice.observability.circuit_breaker import _breakers, CBState, CircuitBreaker, CircuitBreakerConfig
+
+
+@pytest.fixture(autouse=True)
+def reset_llm_cb():
+    yield
+    if "llm_api" in _breakers:
+        _breakers["llm_api"].reset()
+    _breakers.clear()
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_cb_opens_after_failures(monkeypatch):
+    """LLM API가 3회 연속 실패하면 CB가 OPEN으로 전환된다."""
+    from hook_voice import llm_client as _lc
+
+    _breakers["llm_api"] = CircuitBreaker("llm_api", CircuitBreakerConfig(failure_threshold=3))
+
+    async def fail(*args, **kwargs):
+        raise Exception("LLM down")
+
+    monkeypatch.setattr(_lc, "_do_chat_completion", fail)
+    monkeypatch.setenv("HUB_API_KEY", "testkey")
+
+    for _ in range(3):
+        result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
+        assert result == ""
+
+    assert _breakers["llm_api"].state == CBState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_cb_open_returns_empty_without_call(monkeypatch):
+    """CB OPEN 상태에서 _do_chat_completion을 호출하지 않고 빈 문자열을 반환한다."""
+    from hook_voice import llm_client as _lc
+
+    cb = CircuitBreaker("llm_api", CircuitBreakerConfig(failure_threshold=3, recovery_timeout=60.0))
+    cb._state = CBState.OPEN
+    cb._opened_at = _time.time()
+    _breakers["llm_api"] = cb
+
+    called = []
+
+    async def should_not_call(*args, **kwargs):
+        called.append(True)
+        return "should_not_reach"
+
+    monkeypatch.setattr(_lc, "_do_chat_completion", should_not_call)
+    monkeypatch.setenv("HUB_API_KEY", "testkey")
+
+    result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
+    assert result == ""
+    assert called == []
