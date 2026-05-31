@@ -55,6 +55,8 @@ class CircuitBreaker:
                     return fallback() if callable(fallback) else fallback
 
             if self._state == CBState.HALF_OPEN:
+                # half_open_max_calls > 1이면 동시 호출이 슬롯 한도를 초과할 수 있음.
+                # 현재 기본값(1)에서는 단일 asyncio 루프이므로 실질적 경쟁 없음.
                 if self._half_open_calls >= self._cfg.half_open_max_calls:
                     return fallback() if callable(fallback) else fallback
                 self._half_open_calls += 1
@@ -100,4 +102,6 @@ def get_circuit_breaker(
 ) -> CircuitBreaker:
     if name not in _breakers:
         _breakers[name] = CircuitBreaker(name, config)
+    elif config is not None:
+        _log.warning("[CB] '%s' 이미 등록됨 — 새 config 무시", name)
     return _breakers[name]
