@@ -123,7 +123,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `autoSpeak` | `true` | hook 모드 자동 재생 여부 |
 | `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `voice` | `Sohee` | MLX 스피커 또는 macOS voice |
-| `summaryModel` | `gpt-5.4` | HMG Hub LLM 모델 |
+| `summaryModel` | `gemini-3.5-flash` | HMG Hub LLM 모델 |
 | `ttsSpeed` | `1.1` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
 | `speechRetouch` | `true` | LLM으로 마크다운 제거·IT 용어 한국어 발음 변환 후 TTS 전달 |
@@ -197,7 +197,7 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **chorus** (2824 symbols, 4664 relationships, 96 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **chorus** (2852 symbols, 4710 relationships, 100 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
