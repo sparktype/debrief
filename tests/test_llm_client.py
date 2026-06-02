@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from hook_voice.llm_client import chat_completion, DEFAULT_MODEL
 
 async def test_chat_completion_returns_content():
+    # DEFAULT_MODEL이 gemini-* 이므로 Gemini generateContent 응답 형식 사용
     response_json = {
-        "choices": [{"message": {"content": "요약 결과"}}]
+        "candidates": [{"content": {"parts": [{"text": "요약 결과"}]}}]
     }
     with patch.dict(os.environ, {"HUB_API_KEY": "test-key", "HUB_BASE_URL": "http://test"}):
         with patch("hook_voice.llm_client.httpx.AsyncClient") as mock_cls:

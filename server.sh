@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$SCRIPT_DIR/.tts_server.log"
 
 LAUNCHD_PLIST_DIR="$HOME/Library/LaunchAgents"
-LAUNCHD_LABEL="com.voice-persona.tts-server"
+LAUNCHD_LABEL="io.chorus.server"
 LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/$LAUNCHD_LABEL.plist"
 
 TTS_PORT=7777
@@ -17,7 +17,7 @@ VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 # ── 환경변수 (plist 생성 시 삽입용) ──────────────────────────
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export HUB_BASE_URL="${HUB_BASE_URL:-https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3}"
-export LLM_MODEL="${LLM_MODEL:-gpt-5.4}"
+export LLM_MODEL="${LLM_MODEL:-gemini-3.5-flash}"
 
 if [[ -z "${HUB_API_KEY:-}" ]]; then
   for _rc in "$HOME/.zshenv.local" "$HOME/.zshrc.local" "$HOME/.zshenv"; do

@@ -49,7 +49,7 @@ class Config:
     auto_speak: bool = True
     min_chars: int = 50
     voice: str = "Sohee"
-    summary_model: str = "gpt-5.4"
+    summary_model: str = "gemini-3.5-flash"
     tts_speed: float = 1.1
     tts_instruct: str = "밝고 활기차게 말해주세요"
     skill_cooldown_minutes: int = 30

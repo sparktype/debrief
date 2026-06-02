@@ -9,7 +9,7 @@ def test_load_config_returns_defaults_when_no_file(tmp_path):
     assert cfg.auto_speak is True
     assert cfg.min_chars == 50
     assert cfg.voice == "Sohee"
-    assert cfg.summary_model == "gpt-5.4"
+    assert cfg.summary_model == "gemini-3.5-flash"
     assert cfg.tts_speed == 1.1
     assert cfg.tts_instruct == "밝고 활기차게 말해주세요"
     assert cfg.skill_cooldown_minutes == 30
