@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Notification hook — Claude 알림 메시지를 voice로 낭독
 PAYLOAD=$(cat)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

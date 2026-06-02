@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Claude Code UserPromptSubmit hook — 프롬프트 입력 시 스킬 추천
 PAYLOAD=$(cat)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

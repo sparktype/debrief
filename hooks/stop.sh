@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Claude Code Stop hook — 응답 완료 시 자동 TTS 실행
 PAYLOAD=$(cat)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
