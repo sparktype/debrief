@@ -7,9 +7,8 @@ dist/
 *.wav
 .tts_server.pid
 .supertonic.pid
-tts_server/__pycache__/
-hook_voice/__pycache__/
-tests/__pycache__/
+**/__pycache__/
+*.pyc
 .claude/
 !.claude/agents/
 !.claude/agents/*.md
