@@ -15,4 +15,3 @@ tests/__pycache__/
 !.claude/agents/*.md
 .superpowers/
 .voice-persona.json
-.voice.json

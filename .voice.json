@@ -1,0 +1,17 @@
+{
+  "summaryModel": "gemini-3.5-flash",
+  "grafana": {
+    "enabled": true,
+    "url": "https://hubble-krnw-platform.hmg-corp.io/grafana",
+    "token": "glsa_8vNKNobn45r6t38tldlXOYG5ZQHrNOKN_e40bad4c",
+    "interval": 30,
+    "alerts": []
+  },
+  "stt": {
+    "enabled": true,
+    "model": "mlx-community/whisper-small-mlx",
+    "language": "ko",
+    "sampleRate": 16000,
+    "announce": true
+  }
+}
