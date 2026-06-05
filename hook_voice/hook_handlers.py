@@ -27,7 +27,7 @@ from .observability.structured_log import log_event
 from .observability.metrics import get_registry
 from .observability.dlq import get_dlq_store
 from .player import speak_hook, speak_agent, SPOOL_DIR
-from .summarizer import extract_summary, extract_one_liner, rule_one_liner, select_expression_tag
+from .summarizer import extract_summary, extract_one_liner, select_expression_tag
 from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category
@@ -153,7 +153,7 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     instruct = resolve_instruct(agent_type, vm)
     category = resolve_category(agent_type, vm)
     steps = vm.get("supertonic", {}).get("steps", 12)
-    one_liner = rule_one_liner(text)
+    one_liner = await extract_one_liner(text, model=config.summary_model)
     tag = select_expression_tag(one_liner, category)
     prefix = f"{tag} " if tag else ""
     speak_text = f"{prefix}{label} {voice_name}입니다. {one_liner}"
@@ -245,9 +245,9 @@ async def handle_health() -> None:
 
     results: list[tuple[str, str]] = []
 
-    # 1. HUB_API_KEY (동기)
-    api_key = _os.environ.get("HUB_API_KEY", "")
-    results.append(("HUB_API_KEY 환경변수", "OK" if api_key else "MISSING"))
+    # 1. AI_API_KEY (동기)
+    api_key = _os.environ.get("AI_API_KEY", "") or _os.environ.get("HUB_API_KEY", "")
+    results.append(("AI_API_KEY 환경변수", "OK" if api_key else "MISSING"))
 
     # 2~5. LLM API · EdgeTTS · uvicorn · supertonic — 병렬 실행
     async def _check_llm() -> tuple[str, str]:

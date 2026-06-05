@@ -42,13 +42,14 @@ async def test_chat_completion_returns_empty_on_error():
 
 
 async def test_chat_completion_warns_on_missing_api_key(caplog):
-    """HUB_API_KEY 미설정 시 warning 로그 후 빈 문자열 반환."""
+    """AI_API_KEY / HUB_API_KEY 미설정 시 warning 로그 후 빈 문자열 반환."""
     with pytest.MonkeyPatch().context() as m:
+        m.delenv("AI_API_KEY", raising=False)
         m.delenv("HUB_API_KEY", raising=False)
         with caplog.at_level(logging.WARNING, logger="hook_voice.llm_client"):
             result = await chat_completion([{"role": "user", "content": "ping"}])
     assert result == ""
-    assert "HUB_API_KEY" in caplog.text
+    assert "AI_API_KEY" in caplog.text
 
 
 async def test_chat_completion_logs_http_status_error(caplog):
@@ -88,7 +89,9 @@ async def test_chat_completion_cb_opens_after_failures(monkeypatch):
     _breakers["llm_api"] = CircuitBreaker("llm_api", CircuitBreakerConfig(failure_threshold=3))
 
     monkeypatch.setenv("HUB_API_KEY", "testkey")
-    with patch("hook_voice.llm_client._do_chat_completion", new=AsyncMock(side_effect=Exception("LLM down"))):
+    _fail = AsyncMock(side_effect=Exception("LLM down"))
+    with patch("hook_voice.llm_client._do_chat_completion", new=_fail), \
+         patch("hook_voice.llm_client._do_gemini_completion", new=_fail):
         for _ in range(3):
             result = await _lc.chat_completion([{"role": "user", "content": "hi"}])
             assert result == ""

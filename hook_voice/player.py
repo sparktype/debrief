@@ -168,10 +168,8 @@ async def _generate_supertonic(
 
 
 def _dynamic_steps(text: str, base_steps: int) -> int:
-    """텍스트 길이에 따라 diffusion steps 동적 조정 — 짧은 발화일수록 빠르게."""
+    """텍스트 길이에 따라 diffusion steps 동적 조정 — 최소 8 steps 보장."""
     n = len(text)
-    if n < 30:  return min(4, base_steps)
-    if n < 60:  return min(6, base_steps)
     if n < 100: return min(8, base_steps)
     return base_steps
 
