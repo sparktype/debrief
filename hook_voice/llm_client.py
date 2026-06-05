@@ -13,7 +13,7 @@ _log = logging.getLogger(__name__)
 
 
 def _make_headers() -> dict[str, str]:
-    api_key = os.environ.get("HUB_API_KEY", "")
+    api_key = os.environ.get("AI_API_KEY", "") or os.environ.get("HUB_API_KEY", "")
     project_id = os.environ.get("HUB_PROJECT_ID", "")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     if project_id:
@@ -101,9 +101,9 @@ async def chat_completion(
     **kwargs,
 ) -> str:
     """LLM chat completion — 모델명에 따라 Gemini / OpenAI 엔드포인트 자동 라우팅."""
-    api_key = os.environ.get("HUB_API_KEY", "")
+    api_key = os.environ.get("AI_API_KEY", "") or os.environ.get("HUB_API_KEY", "")
     if not api_key:
-        _log.warning("HUB_API_KEY 미설정 — LLM 호출 건너뜀")
+        _log.warning("AI_API_KEY 미설정 — LLM 호출 건너뜀")
         return ""
 
     _do = _do_gemini_completion if model.startswith("gemini") else _do_chat_completion

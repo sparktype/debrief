@@ -19,11 +19,11 @@ export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export HUB_BASE_URL="${HUB_BASE_URL:-https://internal-apigw-kr.hmg-corp.io/hchat-in/api/v3}"
 export LLM_MODEL="${LLM_MODEL:-gemini-3.5-flash}"
 
-if [[ -z "${HUB_API_KEY:-}" ]]; then
+if [[ -z "${AI_API_KEY:-}" && -z "${HUB_API_KEY:-}" ]]; then
   for _rc in "$HOME/.zshenv.local" "$HOME/.zshrc.local" "$HOME/.zshenv"; do
     if [[ -f "$_rc" ]]; then
       set -a; source "$_rc" 2>/dev/null || true; set +a
-      [[ -n "${HUB_API_KEY:-}" ]] && break
+      [[ -n "${AI_API_KEY:-}" || -n "${HUB_API_KEY:-}" ]] && break
     fi
   done
 fi
@@ -210,8 +210,8 @@ do_install() {
   if [[ ! -d "$SCRIPT_DIR/.venv" ]]; then
     echo "경고: .venv 없음 — setup-tts.sh를 먼저 실행하세요." >&2
   fi
-  if [[ -z "${HUB_API_KEY:-}" ]]; then
-    echo "경고: HUB_API_KEY 미설정 — LLM 요약이 폴백으로 동작합니다." >&2
+  if [[ -z "${AI_API_KEY:-}" && -z "${HUB_API_KEY:-}" ]]; then
+    echo "경고: AI_API_KEY 미설정 — LLM 요약이 폴백으로 동작합니다." >&2
   fi
 
   echo "TTS LaunchAgent 등록 중..."
@@ -267,6 +267,8 @@ do_install() {
     <string>${SCRIPT_DIR}/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HUB_BASE_URL</key>
     <string>${HUB_BASE_URL:-}</string>
+    <key>AI_API_KEY</key>
+    <string>${AI_API_KEY:-}</string>
     <key>HUB_API_KEY</key>
     <string>${HUB_API_KEY:-}</string>
     <key>HUB_PROJECT_ID</key>
