@@ -63,7 +63,7 @@ Claude 응답 완료
       → resolve_voice_name(agentType) → "빌", "리누스" 등 인물 이름
       → get_agent_label(agentType) → "리뷰어" / "플래너" / "빌더" 등
       → resolve_instruct(agentType) → 역할별 TTS instruct 텍스트
-      → extract_one_liner() (hook_voice/summarizer.py)  # 25자 이내 한 줄 요약 + 특수문자 제거
+      → extract_one_liner() (hook_voice/summarizer.py)  # LLM 한 줄 요약 + 특수문자 제거
       → f"{label} {voice_name}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
           ├─ Supertonic: localhost:7788/v1/health 확인 → WAV 생성
           ├─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
@@ -197,7 +197,7 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **chorus** (2852 symbols, 4710 relationships, 100 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **chorus** (2853 symbols, 4711 relationships, 100 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
