@@ -79,7 +79,7 @@ async def test_speak_hook_enqueues_via_edge(tmp_path, monkeypatch):
         return mp3_src
 
     with patch("hook_voice.player._generate_edge", side_effect=fake_generate_edge):
-        await speak_hook("안녕하세요", "Sohee", 1.2)
+        await speak_hook("안녕하세요", 1.2)
 
     assert len(list(spool.glob("*.mp3"))) == 1
 
@@ -92,7 +92,7 @@ async def test_speak_hook_logs_warning_on_edge_failure(tmp_path, monkeypatch, ca
 
     with patch("hook_voice.player._generate_edge", side_effect=Exception("EdgeTTS 실패")):
         with caplog.at_level(logging.WARNING, logger="hook_voice.player"):
-            await speak_hook("안녕", "Sohee", 1.2)
+            await speak_hook("안녕", 1.2)
 
     assert any("EdgeTTS" in r.message for r in caplog.records)
 
@@ -195,7 +195,7 @@ async def test_speak_hook_edge_cb_opens_after_failures(monkeypatch, tmp_path):
     monkeypatch.setattr(player_module, "_generate_edge", fail_edge)
 
     for _ in range(3):
-        await speak_hook("test", voice="Sohee", speed=1.0, edge_timeout=1.0)
+        await speak_hook("test", speed=1.0, edge_timeout=1.0)
 
     assert _breakers["edge_tts"].state == CBState.OPEN
 
@@ -219,7 +219,7 @@ async def test_speak_hook_edge_cb_open_skips_generate(monkeypatch, tmp_path):
     monkeypatch.setattr(player_module, "save_last_message", lambda t: None)
     monkeypatch.setattr(player_module, "SPOOL_DIR", tmp_path)
 
-    await speak_hook("test", voice="Sohee", speed=1.0, edge_timeout=1.0)
+    await speak_hook("test", speed=1.0, edge_timeout=1.0)
     assert called == []
 
 

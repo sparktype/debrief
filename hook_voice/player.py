@@ -42,7 +42,7 @@ async def _generate_edge(text: str) -> Path:
     return out
 
 
-async def speak_hook(text: str, voice: str = "Sohee", speed: float = 1.2,
+async def speak_hook(text: str, speed: float = 1.2,
                      edge_timeout: float = 10.0) -> None:
     edge_cb = get_circuit_breaker("edge_tts")
 
