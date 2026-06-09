@@ -99,7 +99,7 @@ async def handle_hook(raw: str, config: Config) -> None:
             summary = speech_ctx.text  # EdgeTTS는 SSML 미지원 — speech_ctx.ssml의 break 태그가 텍스트로 발화되는 것 방지
         start = _time.time()
         try:
-            await speak_hook(summary, config.voice, config.tts_speed,
+            await speak_hook(summary, config.tts_speed,
                              edge_timeout=config.edge_timeout_ms / 1000)
             latency_ms = (_time.time() - start) * 1000
             get_registry().record_tts_latency(latency_ms)
@@ -125,7 +125,7 @@ async def handle_notification(raw: str, config: Config) -> None:
     except Exception:
         msg = ""
     if msg and config.auto_speak:
-        await speak_hook(msg, config.voice, config.tts_speed,
+        await speak_hook(msg, config.tts_speed,
                          edge_timeout=config.edge_timeout_ms / 1000)
 
 
@@ -196,7 +196,7 @@ async def handle_hook_suggest(raw: str, config: Config) -> None:
         model=config.summary_model,
     )
     if rec:
-        await speak_hook(f"지금 상황엔 {rec['skill']} 스킬이 유용할 것 같아요", config.voice, config.tts_speed)
+        await speak_hook(f"지금 상황엔 {rec['skill']} 스킬이 유용할 것 같아요", config.tts_speed)
         save_cooldown(rec["skill"])
 
 
@@ -210,7 +210,7 @@ async def handle_pre_tool_bash(raw: str, config: Config) -> None:
         return
     msg = classify_pre_tool_bash(cmd)
     if msg:
-        await speak_hook(msg, config.voice, config.tts_speed)
+        await speak_hook(msg, config.tts_speed)
 
 
 async def handle_history(args: list[str], config: "Config") -> None:
@@ -321,7 +321,7 @@ async def handle_post_tool_bash(raw: str, config: Config) -> None:
         return
     msg = classify_post_tool_bash(cmd, out, code)
     if msg:
-        await speak_hook(msg, config.voice, config.tts_speed)
+        await speak_hook(msg, config.tts_speed)
 
 
 async def handle_control(action: str) -> None:

@@ -171,7 +171,6 @@ class GrafanaPoller:
                     _log.error("[Grafana] %s — 폴러를 비활성화합니다.", result.error_detail)
                     await speak_hook(
                         "Grafana 인증에 실패했습니다. 토큰을 확인해 주세요.",
-                        self._config.voice,
                         self._config.tts_speed,
                     )
                     break
@@ -211,13 +210,13 @@ class GrafanaPoller:
             if resolved:
                 parts.append(f"해소 {resolved}개")
             text = f"{len(changes)}개 알럿 상태가 변경됐습니다. {', '.join(parts)}."
-            await speak_hook(text, self._config.voice, self._config.tts_speed)
+            await speak_hook(text, self._config.tts_speed)
             return
 
         for change in changes:
             try:
                 text = await self.analyze_alert(change)
-                await speak_hook(text, self._config.voice, self._config.tts_speed)
+                await speak_hook(text, self._config.tts_speed)
             except Exception as e:
                 _log.warning("[Grafana] 발화 실패: %s", e)
 
