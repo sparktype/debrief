@@ -52,8 +52,8 @@ Claude 응답 완료
     → python -m hook_voice hook
       → extract_summary() (hook_voice/summarizer.py)  # HMG LLM API → 규칙 기반 폴백
       → speak_hook() (hook_voice/player.py)
-          ├─ EdgeTTS → ko-KR-HyunsuMultilingualNeural MP3 생성
-          └─ /tmp/tts-spool/<ts>_<rand>.mp3 기록 → 즉시 반환
+          ├─ supertonic MLX F1(연아): localhost:7788/v1/tts → WAV 생성
+          └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
 
 서브에이전트 응답 완료
   → SubagentStop hook (hooks/subagent-stop.sh)
@@ -97,7 +97,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
 | `hook_voice/voice_router.py` | agentType → 카테고리 → voice ID·이름·instruct 변환 |
 | `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
-| `hook_voice/player.py` | EdgeTTS spool enqueue, speak_hook/speak_agent + 폴백 |
+| `hook_voice/player.py` | supertonic MLX spool enqueue — speak_hook(F1) / speak_agent(역할별) |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
 | `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 |
 | `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
@@ -113,7 +113,6 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
 - **파일 스풀 직렬화**: hook·서브에이전트 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
 - 서브에이전트 발화: `f"{role} {voice_name}입니다. {one_liner}"` 형식 (예: "리뷰어 빌입니다."), `sanitize_for_speech()`로 특수문자·유니코드 기호 제거
-- **HMG SSL 프록시 우회**: `edge_tts.communicate._SSL_CTX`를 `CERT_NONE` 컨텍스트로 모듈 임포트 시점에 교체
 
 ### 설정 (`hook_voice/config.py` 기본값)
 
@@ -150,7 +149,6 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `HUB_PROJECT_ID` | Hub 프로젝트 ID (X-Project-Id 헤더) |
 | `HF_HUB_OFFLINE` | `1` 고정 — 런타임 HuggingFace 다운로드 차단 |
 | `VOICE_PERSONA_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: `~/.local/share/voice-persona`) |
-| `VOICE_PERSONA_OFFLINE` | `1` 설정 시 Edge TTS 건너뛰고 MLX 서버부터 시도 |
 
 ### Supertonic 목소리 (voice-map.json)
 
@@ -168,7 +166,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | M5 | 팀 | guardian | Tim Berners-Lee | 꼼꼼하고 신중하게 |
 
 역할·이름·instruct는 `voice-map.json`에서 코드 변경 없이 수정 가능.  
-speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용하며, 위 목소리는 서브에이전트 전용.
+speak_hook(메인 응답)은 F1(연아) 목소리를 사용하며, 위 목소리는 서브에이전트 전용.
 
 ## Claude Code 연동 (`.claude/settings.json`)
 
@@ -189,7 +187,6 @@ speak_hook(메인 응답)은 EdgeTTS(`ko-KR-HyunsuMultilingualNeural`)를 사용
 
 - `pytest` + `pytest-asyncio` (`asyncio_mode = auto`)로 async 함수 테스트
 - `httpx.AsyncMock` / `unittest.mock.AsyncMock`으로 LLM·TTS HTTP 호출 mock
-- `edge_tts.Communicate.save()`는 `AsyncMock`으로 대체
 - 분류 함수(`classify_pre_tool_bash`, `classify_post_tool_bash`)는 순수 함수 — mock 불필요
 - 파일 I/O 테스트: `tmp_path` fixture (pytest 내장) 활용
 
