@@ -53,18 +53,21 @@ def _preprocess(text: str) -> str:
 
 
 _model = None
-_lock: asyncio.Lock | None = None
+_lock = asyncio.Lock()  # 타입 안전, 모듈 레벨 초기화
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _lock
+    global _model
     from supertonic_mlx import SupertonicMLX
     _model = SupertonicMLX(MODEL_DIR)
-    _lock = asyncio.Lock()
     # Metal GPU 워밍업 — 첫 추론 시 컴파일 시간 선행 처리
-    style = _model.get_voice_style("M1")
-    _model.synthesize("워밍업.", "ko", style, total_step=2)
+    try:
+        style = _model.get_voice_style("M1")
+        _model.synthesize("워밍업.", "ko", style, total_step=2)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("워밍업 실패 (무시): %s", e)
     yield
     _model = None
 
@@ -88,7 +91,7 @@ async def health():
 
 @app.post("/v1/tts")
 async def tts(req: TTSRequest):
-    if _model is None or _lock is None:
+    if _model is None:
         raise HTTPException(503, "모델 로딩 중")
     processed = _preprocess(req.text)
     async with _lock:
@@ -98,5 +101,6 @@ async def tts(req: TTSRequest):
             total_step=req.steps, speed=req.speed,
         )
     buf = io.BytesIO()
+    # synthesize returns (wav_array, dur_array), wav_array.shape = (1, T)
     sf.write(buf, wav[0], _model.sample_rate, format="WAV")
     return Response(buf.getvalue(), media_type="audio/wav")
