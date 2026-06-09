@@ -199,14 +199,18 @@ async def extract_one_liner_with_tag(
             raw = result.strip()
             # JSON 블록 추출
             if "```" in raw:
-                raw = re.search(r"\{.*\}", raw, re.DOTALL).group() if re.search(r"\{.*\}", raw, re.DOTALL) else raw
+                m = re.search(r"\{.*\}", raw, re.DOTALL)
+                raw = m.group() if m else raw
             data = json.loads(raw)
             one_liner = sanitize_for_speech(str(data.get("one_liner", "")))
             tag_name  = str(data.get("tag", "breath")).strip().lower()
             tag = f"<{tag_name}>" if tag_name in _VALID_TAGS else "<breath>"
             return one_liner or sanitize_for_speech(_fallback(text, 1)), tag
-    except Exception:
+    except (json.JSONDecodeError, AttributeError, KeyError):
         pass
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("extract_one_liner_with_tag 예외", exc_info=True)
     one_liner = sanitize_for_speech(_fallback(text, 1))
     return one_liner, select_expression_tag(one_liner, category)
 
