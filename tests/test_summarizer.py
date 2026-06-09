@@ -1,7 +1,7 @@
 # tests/test_summarizer.py
 import pytest
 from unittest.mock import patch, AsyncMock
-from hook_voice.summarizer import strip_markdown, sanitize_for_speech, extract_summary, extract_one_liner, select_expression_tag, retouch_for_speech
+from hook_voice.summarizer import strip_markdown, sanitize_for_speech, extract_summary, extract_one_liner, extract_one_liner_with_tag, select_expression_tag, retouch_for_speech
 
 def test_strip_markdown_removes_code_blocks():
     result = strip_markdown("앞\n```python\ncode\n```\n뒤")
@@ -55,6 +55,39 @@ async def test_extract_one_liner_sanitizes_result():
     with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value="결과 *완료*")):
         result = await extract_one_liner("작업 텍스트")
         assert "*" not in result
+
+
+async def test_extract_one_liner_with_tag_returns_tuple():
+    """LLM JSON 응답을 (one_liner, tag) 튜플로 반환한다."""
+    import json
+    llm_response = json.dumps({"one_liner": "테스트 통과됐습니다", "tag": "laugh"})
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value=llm_response)):
+        one_liner, tag = await extract_one_liner_with_tag("텍스트", "tester")
+    assert one_liner == "테스트 통과됐습니다"
+    assert tag == "<laugh>"
+
+
+async def test_extract_one_liner_with_tag_invalid_tag_falls_back_to_breath():
+    """LLM이 유효하지 않은 태그를 반환하면 <breath>로 폴백한다."""
+    import json
+    llm_response = json.dumps({"one_liner": "작업 완료", "tag": "unknown_tag"})
+    with patch("hook_voice.summarizer.chat_completion", new=AsyncMock(return_value=llm_response)):
+        one_liner, tag = await extract_one_liner_with_tag("텍스트", "builder")
+    assert tag == "<breath>"
+
+
+async def test_extract_one_liner_with_tag_llm_failure_uses_rule_fallback():
+    """LLM 실패 시 규칙 기반 폴백(select_expression_tag)을 사용한다."""
+    with patch("hook_voice.summarizer.chat_completion", side_effect=Exception("LLM 오류")):
+        one_liner, tag = await extract_one_liner_with_tag("치명적 시스템 장애 발생", "ops")
+    assert tag == "<cry>"
+
+
+async def test_extract_one_liner_with_tag_empty_input():
+    """빈 텍스트는 빈 문자열과 role default 태그를 반환한다."""
+    one_liner, tag = await extract_one_liner_with_tag("", "reviewer")
+    assert one_liner == ""
+    assert tag == "<breath>"
 
 async def test_extract_summary_returns_empty_for_blank():
     result = await extract_summary("   ")

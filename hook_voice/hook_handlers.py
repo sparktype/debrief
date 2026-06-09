@@ -27,7 +27,7 @@ from .observability.structured_log import log_event
 from .observability.metrics import get_registry
 from .observability.dlq import get_dlq_store
 from .player import speak_hook, speak_agent, SPOOL_DIR
-from .summarizer import extract_summary, extract_one_liner, select_expression_tag
+from .summarizer import extract_summary, extract_one_liner, extract_one_liner_with_tag, select_expression_tag
 from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
@@ -155,10 +155,9 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     settings = resolve_voice_settings(agent_type, vm)
     steps = settings["steps"]
     synth_speed = settings["synth_speed"]
-    one_liner = await extract_one_liner(text, model=config.summary_model)
-    tag = select_expression_tag(one_liner, category)
-    prefix = f"{tag} " if tag else ""
-    speak_text = f"{prefix}{label} {voice_name}입니다. {one_liner}"
+    one_liner, tag = await extract_one_liner_with_tag(text, category, model=config.summary_model)
+    tag_infix = f"{tag} " if tag else ""
+    speak_text = f"{label} {voice_name}입니다. {tag_infix}{one_liner}"
     start = _time.time()
     try:
         await speak_agent(speak_text, voice, config.supertonic_port, config.tts_speed, instruct,

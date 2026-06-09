@@ -8,6 +8,25 @@ _SUMMARY_SYSTEM = (
     "코드·마크다운 기호 없이 자연스러운 한국어 평문으로 작성합니다."
 )
 _ONE_LINER_SYSTEM = "작업 결과를 한 문장(25자 이내)으로 요약하세요. 마침표·특수기호 없이, 간결하게."
+
+_ONE_LINER_WITH_TAG_SYSTEM = """\
+개발 작업 결과를 분석해 JSON으로 반환하세요.
+
+1. one_liner: 핵심 결과를 25자 이내 경어체 한 문장으로 요약 (마침표·특수기호 없이)
+2. tag: 내용의 감정에 가장 어울리는 Expression Tag — 아래 중 하나만 선택
+   laugh        성공·완료·칭찬·개선·긍정적 결과
+   sigh         실패·오류·에러·부정적 결과
+   gasp         예상치 못한 발견·놀람
+   cry          치명적 장애·시스템 다운
+   sniff        아쉬움·미완성·개선 필요
+   clear_throat 경고·중요 공지·주의 사항
+   hmm          분석 중·탐색·생각 중
+   yawn         반복적 정상 상태·루틴
+   cough        경미한 주의·미세한 문제
+   breath       일반 상황 (위 중 해당 없음)
+
+반드시 JSON만 반환: {"one_liner": "...", "tag": "laugh"}
+"""
 _RETOUCH_SYSTEM = (
     "다음 텍스트를 한국어 TTS 발화에 적합하게 정제하세요.\n"
     "1. 마크다운 기호(** * # ` [] | > —) 완전 제거\n"
@@ -154,6 +173,42 @@ def rule_one_liner(text: str, max_chars: int = 25) -> str:
     if len(candidate) > max_chars:
         candidate = candidate[:max_chars].rsplit(" ", 1)[0]
     return sanitize_for_speech(candidate)
+
+
+_VALID_TAGS = frozenset({"breath","laugh","sigh","clear_throat","hmm","cough","sniff","gasp","yawn","cry"})
+
+
+async def extract_one_liner_with_tag(
+    text: str, category: str, model: str = DEFAULT_MODEL
+) -> tuple[str, str]:
+    """LLM으로 한 줄 요약과 감정 태그를 동시에 생성한다. 실패 시 규칙 기반 폴백."""
+    import json
+    if not text.strip():
+        return "", _ROLE_DEFAULT_TAGS.get(category, "<breath>")
+    try:
+        result = await chat_completion(
+            messages=[
+                {"role": "system", "content": _ONE_LINER_WITH_TAG_SYSTEM},
+                {"role": "user", "content": strip_markdown(text)[:2000]},
+            ],
+            model=model,
+            max_completion_tokens=80,
+            temperature=0.0,
+        )
+        if result:
+            raw = result.strip()
+            # JSON 블록 추출
+            if "```" in raw:
+                raw = re.search(r"\{.*\}", raw, re.DOTALL).group() if re.search(r"\{.*\}", raw, re.DOTALL) else raw
+            data = json.loads(raw)
+            one_liner = sanitize_for_speech(str(data.get("one_liner", "")))
+            tag_name  = str(data.get("tag", "breath")).strip().lower()
+            tag = f"<{tag_name}>" if tag_name in _VALID_TAGS else "<breath>"
+            return one_liner or sanitize_for_speech(_fallback(text, 1)), tag
+    except Exception:
+        pass
+    one_liner = sanitize_for_speech(_fallback(text, 1))
+    return one_liner, select_expression_tag(one_liner, category)
 
 
 async def extract_one_liner(text: str, model: str = DEFAULT_MODEL) -> str:
