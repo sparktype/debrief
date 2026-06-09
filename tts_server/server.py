@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from hook_voice.config import load_config as _load_voice_config
 from hook_voice.observability.metrics import get_registry as _get_metrics
-from hook_voice.observability.dlq import get_dlq_store as _get_dlq_store, ReplayStatus
+from hook_voice.observability.dlq import get_dlq_store as _get_dlq_store
 from hook_voice.speech_listener import SpeechListener
 
 _stt_listener: SpeechListener | None = None
