@@ -102,15 +102,13 @@ async def test_handle_notification_speaks():
     raw = json.dumps({"message": "Claude가 응답했습니다"})
     with patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock:
         await handle_notification(raw, _CFG)
-        mock.assert_called_once_with("Claude가 응답했습니다", _CFG.tts_speed,
-                                     edge_timeout=_CFG.edge_timeout_ms / 1000)
+        mock.assert_called_once_with("Claude가 응답했습니다", _CFG.tts_speed)
 
 async def test_handle_notification_uses_title_as_fallback():
     raw = json.dumps({"title": "알림 제목"})
     with patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock:
         await handle_notification(raw, _CFG)
-        mock.assert_called_once_with("알림 제목", _CFG.tts_speed,
-                                     edge_timeout=_CFG.edge_timeout_ms / 1000)
+        mock.assert_called_once_with("알림 제목", _CFG.tts_speed)
 
 async def test_handle_hook_skips_short_text():
     raw = json.dumps({"last_assistant_message": "짧음"})

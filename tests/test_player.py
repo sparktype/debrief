@@ -64,37 +64,30 @@ def test_dynamic_steps_long_text_returns_base():
 
 # ── speak_hook ───────────────────────────────────────────────────────────────
 
-async def test_speak_hook_enqueues_via_edge(tmp_path, monkeypatch):
-    """EdgeTTS 성공 시 mp3 파일이 spool에 저장된다."""
-    mp3_src = tmp_path / "edge.mp3"
-    mp3_src.write_bytes(b"fake")
+async def test_speak_hook_enqueues_wav(tmp_path, monkeypatch):
+    """speak_hook이 supertonic으로 WAV를 생성해 spool에 저장한다."""
     spool = tmp_path / "spool"
     spool.mkdir()
-
     monkeypatch.setattr("hook_voice.player.SPOOL_DIR", spool)
     monkeypatch.setattr("hook_voice.player.save_last_message", lambda t: None)
 
-    async def fake_generate_edge(text):
-        mp3_src.write_bytes(b"fake")
-        return mp3_src
-
-    with patch("hook_voice.player._generate_edge", side_effect=fake_generate_edge):
+    with patch("hook_voice.player._generate_supertonic", new=AsyncMock(return_value=b"RIFF_WAV")):
         await speak_hook("안녕하세요", 1.2)
 
-    assert len(list(spool.glob("*.mp3"))) == 1
+    assert len(list(spool.glob("*.wav"))) == 1
 
 
-async def test_speak_hook_logs_warning_on_edge_failure(tmp_path, monkeypatch, caplog):
-    """EdgeTTS 실패 시 예외를 전파하지 않고 경고 로그를 남긴다."""
+async def test_speak_hook_logs_warning_on_failure(tmp_path, monkeypatch, caplog):
+    """supertonic 실패 시 예외를 전파하지 않고 경고 로그를 남긴다."""
     import logging
     monkeypatch.setattr("hook_voice.player.SPOOL_DIR", tmp_path)
     monkeypatch.setattr("hook_voice.player.save_last_message", lambda t: None)
 
-    with patch("hook_voice.player._generate_edge", side_effect=Exception("EdgeTTS 실패")):
+    with patch("hook_voice.player._generate_supertonic", side_effect=Exception("TTS 실패")):
         with caplog.at_level(logging.WARNING, logger="hook_voice.player"):
             await speak_hook("안녕", 1.2)
 
-    assert any("EdgeTTS" in r.message for r in caplog.records)
+    assert any("Hook TTS" in r.message for r in caplog.records)
 
 
 # ── speak_agent ──────────────────────────────────────────────────────────────
@@ -181,45 +174,45 @@ async def test_generate_supertonic_posts_to_v1_tts():
 
 @pytest.mark.asyncio
 async def test_speak_hook_edge_cb_opens_after_failures(monkeypatch, tmp_path):
-    """EdgeTTS가 연속 3회 실패하면 CB가 OPEN으로 전환된다."""
+    """supertonic_hook이 연속 3회 실패하면 CB가 OPEN으로 전환된다."""
     from hook_voice.observability.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 
-    _breakers["edge_tts"] = CircuitBreaker("edge_tts", CircuitBreakerConfig(failure_threshold=3))
+    _breakers["supertonic_hook"] = CircuitBreaker("supertonic_hook", CircuitBreakerConfig(failure_threshold=3))
 
     monkeypatch.setattr(player_module, "save_last_message", lambda t: None)
     monkeypatch.setattr(player_module, "SPOOL_DIR", tmp_path)
 
-    async def fail_edge(text):
-        raise OSError("edge fail")
+    async def fail_st(*args, **kwargs):
+        raise OSError("supertonic fail")
 
-    monkeypatch.setattr(player_module, "_generate_edge", fail_edge)
+    monkeypatch.setattr(player_module, "_generate_supertonic", fail_st)
 
     for _ in range(3):
-        await speak_hook("test", speed=1.0, edge_timeout=1.0)
+        await speak_hook("test", speed=1.0)
 
-    assert _breakers["edge_tts"].state == CBState.OPEN
+    assert _breakers["supertonic_hook"].state == CBState.OPEN
 
 
 @pytest.mark.asyncio
 async def test_speak_hook_edge_cb_open_skips_generate(monkeypatch, tmp_path):
-    """EdgeTTS CB가 OPEN이면 _generate_edge를 호출하지 않는다."""
+    """supertonic_hook CB가 OPEN이면 _generate_supertonic을 호출하지 않는다."""
     from hook_voice.observability.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CBState as _CBState
 
-    cb = CircuitBreaker("edge_tts", CircuitBreakerConfig(failure_threshold=3, recovery_timeout=60.0))
+    cb = CircuitBreaker("supertonic_hook", CircuitBreakerConfig(failure_threshold=3, recovery_timeout=60.0))
     cb._state = _CBState.OPEN
     cb._opened_at = time.time()
-    _breakers["edge_tts"] = cb
+    _breakers["supertonic_hook"] = cb
 
     called = []
 
-    async def should_not_be_called(text):
-        called.append(text)
+    async def should_not_be_called(*args, **kwargs):
+        called.append(args)
 
-    monkeypatch.setattr(player_module, "_generate_edge", should_not_be_called)
+    monkeypatch.setattr(player_module, "_generate_supertonic", should_not_be_called)
     monkeypatch.setattr(player_module, "save_last_message", lambda t: None)
     monkeypatch.setattr(player_module, "SPOOL_DIR", tmp_path)
 
-    await speak_hook("test", speed=1.0, edge_timeout=1.0)
+    await speak_hook("test", speed=1.0)
     assert called == []
 
 

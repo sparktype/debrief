@@ -99,8 +99,7 @@ async def handle_hook(raw: str, config: Config) -> None:
             summary = speech_ctx.text  # EdgeTTS는 SSML 미지원 — speech_ctx.ssml의 break 태그가 텍스트로 발화되는 것 방지
         start = _time.time()
         try:
-            await speak_hook(summary, config.tts_speed,
-                             edge_timeout=config.edge_timeout_ms / 1000)
+            await speak_hook(summary, config.tts_speed)
             latency_ms = (_time.time() - start) * 1000
             get_registry().record_tts_latency(latency_ms)
             log_event("tts_completed", hook_ctx, {
@@ -125,8 +124,7 @@ async def handle_notification(raw: str, config: Config) -> None:
     except Exception:
         msg = ""
     if msg and config.auto_speak:
-        await speak_hook(msg, config.tts_speed,
-                         edge_timeout=config.edge_timeout_ms / 1000)
+        await speak_hook(msg, config.tts_speed)
 
 
 async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> None:

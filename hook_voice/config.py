@@ -19,7 +19,6 @@ _KEY_MAP = {
     "ttsInstruct": "tts_instruct",
     "skillCooldownMinutes": "skill_cooldown_minutes",
     "supertonicPort": "supertonic_port",
-    "edgeTimeoutMs": "edge_timeout_ms",
     "supertonicTimeoutMs": "supertonic_timeout_ms",
     "allowInsecureTls": "allow_insecure_tls",
     "speechRetouch": "speech_retouch",
@@ -54,7 +53,6 @@ class Config:
     tts_instruct: str = "밝고 활기차게 말해주세요"
     skill_cooldown_minutes: int = 30
     supertonic_port: int = 7788
-    edge_timeout_ms: int = 10000
     supertonic_timeout_ms: int = 20000
     allow_insecure_tls: bool = True
     speech_retouch: bool = True
@@ -102,7 +100,6 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
     _normalize_float("tts_speed", 0.0)
     _normalize_int("skill_cooldown_minutes", 0)
     _normalize_int("supertonic_port", 1, 65535)
-    _normalize_int("edge_timeout_ms", 100)
     _normalize_int("supertonic_timeout_ms", 100)
 
     grafana = kwargs.get("grafana")

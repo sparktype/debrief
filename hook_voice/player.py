@@ -1,15 +1,12 @@
-# EdgeTTS spool enqueue, speak_hook / speak_agent
+# supertonic MLX spool enqueue — speak_hook / speak_agent
 import asyncio
 import logging
 import random
-import ssl
 import string
 import tempfile
 import time
 from pathlib import Path
 
-import edge_tts
-import edge_tts.communicate as _ec
 import httpx
 
 from .last_message import save_last_message
@@ -17,14 +14,10 @@ from .observability.circuit_breaker import get_circuit_breaker
 
 _log = logging.getLogger(__name__)
 
-# HMG 사내 SSL 프록시 우회 — edge_tts 내부 SSL 컨텍스트 교체
-_ssl_ctx = ssl.create_default_context()
-_ssl_ctx.check_hostname = False
-_ssl_ctx.verify_mode = ssl.CERT_NONE
-_ec._SSL_CTX = _ssl_ctx
-
 SPOOL_DIR = Path("/tmp/tts-spool")
-EDGE_VOICE = "ko-KR-HyunsuMultilingualNeural"
+HOOK_VOICE = "F1"        # 메인 응답 목소리 — F1 연아 (calm, slightly low)
+HOOK_STEPS = 8
+HOOK_SYNTH_SPEED = 0.93
 
 
 def _enqueue_spool(audio_file: Path, speed: float) -> None:
@@ -33,29 +26,6 @@ def _enqueue_spool(audio_file: Path, speed: float) -> None:
     speed_tag = str(round(speed * 100))
     dest = SPOOL_DIR / f"{uid}_{speed_tag}{audio_file.suffix}"
     audio_file.rename(dest)
-
-
-async def _generate_edge(text: str) -> Path:
-    out = Path(tempfile.mktemp(suffix=".mp3", prefix="vp_edge_"))
-    comm = edge_tts.Communicate(text, EDGE_VOICE)
-    await comm.save(str(out))
-    return out
-
-
-async def speak_hook(text: str, speed: float = 1.2,
-                     edge_timeout: float = 10.0) -> None:
-    edge_cb = get_circuit_breaker("edge_tts")
-
-    async def _edge_call() -> Path:
-        return await asyncio.wait_for(_generate_edge(text), timeout=edge_timeout)
-
-    try:
-        mp3 = await edge_cb.call(_edge_call, fallback=None)
-        if mp3 is not None:
-            _enqueue_spool(mp3, speed)
-            save_last_message(text)
-    except Exception as e:
-        _log.warning("EdgeTTS 생성 실패: %s", type(e).__name__)
 
 
 async def _generate_supertonic(
@@ -78,6 +48,32 @@ def _dynamic_steps(text: str, base_steps: int) -> int:
     return min(8, base_steps) if len(text) < 100 else base_steps
 
 
+async def speak_hook(text: str, speed: float = 1.2,
+                     hook_timeout: float = 20.0) -> None:
+    """메인 Claude 응답을 supertonic F1(연아) 목소리로 발화한다."""
+    hook_cb = get_circuit_breaker("supertonic_hook")
+
+    async def _st_call() -> bytes:
+        return await asyncio.wait_for(
+            _generate_supertonic(
+                text, voice=HOOK_VOICE, port=7788,
+                steps=HOOK_STEPS, timeout=hook_timeout,
+                synth_speed=HOOK_SYNTH_SPEED,
+            ),
+            timeout=hook_timeout,
+        )
+
+    try:
+        wav_bytes = await hook_cb.call(_st_call, fallback=None)
+        if wav_bytes is not None:
+            tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_hook_"))
+            tmp.write_bytes(wav_bytes)
+            _enqueue_spool(tmp, speed)
+            save_last_message(text)
+    except Exception as e:
+        _log.warning("Hook TTS 생성 실패: %s", type(e).__name__)
+
+
 async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "",
                       steps: int = 12, supertonic_timeout: float = 20.0,
                       synth_speed: float = 1.05) -> None:
@@ -88,8 +84,10 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
 
     async def _st_call() -> bytes:
         return await asyncio.wait_for(
-            _generate_supertonic(text, voice, port, steps=actual_steps,
-                                 timeout=supertonic_timeout, synth_speed=synth_speed),
+            _generate_supertonic(
+                text, voice, port, steps=actual_steps,
+                timeout=supertonic_timeout, synth_speed=synth_speed,
+            ),
             timeout=supertonic_timeout,
         )
 
