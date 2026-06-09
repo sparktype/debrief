@@ -161,14 +161,18 @@ def _start_uvicorn() -> subprocess.Popen:
 
 
 def _start_supertonic() -> subprocess.Popen:
-    """supertonic 자식 프로세스를 기동하고 Popen 객체를 반환한다."""
+    """supertonic-mlx FastAPI 서버를 기동한다 (포트 7788, Metal GPU 단일 워커)."""
     with open("/tmp/supertonic.log", "a") as supertonic_log:
         return subprocess.Popen(
-            [str(VENV_BIN / "supertonic"), "serve",
-             "--host", "127.0.0.1", "--port", "7788"],
-            env={**os.environ, "HF_HUB_OFFLINE": "0"},
+            [str(VENV_BIN / "uvicorn"),
+             "tts_server.supertonic_mlx_server:app",
+             "--host", "127.0.0.1",
+             "--port", "7788",
+             "--workers", "1"],
+            env={**os.environ, "HF_HUB_OFFLINE": "1"},
             stdout=supertonic_log,
             stderr=supertonic_log,
+            cwd=str(PROJECT_DIR),
         )
 
 
