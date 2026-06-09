@@ -67,17 +67,7 @@ else
   ok "mlx-audio 설치 완료"
 fi
 
-# ── 4. edge-tts 설치 (EdgeTTS 온라인 TTS) ───────────────────────────────────
-step "edge-tts 설치"
-
-if "${PYTHON}" -c "import edge_tts" &>/dev/null 2>&1; then
-  ok "edge-tts가 이미 설치되어 있습니다 — 스킵"
-else
-  "${PIP}" install -q edge-tts
-  ok "edge-tts 설치 완료"
-fi
-
-# ── 5. supertonic 설치 (Supertonic 온디바이스 TTS) ─────────────────────────
+# ── 4. supertonic 설치 (Supertonic 온디바이스 TTS) ─────────────────────────
 step "supertonic 설치"
 
 if [ -f "${VENV_DIR}/bin/supertonic" ]; then
@@ -87,7 +77,7 @@ else
   ok "supertonic 설치 완료"
 fi
 
-# ── 6. 모델 사전 다운로드 ───────────────────────────────────────────────────
+# ── 5. 모델 사전 다운로드 ───────────────────────────────────────────────────
 step "HuggingFace 모델 다운로드 (${MODEL_ID})"
 
 # 실제 HF 캐시 경로를 Python에서 직접 조회 (환경변수 오버라이드 포함)
@@ -116,7 +106,7 @@ else
   fi
 fi
 
-# ── 7. LaunchAgent plist 생성 ───────────────────────────────────────────────
+# ── 6. LaunchAgent plist 생성 ───────────────────────────────────────────────
 step "LaunchAgent plist 생성"
 
 mkdir -p "${HOME}/Library/LaunchAgents"
@@ -173,7 +163,7 @@ PLIST_EOF
 
 ok "plist 생성 완료: ${PLIST_PATH}"
 
-# ── 8. LaunchAgent 등록 ─────────────────────────────────────────────────────
+# ── 7. LaunchAgent 등록 ─────────────────────────────────────────────────────
 step "LaunchAgent 등록"
 
 # 이미 등록된 경우 unload 후 재등록
@@ -185,7 +175,7 @@ fi
 launchctl load "${PLIST_PATH}"
 ok "LaunchAgent 등록 완료"
 
-# ── 9. Supervisor 즉시 시작 ─────────────────────────────────────────────────
+# ── 8. Supervisor 즉시 시작 ─────────────────────────────────────────────────
 step "Supervisor 시작"
 
 if [[ ! -f "${SUPERVISOR_PY}" ]]; then

@@ -138,10 +138,6 @@ launchctl list | grep voice-persona
 ./server.sh status
 ```
 
-**"Edge TTS timeout" 오류**
-- 인터넷 연결 확인 (Edge TTS는 Microsoft 서버 사용)
-- 오프라인 환경: `VOICE_PERSONA_OFFLINE=1` 환경변수 설정 시 MLX 서버 우선 사용
-
 **MLX 모델 로딩 실패**
 - MLX 서버 로그 확인: `tail -f ~/.local/share/voice-persona/.tts_server.log`
 - Apple Silicon 확인: `uname -m` → `arm64` 이어야 함
@@ -172,7 +168,7 @@ bash ~/.local/share/voice-persona/uninstall.sh
 
 **hook_voice** (Python 패키지) — `hook_voice/`
 Claude Code hook에서 `python -m hook_voice <subcommand>`로 호출됩니다.
-Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
+supertonic(7788) MLX로 TTS를 처리하며, 실패 시 HTTP(7777) → subprocess 순으로 폴백합니다.
 
 **TTS Supervisor** (Python, `tts_server/supervisor.py`) — launchd가 단일 프로세스로 관리
 - uvicorn (포트 7777) — MLX Metal GPU TTS
@@ -201,7 +197,6 @@ Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 | 변수 | 용도 |
 |------|------|
 | `VOICE_PERSONA_DATA_DIR` | 영속화 데이터 경로 오버라이드 |
-| `VOICE_PERSONA_OFFLINE` | `1` 설정 시 Edge TTS 건너뜀 |
 | `VOICE_PERSONA_VENV_PYTHON` | Python venv 경로 오버라이드 |
 | `HUB_BASE_URL` | LLM API 베이스 URL (선택) |
 | `HUB_API_KEY` | LLM API 키 (선택, 미설정 시 요약 스킵) |
@@ -212,7 +207,7 @@ Edge TTS → HTTP (MLX) → macOS say 순으로 폴백합니다.
 |------|------|
 | `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
 | `hook_voice/config.py` | `.voice.json` 로더 (`.voice-persona.json` 폴백), SttConfig 포함 |
-| `hook_voice/player.py` | EdgeTTS spool + TTS 재생 폴백 체인 |
+| `hook_voice/player.py` | supertonic MLX spool — speak_hook(F1) / speak_agent(역할별) |
 | `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
 | `hook_voice/voice_router.py` | agentType → voice ID 변환 |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
