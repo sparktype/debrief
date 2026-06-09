@@ -226,15 +226,15 @@ async def test_subagent_stop_adds_laugh_for_tester_success():
     assert spoken_text.startswith("<laugh>")
 
 
-async def test_subagent_stop_no_tag_for_builder_neutral():
-    """builder + 중립 콘텐츠 → 태그 없음."""
+async def test_subagent_stop_builder_neutral_uses_breath_tag():
+    """builder + 중립 콘텐츠 → voice 특성에 맞게 <breath> 태그 사용."""
     raw = json.dumps({"last_assistant_message": "F" * 60})
     with patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP), \
          patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_speak, \
          patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="구현 완료"):
         await handle_subagent_stop(raw, "feature-builder", _CFG)
         spoken_text = mock_speak.call_args.args[0]
-    assert not spoken_text.startswith("<")
+    assert spoken_text.startswith("<breath>")
 
 
 async def test_subagent_stop_passes_steps_from_voice_map():
@@ -473,6 +473,7 @@ async def test_handle_subagent_stop_uses_extract_one_liner():
          patch("hook_voice.hook_handlers.get_agent_label", return_value="기본"), \
          patch("hook_voice.hook_handlers.resolve_instruct", return_value=""), \
          patch("hook_voice.hook_handlers.resolve_category", return_value="default"), \
+         patch("hook_voice.hook_handlers.resolve_voice_settings", return_value={"steps": 12, "synth_speed": 1.05}), \
          patch("hook_voice.hook_handlers.extract_one_liner", new_callable=AsyncMock, return_value="작업 완료") as mock_llm, \
          patch("hook_voice.hook_handlers.speak_agent", new=AsyncMock()) as mock_speak_agent:
         await handle_subagent_stop('{"last_assistant_message": "충분히 긴 내용입니다"}', "default", config)

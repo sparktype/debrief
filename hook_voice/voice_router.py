@@ -21,6 +21,7 @@ _CATEGORY_LABELS: dict[str, str] = {
 
 class VoiceMap(TypedDict):
     supertonic: dict
+    voice_settings: dict[str, dict]
     voices: dict[str, str]
     voice_names: dict[str, str]
     instructs: dict[str, str]
@@ -91,3 +92,12 @@ def get_agent_label(agent_type: str, voice_map: VoiceMap | None = None) -> str:
     if cat:
         return _CATEGORY_LABELS.get(cat, "에이전트")
     return "에이전트"
+
+
+def resolve_voice_settings(agent_type: str, voice_map: VoiceMap | None = None) -> dict:
+    """voice ID 기반으로 synth_speed, steps 설정을 반환한다."""
+    m = voice_map or load_voice_map()
+    voice_id = resolve_voice(agent_type, m)
+    defaults = {"synth_speed": 1.05, "steps": m.get("supertonic", {}).get("steps", 8)}
+    settings = m.get("voice_settings", {})
+    return {**defaults, **settings.get(voice_id, {})}

@@ -44,16 +44,16 @@ _DISCOVERY_RE = re.compile(r"발견|분석|흥미|패턴|탐색")
 _ROUTINE_RE   = re.compile(r"정상|이상없음|문제없음")
 
 _ROLE_DEFAULT_TAGS: dict[str, str] = {
-    "reviewer":   "<breath>",
-    "planner":    "<breath>",
-    "tester":     "<breath>",
-    "explorer":   "<hmm>",
-    "guardian":   "<clear_throat>",
-    "builder":    "",
-    "optimizer":  "",
-    "ops":        "<cough>",
-    "specialist": "<breath>",
-    "default":    "<breath>",
+    "reviewer":   "<breath>",       # M2 deep calm — 신중하게 시작
+    "planner":    "<hmm>",          # M1 upbeat — 아이디어를 떠올리며
+    "builder":    "<breath>",       # M4 gentle — 작업 시작 전
+    "tester":     "<breath>",       # F2 cheerful — 결과 발표 전
+    "explorer":   "<hmm>",          # F3 professional — 분석하며 발견
+    "optimizer":  "<hmm>",          # M3 authoritative — 분석 후 결론
+    "guardian":   "<breath>",       # M5 warm storytelling — 따뜻하게 시작
+    "ops":        "<clear_throat>", # F4 crisp confident — 주목을 요청하며
+    "specialist": "<breath>",       # F5 gentle — 친절하게 시작
+    "default":    "<breath>",       # F1 calm — 자연스럽게
 }
 
 

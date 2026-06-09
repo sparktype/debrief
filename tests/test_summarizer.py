@@ -116,18 +116,18 @@ def test_select_tag_ops_routine():
 
 
 def test_select_tag_role_defaults():
-    """콘텐츠 중립 → 역할 기본 태그."""
+    """콘텐츠 중립 → 역할 기본 태그 (voice 특성 기반으로 재조정됨)."""
     assert select_expression_tag("작업 완료했습니다", "reviewer") == "<breath>"
-    assert select_expression_tag("계획을 수립했습니다", "planner") == "<breath>"
+    assert select_expression_tag("계획을 수립했습니다", "planner") == "<hmm>"
     assert select_expression_tag("중립 메시지", "explorer") == "<hmm>"
-    assert select_expression_tag("중립 메시지", "guardian") == "<clear_throat>"
-    assert select_expression_tag("보고합니다", "ops") == "<cough>"
+    assert select_expression_tag("중립 메시지", "guardian") == "<breath>"
+    assert select_expression_tag("보고합니다", "ops") == "<clear_throat>"
 
 
-def test_select_tag_builder_optimizer_no_tag():
-    """builder / optimizer는 중립 콘텐츠에서 태그 없음."""
-    assert select_expression_tag("구현 완료", "builder") == ""
-    assert select_expression_tag("최적화 완료", "optimizer") == ""
+def test_select_tag_builder_optimizer_default_tag():
+    """builder / optimizer 중립 콘텐츠 기본 태그 (voice 특성 기반으로 재조정됨)."""
+    assert select_expression_tag("구현 완료", "builder") == "<breath>"
+    assert select_expression_tag("최적화 완료", "optimizer") == "<hmm>"
 
 
 def test_select_tag_priority_critical_beats_all():

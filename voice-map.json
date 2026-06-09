@@ -1,7 +1,19 @@
 {
   "supertonic": {
     "lang": "ko",
-    "steps": 6
+    "steps": 8
+  },
+  "voice_settings": {
+    "F1": {"synth_speed": 0.93, "steps": 8},
+    "F2": {"synth_speed": 1.10, "steps": 8},
+    "F3": {"synth_speed": 1.00, "steps": 10},
+    "F4": {"synth_speed": 1.05, "steps": 9},
+    "F5": {"synth_speed": 0.88, "steps": 8},
+    "M1": {"synth_speed": 1.10, "steps": 8},
+    "M2": {"synth_speed": 0.93, "steps": 10},
+    "M3": {"synth_speed": 1.00, "steps": 9},
+    "M4": {"synth_speed": 0.95, "steps": 8},
+    "M5": {"synth_speed": 0.88, "steps": 9}
   },
   "voices": {
     "reviewer": "M2",
@@ -28,16 +40,16 @@
     "M5": "팀"
   },
   "instructs": {
-    "reviewer": "신중하게, 차분한 톤으로 말해주세요",
-    "planner": "차분하고 안정적으로, 논리적인 흐름으로 말해주세요",
-    "builder": "빠르고 간결하게, 자신감 있게 말해주세요",
-    "tester": "또렷하고 정확하게, 항목을 체크하듯 말해주세요",
-    "explorer": "밝고 호기심 있게, 발견을 공유하듯 말해주세요",
-    "optimizer": "군더더기 없이 핵심만 빠르게 말해주세요",
-    "guardian": "꼼꼼하고 신중하게, 품질을 감시하듯 말해주세요",
-    "ops": "침착하고 명확하게, 상황을 보고하듯 말해주세요",
-    "specialist": "전문적이고 자신감 있게 말해주세요",
-    "default": "밝고 친절하게 말해주세요"
+    "reviewer": "진지하고 신중하게, 하나씩 꼼꼼히 살펴보듯 말해주세요",
+    "planner": "활기차고 자신감 있게, 비전을 그리며 계획을 제시해주세요",
+    "builder": "친근하고 부드럽게, 함께 만들어가듯 자연스럽게 말해주세요",
+    "tester": "밝고 경쾌하게, 검증 결과를 또렷하고 명확하게 전달해주세요",
+    "explorer": "명확하고 체계적으로, 발견한 내용을 정확히 보고하듯 말해주세요",
+    "optimizer": "자신감 있고 단호하게, 핵심만 짚어 간결하게 말해주세요",
+    "guardian": "따뜻하게, 이야기를 풀어가듯 문제를 차분히 설명해주세요",
+    "ops": "선명하고 자신감 있게, 상황을 정확히 보고하듯 말해주세요",
+    "specialist": "공감하며 친절하게, 전문 지식을 나눠주세요",
+    "default": "차분하고 안정적으로, 자연스럽게 말해주세요"
   },
   "categories": {
     "reviewer": [

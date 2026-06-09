@@ -30,7 +30,7 @@ from .player import speak_hook, speak_agent, SPOOL_DIR
 from .summarizer import extract_summary, extract_one_liner, select_expression_tag
 from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
-from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category
+from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 
 
@@ -152,7 +152,9 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     label = get_agent_label(agent_type, vm)
     instruct = resolve_instruct(agent_type, vm)
     category = resolve_category(agent_type, vm)
-    steps = vm.get("supertonic", {}).get("steps", 12)
+    settings = resolve_voice_settings(agent_type, vm)
+    steps = settings["steps"]
+    synth_speed = settings["synth_speed"]
     one_liner = await extract_one_liner(text, model=config.summary_model)
     tag = select_expression_tag(one_liner, category)
     prefix = f"{tag} " if tag else ""
@@ -160,7 +162,7 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     start = _time.time()
     try:
         await speak_agent(speak_text, voice, config.supertonic_port, config.tts_speed, instruct,
-                          steps=steps, supertonic_timeout=config.supertonic_timeout_ms / 1000)
+                          steps=steps, synth_speed=synth_speed, supertonic_timeout=config.supertonic_timeout_ms / 1000)
         latency_ms = (_time.time() - start) * 1000
         get_registry().record_tts_latency(latency_ms)
         log_event("tts_completed", hook_ctx, {

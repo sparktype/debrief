@@ -59,13 +59,14 @@ async def speak_hook(text: str, speed: float = 1.2,
 
 
 async def _generate_supertonic(
-    text: str, voice: str, port: int, steps: int = 12, timeout: float = 20.0
+    text: str, voice: str, port: int, steps: int = 12, timeout: float = 20.0,
+    synth_speed: float = 1.05,
 ) -> bytes:
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"http://localhost:{port}/v1/tts",
             json={"text": text, "voice": voice, "lang": "ko",
-                  "steps": steps, "response_format": "wav"},
+                  "steps": steps, "speed": synth_speed, "response_format": "wav"},
             timeout=timeout,
         )
         r.raise_for_status()
@@ -78,7 +79,8 @@ def _dynamic_steps(text: str, base_steps: int) -> int:
 
 
 async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: str = "",
-                      steps: int = 12, supertonic_timeout: float = 20.0) -> None:
+                      steps: int = 12, supertonic_timeout: float = 20.0,
+                      synth_speed: float = 1.05) -> None:
     if not text.strip():
         return
     actual_steps = _dynamic_steps(text, steps)
@@ -86,7 +88,8 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
 
     async def _st_call() -> bytes:
         return await asyncio.wait_for(
-            _generate_supertonic(text, voice, port, steps=actual_steps, timeout=supertonic_timeout),
+            _generate_supertonic(text, voice, port, steps=actual_steps,
+                                 timeout=supertonic_timeout, synth_speed=synth_speed),
             timeout=supertonic_timeout,
         )
 
