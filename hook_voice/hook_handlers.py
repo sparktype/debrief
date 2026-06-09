@@ -96,7 +96,7 @@ async def handle_hook(raw: str, config: Config) -> None:
         if config.speech_retouch:
             pipeline = get_default_pipeline()
             speech_ctx = await pipeline.process(summary)
-            summary = speech_ctx.text  # EdgeTTS는 SSML 미지원 — speech_ctx.ssml의 break 태그가 텍스트로 발화되는 것 방지
+            summary = speech_ctx.text  # SSML break 태그가 텍스트로 발화되는 것 방지
         start = _time.time()
         try:
             await speak_hook(summary, config.tts_speed)
@@ -248,7 +248,7 @@ async def handle_health() -> None:
     api_key = _os.environ.get("AI_API_KEY", "") or _os.environ.get("HUB_API_KEY", "")
     results.append(("AI_API_KEY 환경변수", "OK" if api_key else "MISSING"))
 
-    # 2~5. LLM API · EdgeTTS · uvicorn · supertonic — 병렬 실행
+    # 2~4. LLM API · uvicorn · supertonic — 병렬 실행
     async def _check_llm() -> tuple[str, str]:
         if not api_key:
             return ("LLM API 연결", "SKIP (API 키 없음)")
@@ -258,14 +258,6 @@ async def handle_health() -> None:
             return ("LLM API 연결", "OK" if resp else "FAIL (빈 응답)")
         except Exception as e:
             return ("LLM API 연결", f"FAIL ({type(e).__name__})")
-
-    async def _check_edgetts() -> tuple[str, str]:
-        try:
-            async with _httpx.AsyncClient(timeout=3.0, verify=False) as client:
-                r = await client.get("https://speech.platform.bing.com/")
-                return ("EdgeTTS 연결", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
-        except Exception as e:
-            return ("EdgeTTS 연결", f"FAIL ({type(e).__name__})")
 
     async def _check_uvicorn() -> tuple[str, str]:
         try:
@@ -285,7 +277,6 @@ async def handle_health() -> None:
 
     parallel_results = await _asyncio.gather(
         _check_llm(),
-        _check_edgetts(),
         _check_uvicorn(),
         _check_supertonic(),
     )
