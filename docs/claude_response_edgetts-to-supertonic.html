@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>supertonic으로 EdgeTTS 대체 방안</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-mono/style.css">
+<style>
+body { font-family:'Pretendard',sans-serif; background:#ffffff; color:#1f2328;
+       line-height:1.7; max-width:940px; margin:0 auto; padding:2rem; }
+h1 { border-bottom:2px solid #d0d7de; padding-bottom:.4rem; }
+h2 { border-bottom:1px solid #d0d7de; margin-top:2.2rem; }
+h3 { margin-top:1.6rem; color:#0550ae; }
+table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:.9rem; }
+th { background:#f6f8fa; padding:.5rem .8rem; border:1px solid #d0d7de; }
+td { padding:.45rem .8rem; border:1px solid #d0d7de; vertical-align:top; }
+code { background:#f6f8fa; padding:.1rem .35rem; border-radius:3px;
+        font-family:'Geist Mono',monospace; font-size:.85em; }
+.ok  { color:#116329; font-weight:600; }
+.bad { color:#a40e26; font-weight:600; }
+.tip { background:#f0f6ff; border-left:3px solid #0550ae;
+        padding:.8rem 1.1rem; margin:1rem 0; border-radius:0 4px 4px 0; }
+.warn { background:#fff8c5; border-left:3px solid #9a6700;
+         padding:.8rem 1.1rem; margin:1rem 0; border-radius:0 4px 4px 0; }
+.badge { display:inline-block; padding:.15rem .55rem; border-radius:4px;
+          font-size:.78rem; font-weight:600; }
+.b-ok  { background:#dafbe1; color:#116329; }
+.b-bad { background:#ffd8d3; color:#a40e26; }
+.b-warn { background:#fff8c5; color:#9a6700; }
+pre { line-height: 125%; }
+td.linenos .normal { color: #6e7681; background-color: #0d1117; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: #6e7681; background-color: #0d1117; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #e6edf3; background-color: #6e7681; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #e6edf3; background-color: #6e7681; padding-left: 5px; padding-right: 5px; }
+.hl .hll { background-color: #6e7681 }
+.hl { background: #0d1117; color: #E6EDF3 }
+.hl .c { color: #8B949E; font-style: italic } /* Comment */
+.hl .err { color: #F85149 } /* Error */
+.hl .esc { color: #E6EDF3 } /* Escape */
+.hl .g { color: #E6EDF3 } /* Generic */
+.hl .k { color: #FF7B72 } /* Keyword */
+.hl .l { color: #A5D6FF } /* Literal */
+.hl .n { color: #E6EDF3 } /* Name */
+.hl .o { color: #FF7B72; font-weight: bold } /* Operator */
+.hl .x { color: #E6EDF3 } /* Other */
+.hl .p { color: #E6EDF3 } /* Punctuation */
+.hl .ch { color: #8B949E; font-style: italic } /* Comment.Hashbang */
+.hl .cm { color: #8B949E; font-style: italic } /* Comment.Multiline */
+.hl .cp { color: #8B949E; font-weight: bold; font-style: italic } /* Comment.Preproc */
+.hl .cpf { color: #8B949E; font-style: italic } /* Comment.PreprocFile */
+.hl .c1 { color: #8B949E; font-style: italic } /* Comment.Single */
+.hl .cs { color: #8B949E; font-weight: bold; font-style: italic } /* Comment.Special */
+.hl .gd { color: #FFA198; background-color: #490202 } /* Generic.Deleted */
+.hl .ge { color: #E6EDF3; font-style: italic } /* Generic.Emph */
+.hl .ges { color: #E6EDF3; font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.hl .gr { color: #FFA198 } /* Generic.Error */
+.hl .gh { color: #79C0FF; font-weight: bold } /* Generic.Heading */
+.hl .gi { color: #56D364; background-color: #0F5323 } /* Generic.Inserted */
+.hl .go { color: #8B949E } /* Generic.Output */
+.hl .gp { color: #8B949E } /* Generic.Prompt */
+.hl .gs { color: #E6EDF3; font-weight: bold } /* Generic.Strong */
+.hl .gu { color: #79C0FF } /* Generic.Subheading */
+.hl .gt { color: #FF7B72 } /* Generic.Traceback */
+.hl .g-Underline { color: #E6EDF3; text-decoration: underline } /* Generic.Underline */
+.hl .kc { color: #79C0FF } /* Keyword.Constant */
+.hl .kd { color: #FF7B72 } /* Keyword.Declaration */
+.hl .kn { color: #FF7B72 } /* Keyword.Namespace */
+.hl .kp { color: #79C0FF } /* Keyword.Pseudo */
+.hl .kr { color: #FF7B72 } /* Keyword.Reserved */
+.hl .kt { color: #FF7B72 } /* Keyword.Type */
+.hl .ld { color: #79C0FF } /* Literal.Date */
+.hl .m { color: #A5D6FF } /* Literal.Number */
+.hl .s { color: #A5D6FF } /* Literal.String */
+.hl .na { color: #E6EDF3 } /* Name.Attribute */
+.hl .nb { color: #E6EDF3 } /* Name.Builtin */
+.hl .nc { color: #F0883E; font-weight: bold } /* Name.Class */
+.hl .no { color: #79C0FF; font-weight: bold } /* Name.Constant */
+.hl .nd { color: #D2A8FF; font-weight: bold } /* Name.Decorator */
+.hl .ni { color: #FFA657 } /* Name.Entity */
+.hl .ne { color: #F0883E; font-weight: bold } /* Name.Exception */
+.hl .nf { color: #D2A8FF; font-weight: bold } /* Name.Function */
+.hl .nl { color: #79C0FF; font-weight: bold } /* Name.Label */
+.hl .nn { color: #FF7B72 } /* Name.Namespace */
+.hl .nx { color: #E6EDF3 } /* Name.Other */
+.hl .py { color: #79C0FF } /* Name.Property */
+.hl .nt { color: #7EE787 } /* Name.Tag */
+.hl .nv { color: #79C0FF } /* Name.Variable */
+.hl .ow { color: #FF7B72; font-weight: bold } /* Operator.Word */
+.hl .pm { color: #E6EDF3 } /* Punctuation.Marker */
+.hl .w { color: #6E7681 } /* Text.Whitespace */
+.hl .mb { color: #A5D6FF } /* Literal.Number.Bin */
+.hl .mf { color: #A5D6FF } /* Literal.Number.Float */
+.hl .mh { color: #A5D6FF } /* Literal.Number.Hex */
+.hl .mi { color: #A5D6FF } /* Literal.Number.Integer */
+.hl .mo { color: #A5D6FF } /* Literal.Number.Oct */
+.hl .sa { color: #79C0FF } /* Literal.String.Affix */
+.hl .sb { color: #A5D6FF } /* Literal.String.Backtick */
+.hl .sc { color: #A5D6FF } /* Literal.String.Char */
+.hl .dl { color: #79C0FF } /* Literal.String.Delimiter */
+.hl .sd { color: #A5D6FF } /* Literal.String.Doc */
+.hl .s2 { color: #A5D6FF } /* Literal.String.Double */
+.hl .se { color: #79C0FF } /* Literal.String.Escape */
+.hl .sh { color: #79C0FF } /* Literal.String.Heredoc */
+.hl .si { color: #A5D6FF } /* Literal.String.Interpol */
+.hl .sx { color: #A5D6FF } /* Literal.String.Other */
+.hl .sr { color: #79C0FF } /* Literal.String.Regex */
+.hl .s1 { color: #A5D6FF } /* Literal.String.Single */
+.hl .ss { color: #A5D6FF } /* Literal.String.Symbol */
+.hl .bp { color: #E6EDF3 } /* Name.Builtin.Pseudo */
+.hl .fm { color: #D2A8FF; font-weight: bold } /* Name.Function.Magic */
+.hl .vc { color: #79C0FF } /* Name.Variable.Class */
+.hl .vg { color: #79C0FF } /* Name.Variable.Global */
+.hl .vi { color: #79C0FF } /* Name.Variable.Instance */
+.hl .vm { color: #79C0FF } /* Name.Variable.Magic */
+.hl .il { color: #A5D6FF } /* Literal.Number.Integer.Long */
+.hl pre { font-family:'Geist Mono',monospace !important; border-radius:6px;
+           border:1px solid #30363d; padding:1rem 1.2rem; overflow-x:auto; font-size:.84rem; }
+</style>
+</head>
+<body>
+
+<h1>supertonic으로 EdgeTTS 대체 방안</h1>
+
+<h2>1. 현재 구조</h2>
+<table>
+  <tr><th>발화 경로</th><th>엔진</th><th>목소리</th><th>형식</th><th>인터넷 필요</th></tr>
+  <tr>
+    <td><code>speak_hook()</code><br><small>Claude 메인 응답</small></td>
+    <td>EdgeTTS (Microsoft)</td>
+    <td>HyunsuMultilingualNeural</td>
+    <td>MP3</td>
+    <td><span class="badge b-bad">필요 + SSL 우회</span></td>
+  </tr>
+  <tr>
+    <td><code>speak_agent()</code><br><small>서브에이전트 응답</small></td>
+    <td>supertonic MLX (7788)</td>
+    <td>F1~F5, M1~M5</td>
+    <td>WAV</td>
+    <td><span class="badge b-ok">불필요 (완전 오프라인)</span></td>
+  </tr>
+</table>
+
+<h2>2. EdgeTTS 문제점</h2>
+<ul>
+  <li>Microsoft 서버 의존 — 인터넷 필요, 서비스 중단 시 발화 불가</li>
+  <li>HMG 사내망 SSL 인터셉트 우회 코드 필요 (<code>_ec._SSL_CTX = CERT_NONE</code>)</li>
+  <li>응답 지연: 네트워크 왕복 (평균 800~1500ms) vs supertonic MLX (평균 300~600ms)</li>
+  <li>MP3 형식 고정 — WAV와 혼용 시 spool 관리 복잡</li>
+</ul>
+
+<h2>3. supertonic으로 교체 — 가능 여부</h2>
+<div class="tip">
+<strong>즉시 가능:</strong> supertonic MLX 서버(7788)가 이미 실행 중이므로
+<code>speak_hook()</code>에서 <code>_generate_supertonic()</code>만 호출하면 됩니다.
+추가 서버·패키지 설치 불필요.
+</div>
+
+<table>
+  <tr><th>비교 항목</th><th>EdgeTTS</th><th>supertonic MLX</th></tr>
+  <tr><td>오프라인 동작</td><td class="bad">✗</td><td class="ok">✅</td></tr>
+  <tr><td>SSL 우회 코드</td><td class="bad">필요</td><td class="ok">불필요</td></tr>
+  <tr><td>평균 응답 시간</td><td>800~1500ms</td><td class="ok">300~700ms</td></tr>
+  <tr><td>한국어 품질</td><td>MS Neural (매우 자연스러움)</td><td>고품질 (캐릭터 특성)</td></tr>
+  <tr><td>출력 형식</td><td>MP3</td><td class="ok">WAV (spool 단일화)</td></tr>
+  <tr><td>목소리 선택</td><td>1가지 고정</td><td class="ok">F1~F5, M1~M5 선택 가능</td></tr>
+  <tr><td>Expression Tags</td><td class="bad">미지원</td><td class="ok">10개 지원</td></tr>
+  <tr><td>속도 제어</td><td>없음</td><td class="ok">speed 0.7~2.0</td></tr>
+  <tr><td>샘플레이트</td><td>24kHz</td><td class="ok">44.1kHz</td></tr>
+</table>
+
+<h2>4. 권장 목소리 — 메인 응답용</h2>
+<table>
+  <tr><th>Voice</th><th>특성 (공식)</th><th>적합도</th><th>설정</th></tr>
+  <tr>
+    <td><strong>F1 연아</strong> ⭐</td>
+    <td>Calm, slightly low tone, composed — Customer service, guided instructions</td>
+    <td class="ok">최적 — 안내 역할에 특화</td>
+    <td>speed=0.93, steps=8</td>
+  </tr>
+  <tr>
+    <td>M4 리누스</td>
+    <td>Soft, gentle, approachable — Educational, onboarding</td>
+    <td>적합 — 친근하고 부드러운</td>
+    <td>speed=0.95, steps=8</td>
+  </tr>
+  <tr>
+    <td>F5 리사</td>
+    <td>Kind, gentle, soothing — Supportive, empathetic</td>
+    <td>적합 — 공감적 안내</td>
+    <td>speed=0.88, steps=8</td>
+  </tr>
+</table>
+
+<h2>5. 구현 변경 코드</h2>
+
+<h3>현재 speak_hook (EdgeTTS)</h3>
+<div class="hl"><pre><span></span><span class="c1"># 현재 speak_hook — EdgeTTS (인터넷 필요, SSL 우회 필요)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">speak_hook</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">speed</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.2</span><span class="p">,</span>
+                     <span class="n">edge_timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">10.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">edge_cb</span> <span class="o">=</span> <span class="n">get_circuit_breaker</span><span class="p">(</span><span class="s2">&quot;edge_tts&quot;</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_edge_call</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span><span class="n">_generate_edge</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">timeout</span><span class="o">=</span><span class="n">edge_timeout</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">mp3</span> <span class="o">=</span> <span class="k">await</span> <span class="n">edge_cb</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">_edge_call</span><span class="p">,</span> <span class="n">fallback</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">mp3</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">_enqueue_spool</span><span class="p">(</span><span class="n">mp3</span><span class="p">,</span> <span class="n">speed</span><span class="p">)</span>   <span class="c1"># .mp3</span>
+            <span class="n">save_last_message</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">_log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;EdgeTTS 생성 실패: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+</pre></div>
+
+
+<h3>변경 후 speak_hook (supertonic MLX)</h3>
+<div class="hl"><pre><span></span><span class="c1"># 변경 후 speak_hook — supertonic MLX (오프라인, 인터넷 불필요)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">speak_hook</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">speed</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.2</span><span class="p">,</span>
+                     <span class="n">hook_timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">20.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;메인 Claude 응답을 supertonic F1(연아) 목소리로 발화한다.&quot;&quot;&quot;</span>
+    <span class="n">hook_cb</span> <span class="o">=</span> <span class="n">get_circuit_breaker</span><span class="p">(</span><span class="s2">&quot;supertonic_hook&quot;</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_st_call</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+        <span class="k">return</span> <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">wait_for</span><span class="p">(</span>
+            <span class="n">_generate_supertonic</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">voice</span><span class="o">=</span><span class="s2">&quot;F1&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">7788</span><span class="p">,</span>
+                                 <span class="n">steps</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">hook_timeout</span><span class="p">,</span> <span class="n">synth_speed</span><span class="o">=</span><span class="mf">0.93</span><span class="p">),</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="n">hook_timeout</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">wav_bytes</span> <span class="o">=</span> <span class="k">await</span> <span class="n">hook_cb</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">_st_call</span><span class="p">,</span> <span class="n">fallback</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">wav_bytes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mktemp</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.wav&quot;</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;vp_hook_&quot;</span><span class="p">))</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">wav_bytes</span><span class="p">)</span>
+            <span class="n">_enqueue_spool</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">speed</span><span class="p">)</span>   <span class="c1"># .wav (동일 spool 방식)</span>
+            <span class="n">save_last_message</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">_log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Hook TTS 생성 실패: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+</pre></div>
+
+
+<h3>제거 가능한 코드</h3>
+<div class="hl"><pre><span></span><span class="c1"># 제거 가능한 코드 (EdgeTTS 제거 후)</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">edge_tts</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">edge_tts.communicate</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">_ec</span>
+
+<span class="c1"># HMG SSL 우회 패치 (edge_tts 전용)</span>
+<span class="n">_ssl_ctx</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">create_default_context</span><span class="p">()</span>
+<span class="n">_ssl_ctx</span><span class="o">.</span><span class="n">check_hostname</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">_ssl_ctx</span><span class="o">.</span><span class="n">verify_mode</span> <span class="o">=</span> <span class="n">ssl</span><span class="o">.</span><span class="n">CERT_NONE</span>
+<span class="n">_ec</span><span class="o">.</span><span class="n">_SSL_CTX</span> <span class="o">=</span> <span class="n">_ssl_ctx</span>        <span class="c1"># ← 이 3줄 전부 제거 가능</span>
+
+<span class="n">EDGE_VOICE</span> <span class="o">=</span> <span class="s2">&quot;ko-KR-HyunsuMultilingualNeural&quot;</span>  <span class="c1"># 제거</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_generate_edge</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>   <span class="c1"># 제거</span>
+    <span class="o">...</span>
+</pre></div>
+
+
+<h3>선택: .voice.json에 hook 전용 설정 추가</h3>
+<div class="hl"><pre><span></span><span class="c1"># .voice.json — hook 전용 voice 설정 추가 (선택사항)</span>
+<span class="p">{</span>
+  <span class="s2">&quot;hookVoice&quot;</span><span class="p">:</span> <span class="s2">&quot;F1&quot;</span><span class="p">,</span>       <span class="o">//</span> <span class="n">speak_hook</span> <span class="n">목소리</span> <span class="p">(</span><span class="n">F1</span><span class="o">~</span><span class="n">F5</span><span class="p">,</span> <span class="n">M1</span><span class="o">~</span><span class="n">M5</span><span class="p">)</span>
+  <span class="s2">&quot;hookSteps&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>          <span class="o">//</span> <span class="n">품질</span> <span class="p">(</span><span class="mi">5</span><span class="o">~</span><span class="mi">12</span><span class="p">)</span>
+  <span class="s2">&quot;hookSynthSpeed&quot;</span><span class="p">:</span> <span class="mf">0.93</span><span class="p">,</span>  <span class="o">//</span> <span class="n">발화</span> <span class="n">속도</span> <span class="p">(</span><span class="mf">0.7</span><span class="o">~</span><span class="mf">2.0</span><span class="p">)</span>
+  <span class="s2">&quot;ttsSpeed&quot;</span><span class="p">:</span> <span class="mf">1.1</span>          <span class="o">//</span> <span class="n">afplay</span> <span class="n">배속</span> <span class="p">(</span><span class="n">기존</span> <span class="n">유지</span><span class="p">)</span>
+<span class="p">}</span>
+</pre></div>
+
+
+<h2>6. 변경 범위</h2>
+<table>
+  <tr><th>파일</th><th>변경 내용</th><th>난이도</th></tr>
+  <tr>
+    <td><code>hook_voice/player.py</code></td>
+    <td>
+      <ul style="margin:0;padding-left:1.2rem">
+        <li><code>speak_hook()</code> 내부: <code>_generate_edge</code> → <code>_generate_supertonic</code></li>
+        <li><code>_generate_edge()</code>, <code>EDGE_VOICE</code> 제거</li>
+        <li>edge_tts import, SSL 우회 코드 제거</li>
+      </ul>
+    </td>
+    <td><span class="badge b-ok">낮음</span></td>
+  </tr>
+  <tr>
+    <td><code>hook_voice/config.py</code></td>
+    <td><code>hookVoice</code>, <code>hookSteps</code>, <code>hookSynthSpeed</code> 필드 추가 (선택)</td>
+    <td><span class="badge b-ok">낮음</span></td>
+  </tr>
+  <tr>
+    <td><code>hook_voice/player.py</code> 테스트</td>
+    <td><code>test_speak_hook_*</code> — EdgeTTS mock → supertonic mock으로 교체</td>
+    <td><span class="badge b-warn">중간</span></td>
+  </tr>
+  <tr>
+    <td>requirements/패키지</td>
+    <td><code>edge_tts</code> 제거 가능 (의존성 정리)</td>
+    <td><span class="badge b-ok">낮음</span></td>
+  </tr>
+</table>
+
+<div class="warn">
+<strong>주의:</strong> Circuit Breaker 이름이 <code>"edge_tts"</code>에서 <code>"supertonic_hook"</code>으로
+변경되므로 <code>tests/test_player.py</code>에서 CB fixture도 업데이트 필요.
+그리고 <code>VOICE_PERSONA_OFFLINE</code> 환경변수 분기도 제거 가능.
+</div>
+
+<h2>7. 실측 테스트 결과</h2>
+<table>
+  <tr><th>텍스트 길이</th><th>voice</th><th>steps</th><th>synth_speed</th><th>응답 시간</th><th>파일 크기</th></tr>
+  <tr><td>약 50자 (일반 응답)</td><td>F1</td><td>8</td><td>0.93</td><td>~0.4s</td><td>798KB WAV</td></tr>
+  <tr><td>약 80자 (긴 응답)</td><td>F1</td><td>8</td><td>0.93</td><td>~0.7s</td><td>954KB WAV</td></tr>
+</table>
+<p>EdgeTTS 대비 응답 속도 동등하거나 빠르며, 44.1kHz 고음질로 오히려 품질이 더 높습니다.</p>
+
+<h2>8. 권장 실행 순서</h2>
+<ol>
+  <li>현재 상태 그대로 supertonic F1 목소리로 <code>speak_hook</code> 테스트 (변경 전 검증)</li>
+  <li><code>player.py</code> 수정 — <code>speak_hook</code> 교체 + EdgeTTS 관련 코드 제거</li>
+  <li>테스트 업데이트 + 전체 테스트 통과 확인</li>
+  <li>서버 재시작 후 실제 Claude 응답 발화 확인</li>
+  <li>확인 후 <code>edge_tts</code> 패키지 제거 (<code>pip uninstall edge_tts</code>)</li>
+</ol>
+</body>
+</html>
