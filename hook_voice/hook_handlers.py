@@ -497,3 +497,10 @@ async def handle_grafana(args: list[str], config_path: "Path | None" = None) -> 
 
     else:
         print(f"알 수 없는 서브커맨드: {sub}", flush=True)
+
+
+async def handle_pre_tool_monitor(raw: str) -> None:
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if not session_id:
+        return
+    Path(f"/tmp/tts-monitor-{session_id}").touch()

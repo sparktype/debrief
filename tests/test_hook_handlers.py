@@ -478,3 +478,24 @@ async def test_handle_subagent_stop_uses_extract_one_liner():
         mock_llm.assert_called_once()
         mock_speak_agent.assert_called_once()
         assert "작업 완료" in mock_speak_agent.call_args[0][0]
+
+
+# ── handle_pre_tool_monitor 테스트 ───────────────────────────
+
+from hook_voice.hook_handlers import handle_pre_tool_monitor
+
+
+async def test_handle_pre_tool_monitor_creates_flag(monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-mon-001")
+    flag = Path("/tmp/tts-monitor-test-mon-001")
+    flag.unlink(missing_ok=True)
+    try:
+        await handle_pre_tool_monitor("")
+        assert flag.exists()
+    finally:
+        flag.unlink(missing_ok=True)
+
+
+async def test_handle_pre_tool_monitor_no_session_id(monkeypatch):
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    await handle_pre_tool_monitor("")  # 예외 없이 종료되어야 함
