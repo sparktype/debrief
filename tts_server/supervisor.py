@@ -84,12 +84,16 @@ async def player_loop(
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if shutdown.is_set() and proc.returncode is None:
-                    proc.terminate()
+                    # shutdown이 set돼도 현재 재생 중인 파일은 끝까지 재생
                     try:
-                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+                        await asyncio.wait_for(proc.wait(), timeout=30.0)
                     except asyncio.TimeoutError:
-                        proc.kill()
-                        await proc.wait()
+                        proc.terminate()
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            proc.kill()
+                            await proc.wait()
                 for t in pending:
                     t.cancel()
                 try:
@@ -133,17 +137,28 @@ async def monitor_children(
     procs: "list[subprocess.Popen]",
     shutdown: "asyncio.Event | None" = None,
     sleep_sec: float = 1.0,
+    restartable_idx: "int | None" = None,
+    restart_fn: "Callable[[], subprocess.Popen] | None" = None,
 ) -> None:
-    """자식 프로세스를 1초 주기로 감시 — 비정상 종료 시 shutdown 이벤트 set."""
+    """자식 프로세스를 1초 주기로 감시.
+
+    restartable_idx 인덱스의 프로세스(supertonic)가 crash되면 restart_fn으로 재시작.
+    그 외 프로세스(uvicorn) crash 시 shutdown 이벤트를 set한다.
+    """
     if shutdown is None:
         shutdown = asyncio.Event()
     while not shutdown.is_set():
-        for proc in procs:
+        for i, proc in enumerate(procs):
             rc = proc.poll()
             if rc is not None:
-                log.error(f"[Monitor] 자식 PID {proc.pid} 비정상 종료 (returncode={rc})")
-                shutdown.set()
-                return
+                if i == restartable_idx and restart_fn is not None:
+                    log.warning(f"[Monitor] supertonic PID {proc.pid} crash (rc={rc}) — 재시작")
+                    procs[i] = restart_fn()
+                    log.info(f"[Monitor] supertonic 재시작 (PID {procs[i].pid})")
+                else:
+                    log.error(f"[Monitor] 자식 PID {proc.pid} 비정상 종료 (returncode={rc})")
+                    shutdown.set()
+                    return
         await asyncio.sleep(sleep_sec)
 
 
@@ -182,8 +197,11 @@ async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + 5.0
     for proc in reversed(procs):   # supertonic → uvicorn 순서
-        proc.terminate()
+        if proc.poll() is None:    # 이미 종료된 프로세스는 건너뜀
+            proc.terminate()
     for proc in procs:
+        if proc.poll() is not None:
+            continue
         remaining = max(0.1, deadline - loop.time())
         try:
             await asyncio.wait_for(
@@ -223,7 +241,11 @@ async def main() -> None:
         await asyncio.gather(
             player_loop(shutdown=shutdown),
             cleanup_loop(shutdown=shutdown),
-            monitor_children(procs, shutdown=shutdown),
+            monitor_children(
+                procs, shutdown=shutdown,
+                restartable_idx=1,          # procs[1] = supertonic
+                restart_fn=_start_supertonic,
+            ),
             poller.run(shutdown),
         )
     finally:
