@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from hook_voice.config import Config
 from hook_voice.hook_handlers import (
     classify_pre_tool_bash,
@@ -498,7 +498,10 @@ async def test_handle_hook_uses_reviewer_voice_when_monitor_flag(monkeypatch):
     flag = Path("/tmp/tts-monitor-test-mon-002")
     flag.touch()
     raw = json.dumps({"last_assistant_message": "모니터링 결과입니다. " * 6})
+    mock_pipeline = MagicMock()
+    mock_pipeline.process = AsyncMock(return_value=MagicMock(text="모니터링 요약"))
     with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="모니터링 요약")), \
+         patch("hook_voice.hook_handlers.get_default_pipeline", return_value=mock_pipeline), \
          patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP_WITH_SETTINGS), \
          patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_agent, \
          patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_hook:
@@ -516,7 +519,10 @@ async def test_handle_hook_uses_default_voice_without_monitor_flag(monkeypatch):
     flag = Path("/tmp/tts-monitor-test-mon-003")
     flag.unlink(missing_ok=True)
     raw = json.dumps({"last_assistant_message": "일반 응답입니다. " * 6})
+    mock_pipeline = MagicMock()
+    mock_pipeline.process = AsyncMock(return_value=MagicMock(text="일반 요약"))
     with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="일반 요약")), \
+         patch("hook_voice.hook_handlers.get_default_pipeline", return_value=mock_pipeline), \
          patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_hook, \
          patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_agent:
         await handle_hook(raw, _CFG)

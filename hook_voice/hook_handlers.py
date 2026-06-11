@@ -101,14 +101,15 @@ async def handle_hook(raw: str, config: Config) -> None:
         session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
         monitor_flag = Path(f"/tmp/tts-monitor-{session_id}") if session_id else None
         use_reviewer = bool(monitor_flag and monitor_flag.exists())
+        failure_stage = "speak_agent_monitor" if use_reviewer else "speak_hook"
 
         start = _time.time()
         try:
             if use_reviewer:
-                monitor_flag.unlink(missing_ok=True)
                 vm = load_voice_map()
                 settings = resolve_voice_settings("code-reviewer", vm)
                 instruct = resolve_instruct("code-reviewer", vm)
+                monitor_flag.unlink(missing_ok=True)
                 await speak_agent(
                     summary, "M2",
                     port=config.supertonic_port, speed=config.tts_speed,
@@ -129,7 +130,7 @@ async def handle_hook(raw: str, config: Config) -> None:
             log_event("tts_failed", hook_ctx, {"error": str(exc)}, level="WARNING")
             get_dlq_store().push(
                 event_id=hook_ctx.correlation_id,
-                failure_stage="speak_hook",
+                failure_stage=failure_stage,
                 failure_detail=str(exc),
                 raw_text=summary[:200],
                 source="stop_hook",
