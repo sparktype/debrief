@@ -1,7 +1,7 @@
 {
   "summaryModel": "gemini-3.5-flash",
   "grafana": {
-    "enabled": true,
+    "enabled": false,
     "url": "https://hubble-krnw-platform.hmg-corp.io/grafana",
     "token": "glsa_8vNKNobn45r6t38tldlXOYG5ZQHrNOKN_e40bad4c",
     "interval": 30,
