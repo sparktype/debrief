@@ -97,9 +97,28 @@ async def handle_hook(raw: str, config: Config) -> None:
             pipeline = get_default_pipeline()
             speech_ctx = await pipeline.process(summary)
             summary = speech_ctx.text  # SSML break 태그가 텍스트로 발화되는 것 방지
+
+        session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+        monitor_flag = Path(f"/tmp/tts-monitor-{session_id}") if session_id else None
+        use_reviewer = bool(monitor_flag and monitor_flag.exists())
+
         start = _time.time()
         try:
-            await speak_hook(summary, config.tts_speed)
+            if use_reviewer:
+                monitor_flag.unlink(missing_ok=True)
+                vm = load_voice_map()
+                settings = resolve_voice_settings("code-reviewer", vm)
+                instruct = resolve_instruct("code-reviewer", vm)
+                await speak_agent(
+                    summary, "M2",
+                    port=config.supertonic_port, speed=config.tts_speed,
+                    instruct=instruct,
+                    steps=settings["steps"],
+                    synth_speed=settings["synth_speed"],
+                    supertonic_timeout=config.supertonic_timeout_ms / 1000,
+                )
+            else:
+                await speak_hook(summary, config.tts_speed)
             latency_ms = (_time.time() - start) * 1000
             get_registry().record_tts_latency(latency_ms)
             log_event("tts_completed", hook_ctx, {

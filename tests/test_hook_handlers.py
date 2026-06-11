@@ -14,6 +14,7 @@ from hook_voice.hook_handlers import (
     handle_subagent_stop,
     handle_config,
     handle_control,
+    handle_pre_tool_monitor,
 )
 import hook_voice.hook_handlers as _hh
 
@@ -480,10 +481,50 @@ async def test_handle_subagent_stop_uses_extract_one_liner():
         assert "작업 완료" in mock_speak_agent.call_args[0][0]
 
 
+MOCK_VOICE_MAP_WITH_SETTINGS = {
+    **MOCK_VOICE_MAP,
+    "voice_settings": {
+        "M2": {"synth_speed": 0.93, "steps": 10},
+    },
+    "categories": {
+        "reviewer": ["code-reviewer"],
+    },
+}
+
+
+async def test_handle_hook_uses_reviewer_voice_when_monitor_flag(monkeypatch):
+    """Monitor 플래그 파일이 있으면 speak_agent(M2)를 호출하고 플래그를 삭제한다."""
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-mon-002")
+    flag = Path("/tmp/tts-monitor-test-mon-002")
+    flag.touch()
+    raw = json.dumps({"last_assistant_message": "모니터링 결과입니다. " * 6})
+    with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="모니터링 요약")), \
+         patch("hook_voice.hook_handlers.load_voice_map", return_value=MOCK_VOICE_MAP_WITH_SETTINGS), \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_agent, \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_hook:
+        await handle_hook(raw, _CFG)
+    mock_agent.assert_called_once()
+    call_kwargs = mock_agent.call_args
+    assert call_kwargs.kwargs.get("voice") == "M2" or call_kwargs.args[1] == "M2"
+    mock_hook.assert_not_called()
+    assert not flag.exists()
+
+
+async def test_handle_hook_uses_default_voice_without_monitor_flag(monkeypatch):
+    """Monitor 플래그 파일이 없으면 speak_hook(F1)을 호출한다."""
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-mon-003")
+    flag = Path("/tmp/tts-monitor-test-mon-003")
+    flag.unlink(missing_ok=True)
+    raw = json.dumps({"last_assistant_message": "일반 응답입니다. " * 6})
+    with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="일반 요약")), \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_hook, \
+         patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_agent:
+        await handle_hook(raw, _CFG)
+    mock_hook.assert_called_once()
+    mock_agent.assert_not_called()
+
+
 # ── handle_pre_tool_monitor 테스트 ───────────────────────────
-
-from hook_voice.hook_handlers import handle_pre_tool_monitor
-
 
 async def test_handle_pre_tool_monitor_creates_flag(monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "test-mon-001")
