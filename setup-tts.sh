@@ -19,7 +19,6 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${PROJECT_DIR}/.venv"
 SUPERVISOR_PY="${PROJECT_DIR}/tts_server/supervisor.py"
 PLIST_PATH="${HOME}/Library/LaunchAgents/com.voice-persona.tts-server.plist"
-MODEL_ID="mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 LABEL="com.voice-persona.tts-server"
 
 echo "======================================================"
@@ -57,17 +56,7 @@ fi
 PIP="${VENV_DIR}/bin/pip"
 PYTHON="${VENV_DIR}/bin/python"
 
-# ── 3. mlx-audio 설치 ───────────────────────────────────────────────────────
-step "mlx-audio 설치"
-
-if "${PYTHON}" -c "import mlx_audio" &>/dev/null 2>&1; then
-  ok "mlx-audio가 이미 설치되어 있습니다 — 스킵"
-else
-  "${PIP}" install -q mlx-audio
-  ok "mlx-audio 설치 완료"
-fi
-
-# ── 4. supertonic 설치 (Supertonic 온디바이스 TTS) ─────────────────────────
+# ── 3. supertonic 설치 (Supertonic 온디바이스 TTS) ─────────────────────────
 step "supertonic 설치"
 
 if [ -f "${VENV_DIR}/bin/supertonic" ]; then
@@ -77,36 +66,7 @@ else
   ok "supertonic 설치 완료"
 fi
 
-# ── 5. 모델 사전 다운로드 ───────────────────────────────────────────────────
-step "HuggingFace 모델 다운로드 (${MODEL_ID})"
-
-# 실제 HF 캐시 경로를 Python에서 직접 조회 (환경변수 오버라이드 포함)
-HF_CACHE_DIR="$("${PYTHON}" -c "from huggingface_hub import constants; print(constants.HF_HUB_CACHE)" 2>/dev/null || echo "${HOME}/.cache/huggingface/hub")"
-MODEL_CACHE_NAME="models--$(echo "${MODEL_ID}" | tr '/' '--')"
-
-# 캐시 존재 여부 먼저 확인 — 있으면 네트워크 불필요
-if [[ -d "${HF_CACHE_DIR}/${MODEL_CACHE_NAME}" ]]; then
-  ok "모델 캐시 확인됨 — 다운로드 스킵"
-else
-  # venv 내 hf 우선 (pyenv 간섭 방지), 없으면 설치
-  if [[ -f "${VENV_DIR}/bin/hf" ]]; then
-    HF_BIN="${VENV_DIR}/bin/hf"
-  elif [[ -f "${VENV_DIR}/bin/huggingface-cli" ]]; then
-    HF_BIN="${VENV_DIR}/bin/huggingface-cli"
-  else
-    warn "hf를 찾을 수 없어 huggingface_hub를 설치합니다."
-    "${PIP}" install -q huggingface_hub
-    HF_BIN="${VENV_DIR}/bin/hf"
-  fi
-
-  if HF_HUB_OFFLINE=0 "${HF_BIN}" download "${MODEL_ID}" 2>&1; then
-    ok "모델 다운로드 완료"
-  else
-    warn "모델 다운로드 실패. TTS 서버가 시작 시 재시도합니다."
-  fi
-fi
-
-# ── 6. LaunchAgent plist 생성 ───────────────────────────────────────────────
+# ── 4. LaunchAgent plist 생성 ───────────────────────────────────────────────
 step "LaunchAgent plist 생성"
 
 mkdir -p "${HOME}/Library/LaunchAgents"
@@ -163,7 +123,7 @@ PLIST_EOF
 
 ok "plist 생성 완료: ${PLIST_PATH}"
 
-# ── 7. LaunchAgent 등록 ─────────────────────────────────────────────────────
+# ── 5. LaunchAgent 등록 ─────────────────────────────────────────────────────
 step "LaunchAgent 등록"
 
 # 이미 등록된 경우 unload 후 재등록
@@ -175,14 +135,14 @@ fi
 launchctl load "${PLIST_PATH}"
 ok "LaunchAgent 등록 완료"
 
-# ── 8. Supervisor 즉시 시작 ─────────────────────────────────────────────────
+# ── 6. Supervisor 즉시 시작 ─────────────────────────────────────────────────
 step "Supervisor 시작"
 
 if [[ ! -f "${SUPERVISOR_PY}" ]]; then
   warn "tts_server/supervisor.py를 찾을 수 없습니다. 서버 시작을 건너뜁니다."
 else
   launchctl start "${LABEL}" 2>/dev/null || true
-  ok "Supervisor 시작 명령 완료 (포트 7777·7788 로딩 중)"
+  ok "Supervisor 시작 명령 완료 (포트 7777 로딩 중)"
 fi
 
 # ── 완료 ────────────────────────────────────────────────────────────────────
@@ -191,7 +151,6 @@ echo "======================================================"
 echo -e " ${GREEN}✓ voice-persona TTS 설치가 완료되었습니다${NC}"
 echo "======================================================"
 echo ""
-echo "  모델   : ${MODEL_ID}"
 echo "  venv   : ${VENV_DIR}"
 echo "  plist  : ${PLIST_PATH}"
 echo "  로그   : ${PROJECT_DIR}/.tts_server.log"
