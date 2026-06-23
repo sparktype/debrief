@@ -52,7 +52,7 @@ class Config:
     tts_speed: float = 1.1
     tts_instruct: str = "밝고 활기차게 말해주세요"
     skill_cooldown_minutes: int = 30
-    supertonic_port: int = 7788
+    supertonic_port: int = 7777
     supertonic_timeout_ms: int = 20000
     allow_insecure_tls: bool = True
     speech_retouch: bool = True

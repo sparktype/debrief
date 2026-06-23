@@ -279,26 +279,26 @@ async def handle_health() -> None:
         except Exception as e:
             return ("LLM API 연결", f"FAIL ({type(e).__name__})")
 
-    async def _check_uvicorn() -> tuple[str, str]:
+    async def _check_server() -> tuple[str, str]:
         try:
             async with _httpx.AsyncClient(timeout=2.0) as client:
                 r = await client.get("http://localhost:7777/health")
-                return ("uvicorn (7777)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
+                return ("서버 (7777)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
         except Exception as e:
-            return ("uvicorn (7777)", f"FAIL ({type(e).__name__})")
+            return ("서버 (7777)", f"FAIL ({type(e).__name__})")
 
-    async def _check_supertonic() -> tuple[str, str]:
+    async def _check_tts() -> tuple[str, str]:
         try:
             async with _httpx.AsyncClient(timeout=2.0) as client:
-                r = await client.get("http://localhost:7788/v1/health")
-                return ("supertonic (7788)", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
+                r = await client.get("http://localhost:7777/v1/health")
+                return ("TTS /v1/health", f"OK ({r.status_code})" if r.is_success else f"FAIL ({r.status_code})")
         except Exception as e:
-            return ("supertonic (7788)", f"FAIL ({type(e).__name__})")
+            return ("TTS /v1/health", f"FAIL ({type(e).__name__})")
 
     parallel_results = await _asyncio.gather(
         _check_llm(),
-        _check_uvicorn(),
-        _check_supertonic(),
+        _check_server(),
+        _check_tts(),
     )
     results.extend(parallel_results)
 

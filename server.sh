@@ -11,7 +11,6 @@ LAUNCHD_LABEL="io.chorus.server"
 LAUNCHD_PLIST="$LAUNCHD_PLIST_DIR/$LAUNCHD_LABEL.plist"
 
 TTS_PORT=7777
-SUPERTONIC_PORT=7788
 VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 
 # ── 환경변수 (plist 생성 시 삽입용) ──────────────────────────
@@ -36,10 +35,6 @@ _launchd_loaded() {
 
 _tts_running() {
   lsof -iTCP:${TTS_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
-}
-
-_supertonic_running() {
-  lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t >/dev/null 2>&1
 }
 
 _check_health() {
@@ -119,18 +114,13 @@ do_status() {
     echo "  TTS 서버:  ✗ 중지됨"
   fi
 
-  # Supertonic
-  if _supertonic_running; then
-    local st_pid
-    st_pid=$(lsof -iTCP:${SUPERTONIC_PORT} -sTCP:LISTEN -t 2>/dev/null | head -1)
-    echo "  Supertonic: ✓ 실행 중 (PID: $st_pid, 포트 ${SUPERTONIC_PORT})"
-    if [[ "$(_check_health "$SUPERTONIC_PORT" "/v1/health")" == "200" ]]; then
-      echo "  ST HTTP:    ✓ /v1/health 응답 정상"
+  # TTS (/v1/health — 모델 로드 완료 여부)
+  if _tts_running; then
+    if [[ "$(_check_health "$TTS_PORT" "/v1/health")" == "200" ]]; then
+      echo "  TTS 모델:   ✓ /v1/health 응답 정상"
     else
-      echo "  ST HTTP:    △ /v1/health 미응답 (모델 로딩 중이거나 오류)"
+      echo "  TTS 모델:   △ /v1/health 미응답 (모델 로딩 중이거나 오류)"
     fi
-  else
-    echo "  Supertonic: ✗ 중지됨"
   fi
 
   # launchd

@@ -175,22 +175,6 @@ def _start_uvicorn() -> subprocess.Popen:
         )
 
 
-def _start_supertonic() -> subprocess.Popen:
-    """supertonic-mlx FastAPI 서버를 기동한다 (포트 7788, Metal GPU 단일 워커)."""
-    with open("/tmp/supertonic.log", "a") as supertonic_log:
-        return subprocess.Popen(
-            [str(VENV_BIN / "uvicorn"),
-             "tts_server.supertonic_mlx_server:app",
-             "--host", "127.0.0.1",
-             "--port", "7788",
-             "--workers", "1"],
-            env={**os.environ, "HF_HUB_OFFLINE": "1"},
-            stdout=supertonic_log,
-            stderr=supertonic_log,
-            cwd=str(PROJECT_DIR),
-        )
-
-
 async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
     """자식 프로세스를 역순 SIGTERM → 5초 후 SIGKILL로 종료한다."""
     log.info("[Supervisor] 종료 시작...")
@@ -230,10 +214,6 @@ async def main() -> None:
         procs.append(uvicorn_proc)
         log.info(f"[Supervisor] uvicorn 기동 (PID {uvicorn_proc.pid})")
 
-        supertonic_proc = _start_supertonic()
-        procs.append(supertonic_proc)
-        log.info(f"[Supervisor] supertonic 기동 (PID {supertonic_proc.pid})")
-
         config = load_config()
         poller = GrafanaPoller(config)
         log.info("[Supervisor] GrafanaPoller 준비 (enabled=%s)", config.grafana.enabled)
@@ -241,11 +221,7 @@ async def main() -> None:
         await asyncio.gather(
             player_loop(shutdown=shutdown),
             cleanup_loop(shutdown=shutdown),
-            monitor_children(
-                procs, shutdown=shutdown,
-                restartable_idx=1,          # procs[1] = supertonic
-                restart_fn=_start_supertonic,
-            ),
+            monitor_children(procs, shutdown=shutdown),
             poller.run(shutdown),
         )
     finally:

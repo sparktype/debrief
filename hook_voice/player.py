@@ -56,7 +56,7 @@ async def speak_hook(text: str, speed: float = 1.2,
     async def _st_call() -> bytes:
         return await asyncio.wait_for(
             _generate_supertonic(
-                text, voice=HOOK_VOICE, port=7788,
+                text, voice=HOOK_VOICE, port=7777,
                 steps=HOOK_STEPS, timeout=hook_timeout,
                 synth_speed=HOOK_SYNTH_SPEED,
             ),
