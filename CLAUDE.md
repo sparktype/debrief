@@ -19,7 +19,7 @@ HMG 사내 AI에서 Opus 모델은 지원되지 않으며, Agent 파라미터 `m
 Claude Code의 응답을 자동으로 음성으로 읽어주는 hook 기반 시스템. 두 개의 주요 프로세스로 구성된다.
 
 - **hook_voice** (Python 패키지): `python -m hook_voice <subcommand>` — Claude Code hook에서 호출
-- **TTS Supervisor** (`tts_server/supervisor.py`): launchd가 단일 프로세스로 관리 — uvicorn(포트 7777)·supertonic(포트 7788)·TTS Player 루프를 포함
+- **TTS Supervisor** (`tts_server/supervisor.py`): launchd가 단일 프로세스로 관리 — uvicorn(포트 7777)·TTS Player 루프를 포함
 
 ## 명령어
 
@@ -52,7 +52,7 @@ Claude 응답 완료
     → python -m hook_voice hook
       → extract_summary() (hook_voice/summarizer.py)  # HMG LLM API → 규칙 기반 폴백
       → speak_hook() (hook_voice/player.py)
-          ├─ supertonic MLX F1(연아): localhost:7788/v1/tts → WAV 생성
+          ├─ supertonic MLX F1(연아): localhost:7777/v1/tts → WAV 생성
           └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
 
 서브에이전트 응답 완료
@@ -64,7 +64,7 @@ Claude 응답 완료
       → resolve_instruct(agentType) → 역할별 TTS instruct 텍스트
       → extract_one_liner() (hook_voice/summarizer.py)  # LLM 한 줄 요약 + 특수문자 제거
       → f"{label} {voice_name}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
-          ├─ Supertonic MLX: localhost:7788/v1/tts → WAV 생성
+          ├─ Supertonic MLX: localhost:7777/v1/tts → WAV 생성
           └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
 
 TTS Player Loop (supervisor.py 내 asyncio Task)
@@ -101,14 +101,13 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
 | `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 |
 | `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
-| `tts_server/server.py` | FastAPI 보조 서버 — STT·메트릭·DLQ 엔드포인트 (포트 7777) |
-| `tts_server/supertonic_mlx_server.py` | supertonic-mlx 기반 TTS 서버 — `/v1/tts` (포트 7788) |
-| `tts_server/supervisor.py` | uvicorn·supertonic·TTS Player 통합 supervisor |
+| `tts_server/server.py` | FastAPI 단일 서버 — Supertonic MLX TTS(`/v1/tts`) + STT·메트릭·DLQ (포트 7777) |
+| `tts_server/supervisor.py` | uvicorn·TTS Player 통합 supervisor |
 
 ### TTS 서버 설계 포인트
 
-- **supertonic-mlx**: ailuntx/supertonic-mlx 기반, 포트 7788에서 MLX Metal GPU로 실행 — `/v1/tts` 엔드포인트로 WAV 생성
-- MLX Metal GPU 스트림은 스레드를 옮기면 안 되기 때문에 모델 로드와 추론을 **동일한 단일 워커 스레드** 에서 처리
+- **supertonic-mlx**: ailuntx/supertonic-mlx 기반, 포트 7777에서 MLX Metal GPU로 실행 — `/v1/tts` 엔드포인트로 WAV 생성
+- MLX Metal GPU 스레드 친화성 유지를 위해 `ThreadPoolExecutor(max_workers=1)`로 모델 로드와 추론을 **동일한 단일 워커 스레드** 에서 처리
 - `afplay -r <speed>` 로 재생 속도 후처리
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
 - **파일 스풀 직렬화**: hook·서브에이전트 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음

@@ -55,10 +55,10 @@ curl -fsSL https://raw.githubusercontent.com/sparktype/voice-persona/main/instal
 | `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `voice` | `"Sohee"` | 기본 목소리 |
 | `ttsSpeed` | `1.2` | 재생 속도 (afplay -r) |
-| `ttsInstruct` | `"밝고 활기차게 말해주세요"` | Qwen3-TTS 발화 스타일 |
+| `ttsInstruct` | `"밝고 활기차게 말해주세요"` | Supertonic 발화 스타일 |
 | `skillCooldownMinutes` | `30` | 스킬 추천 재등장 최소 간격 |
 | `summaryModel` | `"gpt-5.4"` | 요약에 사용할 LLM 모델 |
-| `supertonicPort` | `7788` | Supertonic TTS 서버 포트 |
+| `supertonicPort` | `7777` | TTS 서버 포트 |
 | `stt.enabled` | `false` | Whisper STT 활성화 |
 | `stt.model` | `mlx-community/whisper-small-mlx` | Whisper 모델 |
 | `stt.language` | `"ko"` | 인식 언어 |
@@ -168,11 +168,10 @@ bash ~/.local/share/voice-persona/uninstall.sh
 
 **hook_voice** (Python 패키지) — `hook_voice/`
 Claude Code hook에서 `python -m hook_voice <subcommand>`로 호출됩니다.
-supertonic(7788) MLX로 TTS를 처리하며, 실패 시 HTTP(7777) → subprocess 순으로 폴백합니다.
+포트 7777의 `/v1/tts`로 Supertonic MLX TTS를 요청합니다.
 
 **TTS Supervisor** (Python, `tts_server/supervisor.py`) — launchd가 단일 프로세스로 관리
-- uvicorn (포트 7777) — MLX Metal GPU TTS
-- supertonic (포트 7788) — 다성 TTS
+- uvicorn (포트 7777) — Supertonic MLX TTS + STT + 메트릭 + DLQ 통합 서버
 - TTS Player Loop — `/tmp/tts-spool/` 폴링 후 epoch_ms 오름차순 순차 재생
 
 ### 테스트
