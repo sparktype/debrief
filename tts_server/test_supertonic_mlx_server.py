@@ -1,4 +1,4 @@
-# supertonic_mlx_server의 텍스트 전처리 함수 단위 테스트
+# server.py 텍스트 전처리 및 TTS 엔드포인트 단위 테스트
 import sys
 import types
 
@@ -6,9 +6,13 @@ import types
 stub = types.ModuleType("supertonic_mlx")
 stub.SupertonicMLX = None
 sys.modules.setdefault("supertonic_mlx", stub)
+# soundfile stub
+sf_stub = types.ModuleType("soundfile")
+sf_stub.write = lambda *a, **kw: None
+sys.modules.setdefault("soundfile", sf_stub)
 
-from tts_server.supertonic_mlx_server import _preprocess
-import tts_server.supertonic_mlx_server as srv
+from tts_server.server import _preprocess
+import tts_server.server as srv
 
 
 class TestPreprocess:
@@ -30,13 +34,24 @@ class TestPreprocess:
 
 class TestHTTPEndpoints:
     def test_health_returns_ok(self):
-        """lifespan 없이 /v1/health는 항상 200을 반환한다."""
+        """/health는 모델 로드 여부와 무관하게 항상 200을 반환한다."""
         from fastapi.testclient import TestClient
-        # TestClient를 context manager 없이 생성하면 lifespan 실행 안 됨
         client = TestClient(srv.app, raise_server_exceptions=False)
-        r = client.get("/v1/health")
+        r = client.get("/health")
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
+
+    def test_v1_health_returns_503_when_model_not_loaded(self):
+        """모델 로드 전 /v1/health는 503을 반환한다."""
+        from fastapi.testclient import TestClient
+        original = srv._model
+        srv._model = None
+        try:
+            client = TestClient(srv.app, raise_server_exceptions=False)
+            r = client.get("/v1/health")
+            assert r.status_code == 503
+        finally:
+            srv._model = original
 
     def test_tts_returns_503_when_model_not_loaded(self):
         """모델 로드 전 /v1/tts 호출 시 503을 반환한다."""
@@ -44,7 +59,6 @@ class TestHTTPEndpoints:
         original = srv._model
         srv._model = None
         try:
-            # context manager 없이 생성하면 lifespan 실행 안 됨
             client = TestClient(srv.app, raise_server_exceptions=False)
             r = client.post("/v1/tts", json={"text": "테스트"})
             assert r.status_code == 503

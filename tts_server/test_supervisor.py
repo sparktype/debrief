@@ -5,14 +5,6 @@ import time
 from pathlib import Path
 
 
-# mlx 없는 환경에서도 import 가능하도록 사전 stub
-import sys
-sys.modules.setdefault("mlx_audio", type(sys)("mlx_audio"))
-sys.modules.setdefault("mlx_audio.tts", type(sys)("mlx_audio.tts"))
-sys.modules.setdefault("mlx_audio.tts.generate", type(sys)("mlx_audio.tts.generate"))
-sys.modules.setdefault("mlx_audio.tts.utils", type(sys)("mlx_audio.tts.utils"))
-
-
 class TestDoCleanup:
     def test_old_files_removed(self, tmp_path):
         """5분 초과 오디오 파일은 삭제된다."""

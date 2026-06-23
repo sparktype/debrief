@@ -100,7 +100,7 @@ async def test_speak_agent_enqueues_wav(tmp_path, monkeypatch):
     monkeypatch.setattr("hook_voice.player.save_last_message", lambda t: None)
 
     with patch("hook_voice.player._generate_supertonic", new=AsyncMock(return_value=b"RIFF....WAV")):
-        await speak_agent("빌더입니다. 작업 완료", "M4", 7788, 1.2)
+        await speak_agent("빌더입니다. 작업 완료", "M4", 7777, 1.2)
 
     assert len(list(spool.glob("*.wav"))) == 1
 
@@ -115,7 +115,7 @@ async def test_speak_agent_passes_adjusted_steps(tmp_path, monkeypatch):
     long_text = "가" * 110
     mock_gen = AsyncMock(return_value=b"RIFF")
     with patch("hook_voice.player._generate_supertonic", new=mock_gen):
-        await speak_agent(long_text, "M2", 7788, 1.2, steps=10)
+        await speak_agent(long_text, "M2", 7777, 1.2, steps=10)
 
     assert mock_gen.call_args.kwargs.get("steps") == 10
 
@@ -124,7 +124,7 @@ async def test_speak_agent_skips_empty_text():
     """빈 텍스트는 _generate_supertonic을 호출하지 않는다."""
     mock_gen = AsyncMock()
     with patch("hook_voice.player._generate_supertonic", new=mock_gen):
-        await speak_agent("", "M4", 7788, 1.2)
+        await speak_agent("", "M4", 7777, 1.2)
     mock_gen.assert_not_called()
 
 
@@ -135,7 +135,7 @@ async def test_speak_agent_logs_on_failure(monkeypatch, caplog):
 
     with patch("hook_voice.player._generate_supertonic", side_effect=Exception("ST 실패")):
         with caplog.at_level(logging.WARNING, logger="hook_voice.player"):
-            await speak_agent("테스트", "M2", 7788, 1.0)
+            await speak_agent("테스트", "M2", 7777, 1.0)
 
     assert any("Supertonic" in r.message for r in caplog.records)
 
@@ -162,7 +162,7 @@ async def test_generate_supertonic_posts_to_v1_tts():
             return FakeResponse()
 
     with patch("hook_voice.player.httpx.AsyncClient", return_value=FakeClient()):
-        result = await _generate_supertonic("안녕하세요", "M4", 7788, steps=10)
+        result = await _generate_supertonic("안녕하세요", "M4", 7777, steps=10)
 
     assert result == b"RIFF_WAV"
     assert "/v1/tts" in captured["url"]
@@ -230,6 +230,6 @@ async def test_speak_agent_supertonic_cb_opens_after_failures(monkeypatch):
     monkeypatch.setattr(player_module, "save_last_message", lambda t: None)
 
     for _ in range(3):
-        await speak_agent("test", "M2", port=7788, speed=1.0)
+        await speak_agent("test", "M2", port=7777, speed=1.0)
 
     assert _breakers["supertonic"].state == CBState.OPEN

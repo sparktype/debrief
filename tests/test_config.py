@@ -13,7 +13,7 @@ def test_load_config_returns_defaults_when_no_file(tmp_path):
     assert cfg.tts_speed == 1.1
     assert cfg.tts_instruct == "밝고 활기차게 말해주세요"
     assert cfg.skill_cooldown_minutes == 30
-    assert cfg.supertonic_port == 7788
+    assert cfg.supertonic_port == 7777
     assert cfg.supertonic_timeout_ms == 20000
     assert cfg.allow_insecure_tls is True
 
@@ -70,7 +70,7 @@ def test_load_config_normalizes_invalid_values(tmp_path, caplog):
 
     assert cfg.min_chars == 50
     assert cfg.tts_speed == 1.1
-    assert cfg.supertonic_port == 7788
+    assert cfg.supertonic_port == 7777
     assert cfg.allow_insecure_tls is True
     assert cfg.grafana.interval == 30
     assert "잘못된 값" in caplog.text
