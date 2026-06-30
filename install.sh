@@ -55,14 +55,7 @@ with open(settings_path) as f:
 if "hooks" not in data:
     data["hooks"] = {}
 
-def add_simple(sec, script, timeout):
-    cmd = hooks_dir + "/" + script
-    existing = data["hooks"].get(sec, [])
-    if cmd not in json.dumps(existing):
-        existing.append({"type": "command", "command": cmd, "timeout": timeout})
-    data["hooks"][sec] = existing
-
-def add_matcher(sec, matcher, script, timeout):
+def add_hook(sec, matcher, script, timeout):
     cmd = hooks_dir + "/" + script
     existing = data["hooks"].get(sec, [])
     if not any(
@@ -76,13 +69,13 @@ def add_matcher(sec, matcher, script, timeout):
         })
     data["hooks"][sec] = existing
 
-add_simple("Stop",             "stop.sh",          15)
-add_simple("SubagentStop",     "subagent-stop.sh", 15)
-add_simple("Notification",     "notification.sh",  10)
-add_simple("UserPromptSubmit", "prompt-submit.sh", 10)
-add_simple("SessionStart",     "session-start.sh", 10)
-add_matcher("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
-add_matcher("PostToolUse", "Bash", "post-tool-bash.sh", 5)
+add_hook("Stop",             "", "stop.sh",          15)
+add_hook("SubagentStop",     "", "subagent-stop.sh", 15)
+add_hook("Notification",     "", "notification.sh",  10)
+add_hook("UserPromptSubmit", "", "prompt-submit.sh", 10)
+add_hook("SessionStart",     "", "session-start.sh", 10)
+add_hook("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
+add_hook("PostToolUse", "Bash", "post-tool-bash.sh", 5)
 
 with open(settings_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -139,14 +132,7 @@ with open(hooks_file) as f:
 if "hooks" not in data:
     data["hooks"] = {}
 
-def add_simple(sec, script, timeout):
-    cmd = hooks_dir + "/" + script
-    existing = data["hooks"].get(sec, [])
-    if cmd not in json.dumps(existing):
-        existing.append({"type": "command", "command": cmd, "timeout": timeout})
-    data["hooks"][sec] = existing
-
-def add_matcher(sec, matcher, script, timeout):
+def add_hook(sec, matcher, script, timeout):
     cmd = hooks_dir + "/" + script
     existing = data["hooks"].get(sec, [])
     if not any(
@@ -161,10 +147,10 @@ def add_matcher(sec, matcher, script, timeout):
     data["hooks"][sec] = existing
 
 # Codex는 Claude Code와 동일한 hook 포맷 사용 (Stop, SubagentStop, PreToolUse, PostToolUse)
-add_simple("Stop",         "stop.sh",          15)
-add_simple("SubagentStop", "subagent-stop.sh", 15)
-add_matcher("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
-add_matcher("PostToolUse", "Bash", "post-tool-bash.sh", 5)
+add_hook("Stop",         "", "stop.sh",          15)
+add_hook("SubagentStop", "", "subagent-stop.sh", 15)
+add_hook("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
+add_hook("PostToolUse", "Bash", "post-tool-bash.sh", 5)
 
 with open(hooks_file, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
