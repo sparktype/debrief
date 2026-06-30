@@ -13,3 +13,6 @@ dist/
 !.claude/agents/
 !.claude/agents/*.md
 .superpowers/
+
+# gitnexus 로컬 인덱스
+.gitnexus/
