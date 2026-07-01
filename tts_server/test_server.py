@@ -3,10 +3,17 @@ import os
 import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tts_server.server import _log, app
 from tts_server.supervisor import _do_cleanup
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
 
 
 
@@ -112,3 +119,21 @@ def test_playback_status():
     data = r.json()
     assert "is_playing" in data
     assert "queue_depth" in data
+
+
+def test_health_includes_queue_depth(client):
+    """GET /health가 queue_depth를 포함한다."""
+    r = client.get("/health")
+    assert r.status_code == 200
+    data = r.json()
+    assert "queue_depth" in data
+    assert isinstance(data["queue_depth"], int)
+
+
+def test_health_includes_model_loaded(client):
+    """GET /health가 model_loaded 필드를 포함한다."""
+    r = client.get("/health")
+    assert r.status_code == 200
+    data = r.json()
+    assert "model_loaded" in data
+    assert isinstance(data["model_loaded"], bool)

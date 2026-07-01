@@ -117,7 +117,15 @@ app = FastAPI(title="Chorus Server", lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    queue_files = (
+        list(SPOOL_DIR_SERVER.glob("*.wav")) + list(SPOOL_DIR_SERVER.glob("*.mp3"))
+    ) if SPOOL_DIR_SERVER.exists() else []
+    return {
+        "status": "ok",
+        "model_loaded": _model is not None,
+        "queue_depth": len(queue_files),
+        "stt_enabled": _stt_listener is not None,
+    }
 
 
 # ── 재생 제어 ─────────────────────────────────────────────────────────────────
