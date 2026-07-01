@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import random
+import shutil as _shutil
 import string
 import tempfile
 import time
@@ -101,6 +102,18 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
             save_last_message(text)
     except Exception as e:
         _log.warning("Supertonic 생성 실패: %s", type(e).__name__)
+
+
+def enqueue_earcon(earcon_path: Path, speed: float = 1.0) -> None:
+    """사전 렌더링된 earcon WAV 파일을 spool 디렉토리에 enqueue한다."""
+    if not earcon_path.exists():
+        _log.warning("earcon 파일 없음: %s", earcon_path)
+        return
+    SPOOL_DIR.mkdir(exist_ok=True)
+    uid = f"{int(time.time() * 1000)}_{''.join(random.choices(string.ascii_lowercase + string.digits, k=5))}"
+    speed_tag = str(round(speed * 100))
+    dest = SPOOL_DIR / f"{uid}_{speed_tag}.wav"
+    _shutil.copy2(earcon_path, dest)
 
 
 async def speak_hook_chunked(

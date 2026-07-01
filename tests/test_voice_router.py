@@ -58,3 +58,17 @@ def test_resolve_voice_name_fallback_uses_yeona(tmp_path):
     vm = load_voice_map(tmp_path / "nonexistent.json")
     name = resolve_voice_name("unknown-agent", vm)
     assert name == "연아"
+
+
+def test_resolve_meta_voice_default():
+    """meta_voice_id 없으면 기본값 F1을 반환한다."""
+    from hook_voice.voice_router import resolve_meta_voice
+    vm = {"supertonic": {}, "voices": {}, "categories": {}}
+    assert resolve_meta_voice("reviewer", vm) == "F1"
+
+
+def test_resolve_meta_voice_custom():
+    """meta_voice_id가 설정되면 해당 값을 반환한다."""
+    from hook_voice.voice_router import resolve_meta_voice
+    vm = {"supertonic": {}, "voices": {}, "categories": {}, "meta_voice_id": "M1"}
+    assert resolve_meta_voice("builder", vm) == "M1"

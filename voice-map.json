@@ -1,4 +1,10 @@
 {
+  "meta_voice_id": "F1",
+  "earcon": {
+    "agent_switch": "assets/earcon_switch.wav",
+    "enabled": true,
+    "duration_ms": 300
+  },
   "supertonic": {
     "lang": "ko",
     "steps": 8

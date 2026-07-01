@@ -101,3 +101,9 @@ def resolve_voice_settings(agent_type: str, voice_map: VoiceMap | None = None) -
     defaults = {"synth_speed": 1.05, "steps": m.get("supertonic", {}).get("steps", 8)}
     settings = m.get("voice_settings", {})
     return {**defaults, **settings.get(voice_id, {})}
+
+
+def resolve_meta_voice(agent_type: str, voice_map: VoiceMap | None = None) -> str:
+    """에이전트명 발화에 쓸 메타 목소리 ID를 반환한다. 기본값은 F1."""
+    vm = voice_map if voice_map is not None else load_voice_map()
+    return vm.get("meta_voice_id", "F1")

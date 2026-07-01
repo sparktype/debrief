@@ -5,6 +5,7 @@ dist/
 .siren.json
 .venv/
 *.wav
+!assets/*.wav
 .tts_server.pid
 .supertonic.pid
 **/__pycache__/

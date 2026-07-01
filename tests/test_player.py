@@ -268,3 +268,24 @@ async def test_speak_hook_chunked_short_text_single_call():
     with mock.patch("hook_voice.player.speak_hook", fake_speak_hook):
         await speak_hook_chunked("짧은 텍스트.", speed=1.1, max_chars=80)
     assert call_count == 1
+
+
+def test_enqueue_earcon_copies_to_spool(tmp_path):
+    """enqueue_earcon이 WAV 파일을 spool 디렉토리에 복사한다."""
+    from hook_voice.player import enqueue_earcon, SPOOL_DIR
+    import shutil
+
+    wav = tmp_path / "test.wav"
+    wav.write_bytes(b"RIFF" + b"\x00" * 40)  # 더미 WAV
+
+    # spool을 tmp로 교체해서 테스트
+    import hook_voice.player as _player
+    original_spool = _player.SPOOL_DIR
+    _player.SPOOL_DIR = tmp_path / "spool"
+    _player.SPOOL_DIR.mkdir()
+    try:
+        enqueue_earcon(wav, speed=1.0)
+        spool_files = list(_player.SPOOL_DIR.glob("*.wav"))
+        assert len(spool_files) == 1
+    finally:
+        _player.SPOOL_DIR = original_spool

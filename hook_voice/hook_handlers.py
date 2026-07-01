@@ -32,7 +32,7 @@ from .observability.context import get_or_create_context
 from .observability.structured_log import log_event
 from .observability.metrics import get_registry
 from .observability.dlq import get_dlq_store
-from .player import speak_hook, speak_agent, SPOOL_DIR, speak_hook_chunked
+from .player import speak_hook, speak_agent, SPOOL_DIR, speak_hook_chunked, enqueue_earcon
 from .summarizer import (
     extract_summary, extract_one_liner, extract_one_liner_with_tag,
     select_expression_tag, has_heavy_code, summarize_with_code_hint,
@@ -192,6 +192,13 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
     steps = settings["steps"]
     synth_speed = settings["synth_speed"]
     one_liner, tag = await extract_one_liner_with_tag(text, category, model=config.summary_model)
+
+    # 에이전트 전환 earcon
+    _earcon_cfg = vm.get("earcon", {})
+    if _earcon_cfg.get("enabled", False):
+        _earcon_path = Path(__file__).parent.parent / _earcon_cfg.get("agent_switch", "assets/earcon_switch.wav")
+        enqueue_earcon(_earcon_path, speed=config.tts_speed)
+
     tag_infix = f"{tag} " if tag else ""
     speak_text = f"{label} {voice_name}입니다. {tag_infix}{one_liner}"
     start = _time.time()
