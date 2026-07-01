@@ -17,6 +17,8 @@ from .hook_handlers import (
     handle_control,
     handle_grafana,
     handle_pre_tool_monitor,
+    handle_voice_test,
+    handle_doctor,
 )
 
 
@@ -63,6 +65,14 @@ async def main() -> None:
         await handle_pre_tool_monitor(raw)
     elif subcommand == "grafana":
         await handle_grafana(sys.argv[2:], _find_default_config() or _VOICE_JSON)
+    elif subcommand == "voice":
+        sub = sys.argv[2] if len(sys.argv) > 2 else ""
+        if sub == "test":
+            await handle_voice_test(sys.argv[3:], config)
+        else:
+            print("Usage: python -m hook_voice voice test [voice_id] [text]", file=sys.stderr)
+    elif subcommand == "doctor":
+        await handle_doctor(config)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

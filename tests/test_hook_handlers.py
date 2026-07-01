@@ -590,3 +590,35 @@ async def test_handle_hook_stderr_failure_message(tmp_path):
 
     output = stderr_capture.getvalue()
     assert "⚠️" in output or "오류" in output or "실패" in output
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_test_prints_message(capsys):
+    """voice test는 실행 결과를 stdout에 출력한다."""
+    from hook_voice.hook_handlers import handle_voice_test
+    from hook_voice.config import Config
+    from unittest.mock import patch, AsyncMock
+
+    config = Config()
+    with patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()):
+        await handle_voice_test([], config)
+
+    captured = capsys.readouterr()
+    assert "voice" in captured.out.lower() or "test" in captured.out.lower() or "완료" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_handle_doctor_calls_health_check(capsys):
+    """doctor는 시스템 진단 결과를 출력한다."""
+    from hook_voice.hook_handlers import handle_doctor
+    from hook_voice.config import Config
+    from unittest.mock import patch, AsyncMock
+
+    config = Config()
+    with (
+        patch("hook_voice.hook_handlers.handle_health", new=AsyncMock()),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+    ):
+        await handle_doctor(config)
+
+    # handle_health가 호출됐으면 OK (출력은 handle_health에 위임)

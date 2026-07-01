@@ -544,6 +544,31 @@ async def handle_grafana(args: list[str], config_path: "Path | None" = None) -> 
         print(f"알 수 없는 서브커맨드: {sub}", flush=True)
 
 
+async def handle_voice_test(args: list[str], config: Config) -> None:
+    """샘플 텍스트로 TTS를 생성하고 재생한다."""
+    voice_id = args[0] if args else None
+    text = args[1] if len(args) > 1 else "안녕하세요. 코러스 음성 테스트입니다."
+    print(f"[voice test] 텍스트: {text!r}", flush=True)
+    if voice_id:
+        print(f"[voice test] 목소리: {voice_id}", flush=True)
+    try:
+        await speak_hook_chunked(text, speed=config.tts_speed)
+        print("[voice test] 완료. 음성이 재생 대기열에 추가됐습니다.", flush=True)
+    except Exception as e:
+        print(f"[voice test] 실패: {e}", flush=True)
+
+
+async def handle_doctor(config: Config) -> None:
+    """TTS 시스템 전체를 진단한다 (handle_health 확장)."""
+    await handle_health()
+    print("\n[doctor] 음성 생성 자가 테스트 중...", flush=True)
+    try:
+        await speak_hook_chunked("닥터 체크 완료입니다.", speed=config.tts_speed)
+        print("[doctor] ✓ TTS 생성 및 스풀 enqueue 성공", flush=True)
+    except Exception as e:
+        print(f"[doctor] ✗ TTS 생성 실패: {e}", flush=True)
+
+
 async def handle_pre_tool_monitor(raw: str) -> None:
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
     if not session_id:
