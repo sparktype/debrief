@@ -51,6 +51,38 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+# ── 코드 블록 자동 축약 ─────────────────────────────────────────────────────
+
+_CODE_BLOCK_RE = re.compile(r"```[\s\S]*?```")
+
+
+def has_heavy_code(text: str) -> bool:
+    """코드 블록 비율이 40% 초과인지 판단한다."""
+    if not text:
+        return False
+    code_chars = sum(len(m.group()) for m in _CODE_BLOCK_RE.finditer(text))
+    return code_chars / max(len(text), 1) > 0.4
+
+
+def summarize_with_code_hint(text: str) -> str:
+    """코드 비율 높은 텍스트를 '[N줄 코드]' 힌트 포함 문자열로 변환한다.
+    코드 비율이 낮으면 strip_markdown 결과를 반환한다."""
+    if not text:
+        return ""
+    if not has_heavy_code(text):
+        return strip_markdown(text)
+    # 코드 줄 수 계산
+    code_lines = sum(
+        len(m.group().splitlines()) - 2  # ``` 제거
+        for m in _CODE_BLOCK_RE.finditer(text)
+    )
+    code_lines = max(code_lines, 1)
+    non_code = _CODE_BLOCK_RE.sub("", text).strip()
+    brief = strip_markdown(non_code)[:40] if non_code else ""
+    prefix = f"{brief} " if brief else ""
+    return f"{prefix}[{code_lines}줄 코드]와 함께 완료됐습니다"
+
+
 # ── Expression Tag 자동 선택 ────────────────────────────────────────────────
 
 _CRITICAL_RE  = re.compile(r"치명|장애|다운|크리티컬")

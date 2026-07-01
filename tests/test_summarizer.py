@@ -224,3 +224,42 @@ async def test_retouch_returns_blank_for_blank_input():
         result = await retouch_for_speech("   ")
         mock_llm.assert_not_called()
         assert result.strip() == ""
+
+
+# ── has_heavy_code / summarize_with_code_hint 테스트 ──────────────────────
+
+def test_has_heavy_code_true():
+    """코드 블록 비율 40% 초과 시 True를 반환한다."""
+    from hook_voice.summarizer import has_heavy_code
+    code_heavy = "설명\n```python\n" + "x = 1\n" * 20 + "```\n짧은 설명"
+    assert has_heavy_code(code_heavy) is True
+
+
+def test_has_heavy_code_false():
+    """일반 텍스트는 False를 반환한다."""
+    from hook_voice.summarizer import has_heavy_code
+    normal = "일반 설명 텍스트입니다. 코드가 없는 내용입니다. 충분히 긴 텍스트."
+    assert has_heavy_code(normal) is False
+
+
+def test_has_heavy_code_empty():
+    """빈 문자열은 False를 반환한다."""
+    from hook_voice.summarizer import has_heavy_code
+    assert has_heavy_code("") is False
+
+
+def test_summarize_with_code_hint_heavy():
+    """코드 비율 높은 텍스트는 '[N줄 코드]' 힌트를 포함한 요약을 반환한다."""
+    from hook_voice.summarizer import summarize_with_code_hint
+    code_heavy = "설명\n```python\n" + "x = 1\n" * 20 + "```\n"
+    result = summarize_with_code_hint(code_heavy)
+    assert "줄" in result
+    assert "코드" in result
+
+
+def test_summarize_with_code_hint_normal():
+    """일반 텍스트는 strip_markdown 결과를 반환한다."""
+    from hook_voice.summarizer import summarize_with_code_hint
+    normal = "일반 설명 텍스트입니다."
+    result = summarize_with_code_hint(normal)
+    assert result == "일반 설명 텍스트입니다."

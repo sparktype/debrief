@@ -33,7 +33,10 @@ from .observability.structured_log import log_event
 from .observability.metrics import get_registry
 from .observability.dlq import get_dlq_store
 from .player import speak_hook, speak_agent, SPOOL_DIR
-from .summarizer import extract_summary, extract_one_liner, extract_one_liner_with_tag, select_expression_tag
+from .summarizer import (
+    extract_summary, extract_one_liner, extract_one_liner_with_tag,
+    select_expression_tag, has_heavy_code, summarize_with_code_hint,
+)
 from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
@@ -99,7 +102,10 @@ async def handle_hook(raw: str, config: Config) -> None:
             text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
         _status("🎙️ chorus: 요약 중...")
-        summary = await extract_summary(text, config.summary_model)
+        if has_heavy_code(text):
+            summary = summarize_with_code_hint(text)
+        else:
+            summary = await extract_summary(text, config.summary_model)
         if config.speech_retouch:
             _status("🗣️ chorus: 음성 정제 중...")
             pipeline = get_default_pipeline()
