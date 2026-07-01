@@ -165,7 +165,7 @@ def test_load_config_usage_tracking_false(tmp_path):
     """.voice.json에서 usageTracking: false를 파싱한다."""
     from hook_voice.config import load_config
     cfg_file = tmp_path / ".voice.json"
-    cfg_file.write_text('{"usageTracking": false}')
+    cfg_file.write_text('{"usageTracking": false}', encoding="utf-8")
     cfg = load_config(cfg_file)
     assert cfg.usage_tracking is False
 
@@ -174,6 +174,6 @@ def test_load_config_usage_tracking_invalid(tmp_path):
     """usageTracking에 비-bool 값이 오면 기본값 True로 복원한다."""
     from hook_voice.config import load_config
     cfg_file = tmp_path / ".voice.json"
-    cfg_file.write_text('{"usageTracking": "yes"}')
+    cfg_file.write_text('{"usageTracking": "yes"}', encoding="utf-8")
     cfg = load_config(cfg_file)
     assert cfg.usage_tracking is True
