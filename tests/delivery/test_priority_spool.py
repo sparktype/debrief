@@ -112,3 +112,30 @@ def test_low_added_when_queue_empty(tmp_path):
 
     files = list(spool.glob("*.wav"))
     assert len(files) == 1
+
+
+def test_normal_ttl_expires_old_files(tmp_path):
+    """30초 초과된 NORMAL 파일은 새 enqueue 시 자동 제거된다."""
+    import os
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+
+    # 오래된 파일 (31초 전)
+    old_wav = _make_wav(tmp_path / "old.wav")
+    enqueue_with_priority(old_wav, speed=1.0, priority="NORMAL", spool_dir=spool)
+    spool_files = list(spool.glob("*.wav"))
+    assert len(spool_files) == 1
+    old_spool = spool_files[0]
+    # mtime을 31초 전으로 설정
+    old_time = time.time() - 31
+    os.utime(old_spool, (old_time, old_time))
+
+    # 새 파일 enqueue 시 오래된 파일 제거
+    new_wav = _make_wav(tmp_path / "new.wav")
+    enqueue_with_priority(new_wav, speed=1.0, priority="NORMAL", spool_dir=spool)
+
+    remaining = list(spool.glob("*.wav"))
+    assert len(remaining) == 1
+    # 오래된 파일이 제거됐는지 확인
+    assert remaining[0].name != old_spool.name

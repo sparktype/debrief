@@ -12,6 +12,7 @@ _log = logging.getLogger(__name__)
 
 _SPOOL_DIR = Path("/tmp/tts-spool")
 _NORMAL_MAX = 3
+_NORMAL_TTL_SECS = 30
 
 
 def enqueue_with_priority(
@@ -70,6 +71,15 @@ def enqueue_with_priority(
         if existing:
             return None  # 큐에 파일이 있으면 LOW는 추가하지 않음
     else:  # NORMAL
+        # TTL 만료 파일 먼저 제거 (30초 초과)
+        now = time.time()
+        for f in list(existing):
+            try:
+                if now - f.stat().st_mtime > _NORMAL_TTL_SECS:
+                    f.unlink(missing_ok=True)
+                    existing.remove(f)
+            except Exception:
+                pass
         if len(existing) >= _NORMAL_MAX:
             # 가장 오래된 파일 제거
             try:
