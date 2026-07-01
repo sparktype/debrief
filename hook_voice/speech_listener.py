@@ -22,6 +22,7 @@ class SpeechListener:
         self._buffer: list[np.ndarray] = []
         self._stream = None
         self._lock = asyncio.Lock()
+        self._vad_fired: bool = False  # VAD interrupt 연속 기동 억제 플래그
         self._stt_cfg = config  # VAD 설정 접근용 별칭
 
     async def toggle(self) -> dict:
@@ -33,6 +34,7 @@ class SpeechListener:
     async def _start_recording(self) -> dict:
         import sounddevice as sd
         self._buffer = []
+        self._vad_fired = False  # 새 녹음 세션마다 리셋
         try:
             self._stream = sd.InputStream(
                 samplerate=self._config.sample_rate,
@@ -89,9 +91,10 @@ class SpeechListener:
         if status:
             _log.warning("[STT] 오디오 콜백 상태: %s", status)
         self._buffer.append(indata.copy())
-        if self._stt_cfg.vad_interrupt:
+        if self._stt_cfg.vad_interrupt and not self._vad_fired:
             rms = float(np.sqrt(np.mean(indata ** 2)))
             if rms > _VAD_RMS_THRESHOLD:
+                self._vad_fired = True  # 연속 기동 억제
                 threading.Thread(
                     target=self._fire_interrupt,
                     daemon=True,
