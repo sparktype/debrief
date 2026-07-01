@@ -263,3 +263,39 @@ def test_summarize_with_code_hint_normal():
     normal = "일반 설명 텍스트입니다."
     result = summarize_with_code_hint(normal)
     assert result == "일반 설명 텍스트입니다."
+
+
+# ── chunk_for_tts 테스트 ──────────────────────────────────────────────────────
+
+def test_chunk_for_tts_short():
+    """짧은 텍스트는 분할하지 않는다."""
+    from hook_voice.summarizer import chunk_for_tts
+    result = chunk_for_tts("짧은 문장입니다.", max_chars=80)
+    assert result == ["짧은 문장입니다."]
+
+
+def test_chunk_for_tts_long():
+    """80자 초과 텍스트는 문장 단위로 분할된다."""
+    from hook_voice.summarizer import chunk_for_tts
+    long_text = "첫 번째 문장입니다. 두 번째 문장입니다. 세 번째 문장입니다. 네 번째 문장입니다."
+    result = chunk_for_tts(long_text, max_chars=30)
+    assert len(result) > 1
+    # 각 청크가 최대 길이보다 크지 않아야 한다 (문장 경계 존중)
+    for chunk in result:
+        assert len(chunk) <= 60  # 단일 긴 문장은 그대로 허용
+
+
+def test_chunk_for_tts_preserves_content():
+    """분할 후 재결합 시 원본과 동일한 단어를 포함한다."""
+    from hook_voice.summarizer import chunk_for_tts
+    text = "파일을 생성했습니다. 테스트를 실행했습니다. 빌드가 완료됐습니다."
+    chunks = chunk_for_tts(text, max_chars=20)
+    combined = " ".join(chunks)
+    for word in ["파일", "테스트", "빌드"]:
+        assert word in combined
+
+
+def test_chunk_for_tts_empty():
+    """빈 문자열은 빈 리스트를 반환한다."""
+    from hook_voice.summarizer import chunk_for_tts
+    assert chunk_for_tts("") == []

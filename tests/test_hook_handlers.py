@@ -134,7 +134,7 @@ async def test_handle_hook_uses_transcript_fallback(tmp_path):
     raw = json.dumps({"last_assistant_message": ""})
     with patch("hook_voice.hook_handlers._derive_transcript_path", return_value=transcript), \
          patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")), \
-         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock:
+         patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()) as mock:
         await handle_hook(raw, _CFG)
         mock.assert_called_once()
 
@@ -437,7 +437,7 @@ async def test_handle_hook_calls_pipeline_when_retouch_enabled():
 
     with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")), \
          patch("hook_voice.hook_handlers.get_default_pipeline", return_value=mock_pipeline), \
-         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak:
+         patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()) as mock_speak:
         await handle_hook('{"last_assistant_message": "충분히 긴 텍스트입니다"}', config)
         mock_pipeline.process.assert_called_once_with("요약")
         mock_speak.assert_called_once()
@@ -454,7 +454,7 @@ async def test_handle_hook_skips_pipeline_when_retouch_disabled():
 
     with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")), \
          patch("hook_voice.hook_handlers.get_default_pipeline", return_value=mock_pipeline), \
-         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak:
+         patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()) as mock_speak:
         await handle_hook('{"last_assistant_message": "충분히 긴 텍스트입니다"}', config)
         mock_pipeline.process.assert_not_called()
         assert mock_speak.call_args[0][0] == "요약"
@@ -525,7 +525,7 @@ async def test_handle_hook_uses_default_voice_without_monitor_flag(monkeypatch):
     mock_pipeline.process = AsyncMock(return_value=MagicMock(text="일반 요약"))
     with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="일반 요약")), \
          patch("hook_voice.hook_handlers.get_default_pipeline", return_value=mock_pipeline), \
-         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_hook, \
+         patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()) as mock_hook, \
          patch("hook_voice.hook_handlers.speak_agent", new_callable=AsyncMock) as mock_agent:
         await handle_hook(raw, _CFG)
     mock_hook.assert_called_once()
@@ -562,7 +562,7 @@ async def test_handle_hook_prints_status_to_stderr(tmp_path):
     stderr_capture = StringIO()
     with (
         patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
-        patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
         patch("sys.stderr", stderr_capture),
     ):
         await handle_hook(raw, config)
@@ -583,7 +583,7 @@ async def test_handle_hook_stderr_failure_message(tmp_path):
     stderr_capture = StringIO()
     with (
         patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
-        patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock(side_effect=RuntimeError("TTS 오류"))),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock(side_effect=RuntimeError("TTS 오류"))),
         patch("sys.stderr", stderr_capture),
     ):
         await handle_hook(raw, config)

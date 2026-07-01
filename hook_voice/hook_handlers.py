@@ -32,7 +32,7 @@ from .observability.context import get_or_create_context
 from .observability.structured_log import log_event
 from .observability.metrics import get_registry
 from .observability.dlq import get_dlq_store
-from .player import speak_hook, speak_agent, SPOOL_DIR
+from .player import speak_hook, speak_agent, SPOOL_DIR, speak_hook_chunked
 from .summarizer import (
     extract_summary, extract_one_liner, extract_one_liner_with_tag,
     select_expression_tag, has_heavy_code, summarize_with_code_hint,
@@ -135,7 +135,7 @@ async def handle_hook(raw: str, config: Config) -> None:
                     supertonic_timeout=config.supertonic_timeout_ms / 1000,
                 )
             else:
-                await speak_hook(summary, config.tts_speed)
+                await speak_hook_chunked(summary, config.tts_speed)
             _status("▶️ chorus: 재생 중")
             latency_ms = (_time.time() - start) * 1000
             get_registry().record_tts_latency(latency_ms)

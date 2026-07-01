@@ -233,3 +233,38 @@ async def test_speak_agent_supertonic_cb_opens_after_failures(monkeypatch):
         await speak_agent("test", "M2", port=7777, speed=1.0)
 
     assert _breakers["supertonic"].state == CBState.OPEN
+
+
+# ── speak_hook_chunked ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_speak_hook_chunked_calls_speak_hook_per_chunk():
+    """speak_hook_chunked는 청크당 한 번씩 TTS를 호출한다."""
+    from hook_voice.player import speak_hook_chunked
+    import unittest.mock as mock
+
+    call_count = 0
+    async def fake_speak_hook(text, speed=1.2, hook_timeout=20.0):
+        nonlocal call_count
+        call_count += 1
+
+    long_text = "첫 번째 문장입니다. " * 5 + "두 번째 문장입니다. " * 5
+    with mock.patch("hook_voice.player.speak_hook", fake_speak_hook):
+        await speak_hook_chunked(long_text, speed=1.1, max_chars=40)
+    assert call_count >= 2  # 분할됐으면 2번 이상 호출
+
+
+@pytest.mark.asyncio
+async def test_speak_hook_chunked_short_text_single_call():
+    """짧은 텍스트는 speak_hook을 한 번만 호출한다."""
+    from hook_voice.player import speak_hook_chunked
+    import unittest.mock as mock
+
+    call_count = 0
+    async def fake_speak_hook(text, speed=1.2, hook_timeout=20.0):
+        nonlocal call_count
+        call_count += 1
+
+    with mock.patch("hook_voice.player.speak_hook", fake_speak_hook):
+        await speak_hook_chunked("짧은 텍스트.", speed=1.1, max_chars=80)
+    assert call_count == 1

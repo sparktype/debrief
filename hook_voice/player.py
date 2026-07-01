@@ -11,6 +11,7 @@ import httpx
 
 from .last_message import save_last_message
 from .observability.circuit_breaker import get_circuit_breaker
+from .summarizer import chunk_for_tts
 
 _log = logging.getLogger(__name__)
 
@@ -100,3 +101,18 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
             save_last_message(text)
     except Exception as e:
         _log.warning("Supertonic 생성 실패: %s", type(e).__name__)
+
+
+async def speak_hook_chunked(
+    text: str,
+    speed: float = 1.2,
+    hook_timeout: float = 20.0,
+    max_chars: int = 80,
+) -> None:
+    """텍스트를 문장 단위로 분할하여 순차적으로 TTS 스풀에 넣는다.
+
+    긴 텍스트에서 TTS 엔진의 잘림 현상을 방지한다.
+    """
+    chunks = chunk_for_tts(text, max_chars=max_chars)
+    for chunk in chunks:
+        await speak_hook(chunk, speed=speed, hook_timeout=hook_timeout)

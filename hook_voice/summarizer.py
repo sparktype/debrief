@@ -83,6 +83,34 @@ def summarize_with_code_hint(text: str) -> str:
     return f"{prefix}[{code_lines}줄 코드]와 함께 완료됐습니다"
 
 
+def chunk_for_tts(text: str, max_chars: int = 80) -> list[str]:
+    """문장 경계에서 텍스트를 분할한다.
+
+    max_chars 이하로 청크를 구성하며, 단일 문장이 max_chars를 초과하면 그대로 유지한다.
+    """
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+    # 문장 분리
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?。])\s+", text) if s.strip()]
+    if not sentences:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for sent in sentences:
+        candidate = f"{current} {sent}".strip() if current else sent
+        if len(candidate) <= max_chars:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            current = sent
+    if current:
+        chunks.append(current)
+    return chunks if chunks else [text]
+
+
 # ── Expression Tag 자동 선택 ────────────────────────────────────────────────
 
 _CRITICAL_RE  = re.compile(r"치명|장애|다운|크리티컬")
