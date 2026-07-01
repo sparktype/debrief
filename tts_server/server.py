@@ -76,7 +76,9 @@ def _log(level: str, message: str) -> None:
 async def lifespan(app: FastAPI):
     global _model, _stt_listener, _mlx_executor
     # 재진입 시(테스트 등) 종료된 executor를 새로 생성한다
-    if _mlx_executor._shutdown:
+    try:
+        _mlx_executor.submit(lambda: None)  # 실행 가능 여부 확인
+    except RuntimeError:
         _mlx_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
     loop = asyncio.get_event_loop()
 
