@@ -632,7 +632,7 @@ async def test_handle_hook_enqueues_bridge_when_enabled(tmp_path):
     from hook_voice.hook_handlers import handle_hook
     from hook_voice.config import Config
 
-    config = Config(auto_speak=True, min_chars=5, bridge_enabled=True, speech_retouch=False)
+    config = Config(auto_speak=True, min_chars=5, bridge_enabled=True, bridge_threshold_ms=0, speech_retouch=False)
     raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
 
     # bridge_thinking.wav를 tmp_path에 생성해 exists() 통과
@@ -717,7 +717,7 @@ async def test_handle_hook_bridge_skipped_when_file_missing(tmp_path, monkeypatc
     from hook_voice.config import Config
     import hook_voice.hook_handlers as _hh_mod
 
-    config = Config(auto_speak=True, min_chars=5, bridge_enabled=True, speech_retouch=False)
+    config = Config(auto_speak=True, min_chars=5, bridge_enabled=True, bridge_threshold_ms=0, speech_retouch=False)
     raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
 
     # assets에 bridge 파일이 없는 경우를 시뮬레이션
