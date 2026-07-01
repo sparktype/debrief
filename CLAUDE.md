@@ -40,6 +40,16 @@ Claude Code의 응답을 자동으로 음성으로 읽어주는 hook 기반 시�
 
 # 초기 설치 (.venv 생성 + 모델 다운로드)
 ./setup-tts.sh
+
+# 진단 및 테스트 CLI
+python -m hook_voice voice test          # 기본 음성 TTS 테스트
+python -m hook_voice voice test M2 "안녕하세요"  # 특정 목소리 테스트
+python -m hook_voice doctor              # TTS 시스템 전체 진단
+python -m hook_voice control skip        # 현재 재생 중 트랙 건너뜀
+python -m hook_voice control flush       # 재생 큐 비우기
+curl -s http://localhost:7777/interrupt -X POST  # TTS 즉시 중단
+curl -s http://localhost:7777/playback/status    # 재생 상태 확인
+curl -s http://localhost:7777/health             # 서버 헬스 (model_loaded, queue_depth 포함)
 ```
 
 ## 아키텍처
@@ -50,9 +60,13 @@ Claude Code의 응답을 자동으로 음성으로 읽어주는 hook 기반 시�
 Claude 응답 완료
   → Stop hook (hooks/stop.sh)
     → python -m hook_voice hook
+      → [P2-B] bridge_enabled=true이면 bridge_thinking.wav 즉시 enqueue (침묵 제거)
+      → [P2-A] SpeechPolicy.decide(text) → mode(full/summary_only/earcon_only/skip), priority
+      → [P0] has_heavy_code(text) → 코드 비율 40%+ 이면 summarize_with_code_hint() (LLM 생략)
       → extract_summary() (hook_voice/summarizer.py)  # HMG LLM API → 규칙 기반 폴백
-      → speak_hook() (hook_voice/player.py)
-          ├─ supertonic MLX F1(연아): localhost:7777/v1/tts → WAV 생성
+      → [P0] chunk_for_tts(summary) → 문장 단위 청크 분할 (TTS 잘림 방지)
+      → speak_hook_chunked() (hook_voice/player.py)
+          ├─ [P1-B] enqueue_with_priority(priority=NORMAL) — HIGH/NORMAL/LOW + 30초 TTL
           └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
 
 서브에이전트 응답 완료
@@ -63,6 +77,7 @@ Claude 응답 완료
       → get_agent_label(agentType) → "리뷰어" / "플래너" / "빌더" 등
       → resolve_instruct(agentType) → 역할별 TTS instruct 텍스트
       → extract_one_liner() (hook_voice/summarizer.py)  # LLM 한 줄 요약 + 특수문자 제거
+      → [P1-A] earcon.enabled=true이면 earcon_switch.wav enqueue (에이전트 전환 청각 큐)
       → f"{label} {voice_name}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
           ├─ Supertonic MLX: localhost:7777/v1/tts → WAV 생성
           └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
@@ -91,17 +106,22 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | 파일 | 역할 |
 |------|------|
 | `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
-| `hook_voice/config.py` | `.voice.json` 로더 (`.voice-persona.json` 폴백), SttConfig 포함 |
+| `hook_voice/config.py` | `.voice.json` 로더 (`.voice-persona.json` 폴백), SttConfig·브리지·우선순위 설정 포함 |
 | `hook_voice/llm_client.py` | HMG Hub LLM 클라이언트 (httpx AsyncClient) |
 | `hook_voice/last_message.py` | 마지막 TTS 텍스트 파일 영속화 |
-| `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 |
-| `hook_voice/voice_router.py` | agentType → 카테고리 → voice ID·이름·instruct 변환 |
+| `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 + 코드 블록 축약 + TTS 청크 분할 |
+| `hook_voice/voice_router.py` | agentType → 카테고리 → voice ID·이름·instruct·meta_voice 변환 |
 | `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
-| `hook_voice/player.py` | supertonic MLX spool enqueue — speak_hook(F1) / speak_agent(역할별) |
-| `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 |
-| `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 |
+| `hook_voice/player.py` | supertonic MLX spool enqueue — speak_hook_chunked / speak_agent / enqueue_earcon |
+| `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 (voice test / doctor / control 포함) |
+| `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 + VAD interrupt |
+| `hook_voice/delivery/priority_spool.py` | HIGH/NORMAL/LOW 우선순위 큐 + 30초 TTL 만료 |
+| `hook_voice/event/policy.py` | SmartTTSRouter (SpeechPolicy) — 응답 타입 기반 발화 모드·우선순위 결정 |
+| `hook_voice/event/router.py` | 이벤트 라우터 |
 | `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
-| `tts_server/server.py` | FastAPI 단일 서버 — Supertonic MLX TTS(`/v1/tts`) + STT·메트릭·DLQ (포트 7777) |
+| `assets/earcon_switch.wav` | 에이전트 전환 청각 큐 (0.3초 880Hz 감쇠 톤) |
+| `assets/bridge_thinking.wav` | 브리지 WAV — Stop hook 후 침묵 제거용 (0.5초) |
+| `tts_server/server.py` | FastAPI 단일 서버 — TTS·STT·메트릭·DLQ·인터럽트·헬스 (포트 7777) |
 | `tts_server/supervisor.py` | uvicorn·TTS Player 통합 supervisor |
 
 ### TTS 서버 설계 포인트
@@ -111,7 +131,11 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 - `afplay -r <speed>` 로 재생 속도 후처리
 - `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
 - **파일 스풀 직렬화**: hook·서브에이전트 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
-- 서브에이전트 발화: `f"{role} {voice_name}입니다. {one_liner}"` 형식 (예: "리뷰어 빌입니다."), `sanitize_for_speech()`로 특수문자·유니코드 기호 제거
+- **우선순위 큐**: `delivery/priority_spool.py` — HIGH(즉시 선점), NORMAL(최대 3개·30초 TTL), LOW(큐 비어야 삽입)
+- **재생 인터럽트**: `POST /interrupt` → afplay SIGTERM → 0.3초 → SIGKILL 2단계 중단
+- **SmartTTSRouter**: `event/policy.py` — 에러는 HIGH, 짧은 ack는 earcon only, 코드 비중 높으면 summary only
+- **TTS 잘림 방지**: `chunk_for_tts()`로 80자 단위 문장 분할, `speak_hook_chunked()`로 순차 enqueue
+- 서브에이전트 발화: `f"{role} {voice_name}입니다. {one_liner}"` 형식 (예: "리뷰어 빌입니다."), 에이전트 전환 시 earcon 0.3초 선행 재생
 
 ### 설정 (`hook_voice/config.py` 기본값)
 
@@ -124,6 +148,9 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `ttsSpeed` | `1.1` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
 | `speechRetouch` | `true` | LLM으로 마크다운 제거·IT 용어 한국어 발음 변환 후 TTS 전달 |
+| `bridgeEnabled` | `false` | Stop hook 직후 bridge_thinking.wav 재생 — 침묵 제거 opt-in |
+| `bridgeThresholdMs` | `500` | bridge 재생 최소 텍스트 길이 (글자 수) |
+| `resumeThreshold` | `0.0` | interrupt 후 재개 임계값 (0.0 = 항상 포기, 0.85 = 85% 이상 완료 시 재개) |
 
 **STT 설정** (`stt` 블록):
 
@@ -134,6 +161,15 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `stt.language` | `ko` | 인식 언어 |
 | `stt.sampleRate` | `16000` | 마이크 샘플레이트 (Hz) |
 | `stt.announce` | `true` | 녹음 시작/완료 TTS 안내 여부 |
+| `stt.vadInterrupt` | `false` | VAD 발화 감지 시 TTS 자동 중단 (macOS opt-in) |
+
+**voice-map.json 신규 필드**:
+
+| 필드 | 기본값 | 설명 |
+|------|--------|------|
+| `meta_voice_id` | `"F1"` | 에이전트명 발화에 쓸 기본 목소리 ID |
+| `earcon.enabled` | `true` | 에이전트 전환 시 earcon 재생 여부 |
+| `earcon.agent_switch` | `"assets/earcon_switch.wav"` | 전환 효과음 경로 |
 
 프로젝트 루트의 `.voice.json`으로 개별 오버라이드 가능 (`.voice-persona.json` 폴백 지원).
 
