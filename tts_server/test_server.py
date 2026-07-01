@@ -1,10 +1,13 @@
-# server.py 단위 테스트 — 로그·STT·메트릭·DLQ 검증
+# server.py 단위 테스트 — 로그·STT·메트릭·DLQ·인터럽트 검증
 import os
 import time
-from unittest.mock import AsyncMock
+from pathlib import Path
 
-from tts_server.server import _log
+from fastapi.testclient import TestClient
+
+from tts_server.server import _log, app
 from tts_server.supervisor import _do_cleanup
+
 
 
 class TestStructuredLog:
@@ -77,3 +80,35 @@ def test_metrics_json_includes_cb_and_dlq():
     data = r.json()
     assert "circuit_breakers" in data
     assert "dlq_pending" in data
+
+
+def test_interrupt_no_active_player():
+    """재생 중이 아닐 때 interrupt 요청 → {"status": "not_playing"}"""
+    spool = Path("/tmp/tts-spool")
+    spool.mkdir(exist_ok=True)
+    pid_file = spool / ".player.pid"
+    pid_file.unlink(missing_ok=True)
+
+    with TestClient(app) as client:
+        r = client.post("/interrupt")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] in ("not_playing", "interrupted")
+
+
+def test_interrupt_returns_json():
+    """interrupt 엔드포인트가 JSON을 반환한다"""
+    with TestClient(app) as client:
+        r = client.post("/interrupt")
+    assert r.status_code == 200
+    assert "status" in r.json()
+
+
+def test_playback_status():
+    """playback/status 엔드포인트가 is_playing과 queue_depth를 포함한다"""
+    with TestClient(app) as client:
+        r = client.get("/playback/status")
+    assert r.status_code == 200
+    data = r.json()
+    assert "is_playing" in data
+    assert "queue_depth" in data

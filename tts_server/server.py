@@ -74,7 +74,10 @@ def _log(level: str, message: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _stt_listener
+    global _model, _stt_listener, _mlx_executor
+    # 재진입 시(테스트 등) 종료된 executor를 새로 생성한다
+    if _mlx_executor._shutdown:
+        _mlx_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
     loop = asyncio.get_event_loop()
 
     def _load_model():
@@ -113,6 +116,65 @@ app = FastAPI(title="Chorus Server", lifespan=lifespan)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── 재생 제어 ─────────────────────────────────────────────────────────────────
+
+import os as _os
+import signal as _signal
+
+SPOOL_DIR_SERVER = Path("/tmp/tts-spool")
+
+
+@app.post("/interrupt")
+async def interrupt_playback():
+    """현재 afplay 재생을 SIGTERM → SIGKILL 2단계로 즉시 중단한다."""
+    pid_file = SPOOL_DIR_SERVER / ".player.pid"
+    if not pid_file.exists():
+        return {"status": "not_playing", "pid": None}
+    try:
+        pid = int(pid_file.read_text().strip())
+    except (ValueError, OSError):
+        pid_file.unlink(missing_ok=True)
+        return {"status": "not_playing", "pid": None}
+    try:
+        _os.kill(pid, _signal.SIGTERM)
+        # 0.3초 대기 후 미종료 시 SIGKILL
+        await asyncio.sleep(0.3)
+        try:
+            _os.kill(pid, 0)  # 프로세스 존재 확인
+            _os.kill(pid, _signal.SIGKILL)
+        except ProcessLookupError:
+            pass  # SIGTERM으로 이미 종료됨
+        pid_file.unlink(missing_ok=True)
+        return {"status": "interrupted", "pid": pid}
+    except ProcessLookupError:
+        pid_file.unlink(missing_ok=True)
+        return {"status": "not_playing", "pid": pid}
+    except PermissionError as e:
+        return {"status": "error", "detail": str(e)}
+
+
+@app.get("/playback/status")
+async def playback_status():
+    """현재 재생 상태와 스풀 큐 깊이를 반환한다."""
+    pid_file = SPOOL_DIR_SERVER / ".player.pid"
+    is_playing = False
+    current_pid = None
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            _os.kill(pid, 0)  # 프로세스 존재 확인
+            is_playing = True
+            current_pid = pid
+        except (ValueError, ProcessLookupError, OSError):
+            pid_file.unlink(missing_ok=True)
+    queue_files = list(SPOOL_DIR_SERVER.glob("*.wav")) + list(SPOOL_DIR_SERVER.glob("*.mp3"))
+    return {
+        "is_playing": is_playing,
+        "pid": current_pid,
+        "queue_depth": len(queue_files),
+    }
 
 
 # ── TTS ─────────────────────────────────────────────────────────────────────
