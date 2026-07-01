@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 
+from .delivery.priority_spool import enqueue_with_priority as _enqueue_priority
 from .last_message import save_last_message
 from .observability.circuit_breaker import get_circuit_breaker
 from .summarizer import chunk_for_tts
@@ -51,7 +52,7 @@ def _dynamic_steps(text: str, base_steps: int) -> int:
 
 
 async def speak_hook(text: str, speed: float = 1.2,
-                     hook_timeout: float = 20.0) -> None:
+                     hook_timeout: float = 20.0, priority: str = "NORMAL") -> None:
     """메인 Claude 응답을 supertonic F1(연아) 목소리로 발화한다."""
     hook_cb = get_circuit_breaker("supertonic_hook")
 
@@ -70,7 +71,7 @@ async def speak_hook(text: str, speed: float = 1.2,
         if wav_bytes is not None:
             tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_hook_"))
             tmp.write_bytes(wav_bytes)
-            _enqueue_spool(tmp, speed)
+            _enqueue_priority(tmp, speed=speed, priority=priority, spool_dir=SPOOL_DIR)
             save_last_message(text)
     except Exception as e:
         _log.warning("Hook TTS 생성 실패: %s", type(e).__name__)
@@ -98,7 +99,7 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
         if wav_bytes is not None:
             tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
             tmp.write_bytes(wav_bytes)
-            _enqueue_spool(tmp, speed)
+            _enqueue_priority(tmp, speed=speed, priority="NORMAL", spool_dir=SPOOL_DIR)
             save_last_message(text)
     except Exception as e:
         _log.warning("Supertonic 생성 실패: %s", type(e).__name__)
