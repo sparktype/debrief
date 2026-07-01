@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import subprocess
+import threading
 from typing import Literal
 
 import numpy as np
@@ -10,6 +11,8 @@ import numpy as np
 from .config import SttConfig
 
 _log = logging.getLogger(__name__)
+
+_VAD_RMS_THRESHOLD = 0.01  # VAD 발화 감지 RMS 임계값
 
 
 class SpeechListener:
@@ -19,6 +22,7 @@ class SpeechListener:
         self._buffer: list[np.ndarray] = []
         self._stream = None
         self._lock = asyncio.Lock()
+        self._stt_cfg = config  # VAD 설정 접근용 별칭
 
     async def toggle(self) -> dict:
         async with self._lock:
@@ -85,6 +89,21 @@ class SpeechListener:
         if status:
             _log.warning("[STT] 오디오 콜백 상태: %s", status)
         self._buffer.append(indata.copy())
+        if self._stt_cfg.vad_interrupt:
+            rms = float(np.sqrt(np.mean(indata ** 2)))
+            if rms > _VAD_RMS_THRESHOLD:
+                threading.Thread(
+                    target=self._fire_interrupt,
+                    daemon=True,
+                ).start()
+
+    def _fire_interrupt(self) -> None:
+        """VAD 감지 시 TTS 중단 신호를 비동기로 전송한다."""
+        try:
+            import httpx
+            httpx.post("http://localhost:7777/interrupt", timeout=1.0)
+        except Exception:
+            pass  # TTS 서버 오프라인 시 조용히 무시
 
     def _transcribe(self, audio: np.ndarray) -> str:
         import mlx_whisper

@@ -44,6 +44,7 @@ class SttConfig:
     language: str = "ko"
     sample_rate: int = 16000
     announce: bool = True
+    vad_interrupt: bool = False
 
 
 @dataclass
@@ -137,6 +138,9 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
         if not isinstance(stt.sample_rate, int) or isinstance(stt.sample_rate, bool) or stt.sample_rate <= 0:
             _warn_invalid("stt.sample_rate", stt.sample_rate, defaults.stt.sample_rate)
             stt.sample_rate = defaults.stt.sample_rate
+        if not isinstance(stt.vad_interrupt, bool):
+            _warn_invalid("stt.vad_interrupt", stt.vad_interrupt, defaults.stt.vad_interrupt)
+            stt.vad_interrupt = defaults.stt.vad_interrupt
 
     return kwargs
 
@@ -173,6 +177,7 @@ def load_config(path: Path | None = None) -> Config:
                 language=s.get("language", "ko"),
                 sample_rate=s.get("sampleRate", 16000),
                 announce=s.get("announce", True),
+                vad_interrupt=s.get("vadInterrupt", False),
             )
         kwargs = _normalize_config(kwargs)
         return Config(**kwargs)
