@@ -88,3 +88,37 @@ async def test_purge_expired():
     await asyncio.sleep(0.05)
     removed = await store.purge_expired(0.01)
     assert removed == 1
+
+
+# SmartTTSRouter — SpeechPolicy 테스트 ───────────────────────────────────────
+
+def test_error_gets_high_priority():
+    """에러 감지 시 HIGH 우선순위 full 발화를 반환한다."""
+    from hook_voice.event.policy import SpeechPolicy
+    dec = SpeechPolicy.decide("테스트 실패했습니다. 오류를 확인해 주세요.", is_error=True)
+    assert dec.priority == "HIGH"
+    assert dec.mode == "full"
+
+
+def test_short_ack_gets_low_priority():
+    """짧은 확인 응답은 LOW 우선순위 earcon_only를 반환한다."""
+    from hook_voice.event.policy import SpeechPolicy
+    dec = SpeechPolicy.decide("완료됐습니다.", is_ack=True)
+    assert dec.priority == "LOW"
+    assert dec.mode == "earcon_only"
+
+
+def test_normal_response():
+    """일반 응답은 NORMAL 우선순위 full을 반환한다."""
+    from hook_voice.event.policy import SpeechPolicy
+    dec = SpeechPolicy.decide("파일을 분석했습니다. 총 15개의 함수가 있습니다.")
+    assert dec.priority == "NORMAL"
+    assert dec.mode in ("full", "summary_only")
+
+
+def test_code_heavy_response():
+    """코드 비중 높은 응답은 summary_only를 반환한다."""
+    from hook_voice.event.policy import SpeechPolicy
+    code_text = "코드\n" + "```python\n" + "x = 1\n" * 20 + "```"
+    dec = SpeechPolicy.decide(code_text)
+    assert dec.mode in ("summary_only", "earcon_only")

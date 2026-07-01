@@ -1,11 +1,47 @@
-# hook_voice/event/policy.py — 이벤트 처리 정책 엔진 (중복 제거·TTL·필터)
+# hook_voice/event/policy.py — 이벤트 처리 정책 엔진 (중복 제거·TTL·필터) + SmartTTSRouter
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 
 from .canonical import CanonicalEvent
+
+# SmartTTSRouter — 응답 타입 기반 발화 정책 ─────────────────────────────────
+
+_CODE_BLOCK_RE = re.compile(r"```[\s\S]*?```")
+_ERROR_RE = re.compile(r"실패|에러|오류|문제|충돌|이슈|버그|exception|error", re.IGNORECASE)
+_ACK_RE = re.compile(r"^[^.!?]{1,20}[.。]?$")
+
+
+@dataclass
+class SpeechDecision:
+    """TTS 발화 방식 결정 결과."""
+    mode: str      # "full" | "summary_only" | "earcon_only" | "skip"
+    priority: str  # "HIGH" | "NORMAL" | "LOW"
+
+
+class SpeechPolicy:
+    @staticmethod
+    def decide(text: str, is_error: bool = False, is_ack: bool = False) -> SpeechDecision:
+        """텍스트 메타데이터 기반으로 발화 모드와 우선순위를 결정한다."""
+        stripped = text.strip()
+
+        if is_error or _ERROR_RE.search(stripped):
+            return SpeechDecision(mode="full", priority="HIGH")
+
+        if is_ack:
+            return SpeechDecision(mode="earcon_only", priority="LOW")
+
+        code_chars = sum(len(m.group()) for m in _CODE_BLOCK_RE.finditer(stripped))
+        if code_chars / max(len(stripped), 1) > 0.4:
+            return SpeechDecision(mode="summary_only", priority="NORMAL")
+
+        return SpeechDecision(mode="full", priority="NORMAL")
+
+
+# ────────────────────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
