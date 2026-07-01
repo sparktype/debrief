@@ -102,11 +102,12 @@ async def handle_hook(raw: str, config: Config) -> None:
             text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
         _status("🎙️ chorus: 요약 중...")
-        if has_heavy_code(text):
+        is_code_heavy = has_heavy_code(text)
+        if is_code_heavy:
             summary = summarize_with_code_hint(text)
         else:
             summary = await extract_summary(text, config.summary_model)
-        if config.speech_retouch:
+        if config.speech_retouch and not is_code_heavy:
             _status("🗣️ chorus: 음성 정제 중...")
             pipeline = get_default_pipeline()
             speech_ctx = await pipeline.process(summary)
