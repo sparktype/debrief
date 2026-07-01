@@ -12,7 +12,6 @@ from .canonical import CanonicalEvent
 
 _CODE_BLOCK_RE = re.compile(r"```[\s\S]*?```")
 _ERROR_RE = re.compile(r"실패|에러|오류|문제|충돌|이슈|버그|exception|error", re.IGNORECASE)
-_ACK_RE = re.compile(r"^[^.!?]{1,20}[.。]?$")
 
 
 @dataclass

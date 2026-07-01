@@ -41,7 +41,7 @@ from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
-from .event.policy import SpeechPolicy
+from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
 
 
 def _derive_transcript_path() -> Path | None:
@@ -115,11 +115,14 @@ async def handle_hook(raw: str, config: Config) -> None:
             summary = speech_ctx.text  # SSML break 태그가 텍스트로 발화되는 것 방지
 
         # SmartTTSRouter — 응답 타입 기반 발화 정책 결정
-        is_error = bool(re.search(r"실패|에러|오류|문제|충돌|이슈|버그|exception|error", summary, re.IGNORECASE))
+        is_error = bool(_POLICY_ERROR_RE.search(summary))
         dec = SpeechPolicy.decide(summary, is_error=is_error)
         if dec.mode == "skip":
             return
         if dec.mode == "earcon_only":
+            _earcon_path = Path(__file__).parent.parent / "assets" / "earcon_switch.wav"
+            if _earcon_path.exists():
+                enqueue_earcon(_earcon_path, speed=config.tts_speed)
             return
 
         session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
