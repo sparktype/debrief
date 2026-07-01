@@ -3,8 +3,14 @@
 import json
 import os
 import re
+import sys
 import time as _time
 from pathlib import Path
+
+
+def _status(msg: str) -> None:
+    """터미널 stderr에 chorus 상태를 출력한다."""
+    print(msg, file=sys.stderr, flush=True)
 
 _CLASSIFY_RULES_PATH = Path(__file__).parent.parent / "classify-rules.json"
 _classify_rules_cache: list[dict] | None = None
@@ -92,8 +98,10 @@ async def handle_hook(raw: str, config: Config) -> None:
         if tp:
             text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
+        _status("🎙️ chorus: 요약 중...")
         summary = await extract_summary(text, config.summary_model)
         if config.speech_retouch:
+            _status("🗣️ chorus: 음성 정제 중...")
             pipeline = get_default_pipeline()
             speech_ctx = await pipeline.process(summary)
             summary = speech_ctx.text  # SSML break 태그가 텍스트로 발화되는 것 방지
@@ -105,6 +113,7 @@ async def handle_hook(raw: str, config: Config) -> None:
 
         start = _time.time()
         try:
+            _status("🗣️ chorus: 음성 생성 중...")
             if use_reviewer:
                 vm = load_voice_map()
                 settings = resolve_voice_settings("code-reviewer", vm)
@@ -120,6 +129,7 @@ async def handle_hook(raw: str, config: Config) -> None:
                 )
             else:
                 await speak_hook(summary, config.tts_speed)
+            _status("▶️ chorus: 재생 중")
             latency_ms = (_time.time() - start) * 1000
             get_registry().record_tts_latency(latency_ms)
             log_event("tts_completed", hook_ctx, {
@@ -127,6 +137,7 @@ async def handle_hook(raw: str, config: Config) -> None:
                 "text_len": len(summary),
             })
         except Exception as exc:
+            _status(f"⚠️ chorus: 음성 실패 ({type(exc).__name__})")
             log_event("tts_failed", hook_ctx, {"error": str(exc)}, level="WARNING")
             get_dlq_store().push(
                 event_id=hook_ctx.correlation_id,

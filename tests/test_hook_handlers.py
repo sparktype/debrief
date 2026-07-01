@@ -1,5 +1,7 @@
 # tests/test_hook_handlers.py
 import json
+import sys
+from io import StringIO
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -546,3 +548,45 @@ async def test_handle_pre_tool_monitor_creates_flag(monkeypatch):
 async def test_handle_pre_tool_monitor_no_session_id(monkeypatch):
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     await handle_pre_tool_monitor("")  # 예외 없이 종료되어야 함
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_prints_status_to_stderr(tmp_path):
+    """handle_hook이 실행 중 stderr에 상태를 출력한다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=False)
+    raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
+
+    stderr_capture = StringIO()
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
+        patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()),
+        patch("sys.stderr", stderr_capture),
+    ):
+        await handle_hook(raw, config)
+
+    output = stderr_capture.getvalue()
+    assert "chorus" in output  # 상태 메시지에 chorus 포함
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_stderr_failure_message(tmp_path):
+    """TTS 실패 시 stderr에 ⚠️ 메시지가 출력된다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=False)
+    raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
+
+    stderr_capture = StringIO()
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
+        patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock(side_effect=RuntimeError("TTS 오류"))),
+        patch("sys.stderr", stderr_capture),
+    ):
+        await handle_hook(raw, config)
+
+    output = stderr_capture.getvalue()
+    assert "⚠️" in output or "오류" in output or "실패" in output
