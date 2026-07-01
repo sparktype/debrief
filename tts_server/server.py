@@ -175,7 +175,7 @@ async def interrupt_playback(req: InterruptRequest = None):
         pid_file.unlink(missing_ok=True)
         return {"status": "not_playing", "pid": pid, "resume_threshold": resume_threshold}
     except PermissionError as e:
-        return {"status": "error", "detail": str(e)}
+        return {"status": "error", "detail": str(e), "resume_threshold": resume_threshold}
 
 
 @app.get("/playback/status")
