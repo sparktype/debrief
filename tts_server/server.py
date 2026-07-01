@@ -135,17 +135,31 @@ async def health():
 # ── 재생 제어 ─────────────────────────────────────────────────────────────────
 
 
+class InterruptRequest(BaseModel):
+    force: bool = False
+
+
 @app.post("/interrupt")
-async def interrupt_playback():
-    """현재 afplay 재생을 SIGTERM → SIGKILL 2단계로 즉시 중단한다."""
+async def interrupt_playback(req: InterruptRequest = None):
+    """현재 afplay 재생을 SIGTERM → SIGKILL 2단계로 즉시 중단한다.
+
+    req.force=True 이면 resume_threshold 무시, 즉시 종료.
+    req.force=False (기본) 이면 응답에 resume_threshold 정보를 포함해
+    클라이언트가 재개 여부를 판단할 수 있도록 한다.
+    """
+    if req is None:
+        req = InterruptRequest()
+    _voice_cfg = _load_voice_config()
+    resume_threshold = _voice_cfg.resume_threshold
+
     pid_file = SPOOL_DIR_SERVER / ".player.pid"
     if not pid_file.exists():
-        return {"status": "not_playing", "pid": None}
+        return {"status": "not_playing", "pid": None, "resume_threshold": resume_threshold}
     try:
         pid = int(pid_file.read_text().strip())
     except (ValueError, OSError):
         pid_file.unlink(missing_ok=True)
-        return {"status": "not_playing", "pid": None}
+        return {"status": "not_playing", "pid": None, "resume_threshold": resume_threshold}
     try:
         os.kill(pid, signal.SIGTERM)
         # 0.3초 대기 후 미종료 시 SIGKILL
@@ -156,10 +170,10 @@ async def interrupt_playback():
         except ProcessLookupError:
             pass  # SIGTERM으로 이미 종료됨
         pid_file.unlink(missing_ok=True)
-        return {"status": "interrupted", "pid": pid}
+        return {"status": "interrupted", "pid": pid, "resume_threshold": resume_threshold}
     except ProcessLookupError:
         pid_file.unlink(missing_ok=True)
-        return {"status": "not_playing", "pid": pid}
+        return {"status": "not_playing", "pid": pid, "resume_threshold": resume_threshold}
     except PermissionError as e:
         return {"status": "error", "detail": str(e)}
 

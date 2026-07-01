@@ -146,3 +146,49 @@ def test_health_includes_stt_enabled(client):
     data = r.json()
     assert "stt_enabled" in data
     assert isinstance(data["stt_enabled"], bool)
+
+
+def test_interrupt_no_body_returns_resume_threshold():
+    """interrupt 요청 body 없이도 resume_threshold 필드가 반환된다."""
+    spool = Path("/tmp/tts-spool")
+    spool.mkdir(exist_ok=True)
+    pid_file = spool / ".player.pid"
+    pid_file.unlink(missing_ok=True)
+
+    with TestClient(app) as client:
+        r = client.post("/interrupt")
+    assert r.status_code == 200
+    data = r.json()
+    assert "resume_threshold" in data
+    assert isinstance(data["resume_threshold"], float)
+
+
+def test_interrupt_with_force_false():
+    """interrupt force=False 요청 — resume_threshold 포함된 응답 반환."""
+    spool = Path("/tmp/tts-spool")
+    spool.mkdir(exist_ok=True)
+    pid_file = spool / ".player.pid"
+    pid_file.unlink(missing_ok=True)
+
+    with TestClient(app) as client:
+        r = client.post("/interrupt", json={"force": False})
+    assert r.status_code == 200
+    data = r.json()
+    assert "status" in data
+    assert "resume_threshold" in data
+    assert data["resume_threshold"] == 0.0  # 기본값
+
+
+def test_interrupt_with_force_true():
+    """interrupt force=True 요청 — 즉시 종료, resume_threshold는 0.0 기본값."""
+    spool = Path("/tmp/tts-spool")
+    spool.mkdir(exist_ok=True)
+    pid_file = spool / ".player.pid"
+    pid_file.unlink(missing_ok=True)
+
+    with TestClient(app) as client:
+        r = client.post("/interrupt", json={"force": True})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] in ("not_playing", "interrupted")
+    assert "resume_threshold" in data

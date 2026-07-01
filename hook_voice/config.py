@@ -24,6 +24,7 @@ _KEY_MAP = {
     "speechRetouch": "speech_retouch",
     "bridgeEnabled": "bridge_enabled",
     "bridgeThresholdMs": "bridge_threshold_ms",
+    "resumeThreshold": "resume_threshold",
 }
 
 
@@ -60,6 +61,7 @@ class Config:
     speech_retouch: bool = True
     bridge_enabled: bool = False
     bridge_threshold_ms: int = 500
+    resume_threshold: float = 0.0  # 0.0 = 항상 포기, 0.85 = 85% 이상 완료 시 계속
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
 
@@ -104,6 +106,7 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
     _normalize_int("min_chars", 0)
     _normalize_int("bridge_threshold_ms", 0)
     _normalize_float("tts_speed", 0.0)
+    _normalize_float("resume_threshold", -0.1)
     _normalize_int("skill_cooldown_minutes", 0)
     _normalize_int("supertonic_port", 1, 65535)
     _normalize_int("supertonic_timeout_ms", 100)
