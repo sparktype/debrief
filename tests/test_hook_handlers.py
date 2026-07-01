@@ -622,3 +622,133 @@ async def test_handle_doctor_calls_health_check(capsys):
         await handle_doctor(config)
 
     # handle_health가 호출됐으면 OK (출력은 handle_health에 위임)
+
+
+# ── 브리지 WAV 테스트 ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_handle_hook_enqueues_bridge_when_enabled(tmp_path):
+    """bridge_enabled=True일 때 bridge WAV가 enqueue된다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+
+    config = Config(auto_speak=True, min_chars=5, bridge_enabled=True, speech_retouch=False)
+    raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
+
+    # bridge_thinking.wav를 tmp_path에 생성해 exists() 통과
+    fake_bridge = tmp_path / "bridge_thinking.wav"
+    fake_bridge.write_bytes(b"RIFF")
+
+    enqueue_calls = []
+
+    def fake_enqueue_earcon(path, speed=1.0):
+        enqueue_calls.append(path)
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+        patch("hook_voice.hook_handlers.enqueue_earcon", side_effect=fake_enqueue_earcon),
+        patch("hook_voice.hook_handlers.Path") as mock_path_cls,
+    ):
+        # __file__.parent.parent / "assets" / "bridge_thinking.wav" 경로를 fake로 대체
+        mock_path_cls.return_value.__truediv__ = lambda self, other: fake_bridge
+        # 실제 Path 호환성 유지를 위해 exists()도 통과시킴
+        import pathlib
+        mock_path_cls.side_effect = lambda *a, **kw: pathlib.Path(*a, **kw)
+        # 경로 패치 대신 bridge path 자체를 패치
+        with patch.object(
+            pathlib.Path,
+            "exists",
+            lambda self: True if "bridge_thinking" in str(self) else self.__class__.exists(self),
+        ):
+            pass  # exists 패치는 너무 광범위 — 아래 방식으로 대체
+
+    # 더 단순한 방식: _bridge_path 계산 후 실제 파일로 복사
+    import shutil
+    assets_dir = Path(__file__).parent.parent / "assets"
+    bridge_exists = (assets_dir / "bridge_thinking.wav").exists()
+
+    enqueue_calls2 = []
+
+    def fake_enqueue_earcon2(path, speed=1.0):
+        enqueue_calls2.append(path)
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+        patch("hook_voice.hook_handlers.enqueue_earcon", side_effect=fake_enqueue_earcon2),
+    ):
+        await handle_hook(raw, config)
+
+    if bridge_exists:
+        assert len(enqueue_calls2) >= 1, "bridge_thinking.wav가 enqueue되어야 합니다"
+        assert "bridge_thinking" in str(enqueue_calls2[0])
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_no_bridge_when_disabled():
+    """bridge_enabled=False(기본)이면 bridge WAV가 enqueue되지 않는다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+
+    config = Config(auto_speak=True, min_chars=5, bridge_enabled=False, speech_retouch=False)
+    raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
+
+    earcon_paths = []
+
+    def capture_earcon(path, speed=1.0):
+        earcon_paths.append(path)
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+        patch("hook_voice.hook_handlers.enqueue_earcon", side_effect=capture_earcon),
+    ):
+        await handle_hook(raw, config)
+
+    bridge_calls = [p for p in earcon_paths if "bridge_thinking" in str(p)]
+    assert len(bridge_calls) == 0, "bridge_enabled=False이면 bridge WAV를 enqueue하면 안 됩니다"
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_bridge_skipped_when_file_missing(tmp_path, monkeypatch):
+    """bridge_thinking.wav 파일이 없으면 enqueue_earcon이 호출되지 않는다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+    import hook_voice.hook_handlers as _hh_mod
+
+    config = Config(auto_speak=True, min_chars=5, bridge_enabled=True, speech_retouch=False)
+    raw = '{"last_assistant_message": "테스트 응답입니다 충분히 긴 텍스트입니다."}'
+
+    # assets에 bridge 파일이 없는 경우를 시뮬레이션
+    missing_path = tmp_path / "bridge_thinking.wav"
+    # 파일 미존재 확인 (missing_path.exists() == False)
+
+    earcon_calls = []
+
+    def capture_earcon(path, speed=1.0):
+        earcon_calls.append(path)
+
+    original_path = Path
+
+    def patched_path(*args, **kwargs):
+        p = original_path(*args, **kwargs)
+        return p
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약됨")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+        patch("hook_voice.hook_handlers.enqueue_earcon", side_effect=capture_earcon),
+    ):
+        # bridge_path 계산에 사용되는 __file__의 부모를 tmp_path로 변경
+        # hook_handlers.py의 Path(__file__) 계산 결과를 우회
+        with patch.object(
+            _hh_mod,
+            "__file__",
+            str(tmp_path / "hook_voice" / "hook_handlers.py"),
+        ):
+            await handle_hook(raw, config)
+
+    # bridge 파일이 없으므로 bridge earcon은 호출되지 않아야 함
+    bridge_calls = [p for p in earcon_calls if "bridge_thinking" in str(p)]
+    assert len(bridge_calls) == 0

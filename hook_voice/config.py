@@ -22,6 +22,8 @@ _KEY_MAP = {
     "supertonicTimeoutMs": "supertonic_timeout_ms",
     "allowInsecureTls": "allow_insecure_tls",
     "speechRetouch": "speech_retouch",
+    "bridgeEnabled": "bridge_enabled",
+    "bridgeThresholdMs": "bridge_threshold_ms",
 }
 
 
@@ -56,6 +58,8 @@ class Config:
     supertonic_timeout_ms: int = 20000
     allow_insecure_tls: bool = True
     speech_retouch: bool = True
+    bridge_enabled: bool = False
+    bridge_threshold_ms: int = 500
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
 
@@ -96,7 +100,9 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
     _normalize_bool("auto_speak")
     _normalize_bool("allow_insecure_tls")
     _normalize_bool("speech_retouch")
+    _normalize_bool("bridge_enabled")
     _normalize_int("min_chars", 0)
+    _normalize_int("bridge_threshold_ms", 0)
     _normalize_float("tts_speed", 0.0)
     _normalize_int("skill_cooldown_minutes", 0)
     _normalize_int("supertonic_port", 1, 65535)

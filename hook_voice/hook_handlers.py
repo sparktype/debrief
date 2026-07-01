@@ -102,6 +102,11 @@ async def handle_hook(raw: str, config: Config) -> None:
         if tp:
             text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
+        # 브리지 WAV 즉시 재생 — 요약 대기 침묵 제거
+        if config.bridge_enabled:
+            _bridge_path = Path(__file__).parent.parent / "assets" / "bridge_thinking.wav"
+            if _bridge_path.exists():
+                enqueue_earcon(_bridge_path, speed=1.0)
         _status("🎙️ chorus: 요약 중...")
         is_code_heavy = has_heavy_code(text)
         if is_code_heavy:

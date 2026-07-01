@@ -126,3 +126,29 @@ def test_load_config_speech_retouch_from_file(tmp_path):
     f.write_text('{"speechRetouch": false}', encoding="utf-8")
     cfg = load_config(f)
     assert cfg.speech_retouch is False
+
+
+def test_load_config_bridge_defaults():
+    """bridge_enabled 기본값은 False, bridge_threshold_ms 기본값은 500."""
+    cfg = Config()
+    assert cfg.bridge_enabled is False
+    assert cfg.bridge_threshold_ms == 500
+
+
+def test_load_config_bridge_enabled_from_file(tmp_path):
+    """bridgeEnabled=true 설정 파일에서 올바르게 로드."""
+    f = tmp_path / ".voice.json"
+    f.write_text('{"bridgeEnabled": true, "bridgeThresholdMs": 300}', encoding="utf-8")
+    cfg = load_config(f)
+    assert cfg.bridge_enabled is True
+    assert cfg.bridge_threshold_ms == 300
+
+
+def test_load_config_bridge_enabled_normalizes_invalid(tmp_path, caplog):
+    """bridgeEnabled에 비불리언 값이 오면 기본값으로 복원한다."""
+    f = tmp_path / ".voice.json"
+    f.write_text('{"bridgeEnabled": "yes", "bridgeThresholdMs": -1}', encoding="utf-8")
+    cfg = load_config(f)
+    assert cfg.bridge_enabled is False
+    assert cfg.bridge_threshold_ms == 500
+    assert "잘못된 값" in caplog.text
