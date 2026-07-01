@@ -5,6 +5,7 @@ import datetime
 import io
 import os
 import re
+import signal
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 
@@ -113,9 +114,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Chorus Server", lifespan=lifespan)
 
 
-import os as _os
-import signal as _signal
-
 SPOOL_DIR_SERVER = Path("/tmp/tts-spool")
 
 
@@ -149,12 +147,12 @@ async def interrupt_playback():
         pid_file.unlink(missing_ok=True)
         return {"status": "not_playing", "pid": None}
     try:
-        _os.kill(pid, _signal.SIGTERM)
+        os.kill(pid, signal.SIGTERM)
         # 0.3초 대기 후 미종료 시 SIGKILL
         await asyncio.sleep(0.3)
         try:
-            _os.kill(pid, 0)  # 프로세스 존재 확인
-            _os.kill(pid, _signal.SIGKILL)
+            os.kill(pid, 0)  # 프로세스 존재 확인
+            os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass  # SIGTERM으로 이미 종료됨
         pid_file.unlink(missing_ok=True)
@@ -175,7 +173,7 @@ async def playback_status():
     if pid_file.exists():
         try:
             pid = int(pid_file.read_text().strip())
-            _os.kill(pid, 0)  # 프로세스 존재 확인
+            os.kill(pid, 0)  # 프로세스 존재 확인
             is_playing = True
             current_pid = pid
         except (ValueError, ProcessLookupError, OSError):
