@@ -113,6 +113,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Chorus Server", lifespan=lifespan)
 
 
+import os as _os
+import signal as _signal
+
+SPOOL_DIR_SERVER = Path("/tmp/tts-spool")
+
+
 # ── 공통 헬스 ────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -129,11 +135,6 @@ async def health():
 
 
 # ── 재생 제어 ─────────────────────────────────────────────────────────────────
-
-import os as _os
-import signal as _signal
-
-SPOOL_DIR_SERVER = Path("/tmp/tts-spool")
 
 
 @app.post("/interrupt")

@@ -137,3 +137,12 @@ def test_health_includes_model_loaded(client):
     data = r.json()
     assert "model_loaded" in data
     assert isinstance(data["model_loaded"], bool)
+
+
+def test_health_includes_stt_enabled(client):
+    """GET /health가 stt_enabled 필드를 포함한다."""
+    r = client.get("/health")
+    assert r.status_code == 200
+    data = r.json()
+    assert "stt_enabled" in data
+    assert isinstance(data["stt_enabled"], bool)
