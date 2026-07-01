@@ -42,6 +42,7 @@ from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
+from .learning.stats_store import record_playback as _record_stat
 
 
 def _derive_transcript_path() -> Path | None:
@@ -136,6 +137,7 @@ async def handle_hook(raw: str, config: Config) -> None:
         failure_stage = "speak_agent_monitor" if use_reviewer else "speak_hook"
 
         start = _time.time()
+        _speech_mode = dec.mode  # 통계용
         try:
             _status("🗣️ chorus: 음성 생성 중...")
             if use_reviewer:
@@ -160,7 +162,16 @@ async def handle_hook(raw: str, config: Config) -> None:
                 "latency_ms": round(latency_ms, 1),
                 "text_len": len(summary),
             })
+            if config.usage_tracking:
+                _record_stat(
+                    agent_type="default",
+                    mode=_speech_mode,
+                    priority=dec.priority,
+                    completed=True,
+                    duration_secs=latency_ms / 1000,
+                )
         except Exception as exc:
+            _elapsed = (_time.time() - start) * 1000
             _status(f"⚠️ chorus: 음성 실패 ({type(exc).__name__})")
             log_event("tts_failed", hook_ctx, {"error": str(exc)}, level="WARNING")
             get_dlq_store().push(
@@ -170,6 +181,14 @@ async def handle_hook(raw: str, config: Config) -> None:
                 raw_text=summary[:200],
                 source="stop_hook",
             )
+            if config.usage_tracking:
+                _record_stat(
+                    agent_type="default",
+                    mode=_speech_mode,
+                    priority=dec.priority,
+                    completed=False,
+                    duration_secs=_elapsed / 1000,
+                )
 
 
 async def handle_notification(raw: str, config: Config) -> None:

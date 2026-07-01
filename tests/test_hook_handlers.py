@@ -752,3 +752,72 @@ async def test_handle_hook_bridge_skipped_when_file_missing(tmp_path, monkeypatc
     # bridge 파일이 없으므로 bridge earcon은 호출되지 않아야 함
     bridge_calls = [p for p in earcon_calls if "bridge_thinking" in str(p)]
     assert len(bridge_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_records_completed_stat(tmp_path, monkeypatch):
+    """TTS 성공 시 usage_tracking=True이면 completed=True 통계가 기록된다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+    from hook_voice.learning import stats_store
+    from unittest.mock import AsyncMock, patch
+
+    monkeypatch.setattr(stats_store, "_STATS_FILE", tmp_path / "stats.jsonl")
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=False, usage_tracking=True)
+    raw = '{"last_assistant_message": "작업이 완료됐습니다 충분히 긴 텍스트입니다."}'
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="완료됐습니다")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+    ):
+        await handle_hook(raw, config)
+
+    entries = stats_store.load_stats()
+    assert len(entries) == 1
+    assert entries[0]["completed"] is True
+    assert entries[0]["agent_type"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_records_failed_stat(tmp_path, monkeypatch):
+    """TTS 실패 시 completed=False 통계가 기록된다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+    from hook_voice.learning import stats_store
+    from unittest.mock import AsyncMock, patch
+
+    monkeypatch.setattr(stats_store, "_STATS_FILE", tmp_path / "stats.jsonl")
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=False, usage_tracking=True)
+    raw = '{"last_assistant_message": "작업이 완료됐습니다 충분히 긴 텍스트입니다."}'
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="완료됐습니다")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock(side_effect=RuntimeError("TTS 오류"))),
+    ):
+        await handle_hook(raw, config)
+
+    entries = stats_store.load_stats()
+    assert len(entries) == 1
+    assert entries[0]["completed"] is False
+
+
+@pytest.mark.asyncio
+async def test_handle_hook_skips_stat_when_tracking_disabled(tmp_path, monkeypatch):
+    """usage_tracking=False이면 통계가 기록되지 않는다."""
+    from hook_voice.hook_handlers import handle_hook
+    from hook_voice.config import Config
+    from hook_voice.learning import stats_store
+    from unittest.mock import AsyncMock, patch
+
+    monkeypatch.setattr(stats_store, "_STATS_FILE", tmp_path / "stats.jsonl")
+    config = Config(auto_speak=True, min_chars=5, speech_retouch=False, usage_tracking=False)
+    raw = '{"last_assistant_message": "작업이 완료됐습니다 충분히 긴 텍스트입니다."}'
+
+    with (
+        patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="완료됐습니다")),
+        patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()),
+    ):
+        await handle_hook(raw, config)
+
+    entries = stats_store.load_stats()
+    assert len(entries) == 0
