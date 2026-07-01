@@ -102,8 +102,8 @@ async def handle_hook(raw: str, config: Config) -> None:
         if tp:
             text = get_last_assistant_text(tp)
     if config.auto_speak and len(text) >= config.min_chars:
-        # 브리지 WAV 즉시 재생 — 요약 대기 침묵 제거
-        if config.bridge_enabled:
+        # 브리지 WAV 즉시 재생 — 요약 대기 침묵 제거 (bridge_threshold_ms를 문자 수 임계값으로 사용)
+        if config.bridge_enabled and len(text) >= config.bridge_threshold_ms:
             _bridge_path = Path(__file__).parent.parent / "assets" / "bridge_thinking.wav"
             if _bridge_path.exists():
                 enqueue_earcon(_bridge_path, speed=1.0)
