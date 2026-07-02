@@ -312,25 +312,29 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
         _earcon_path = Path(__file__).parent.parent / _earcon_cfg.get("agent_switch", "assets/earcon_switch.wav")
         enqueue_earcon(_earcon_path, speed=config.tts_speed)
 
-    # expressionLevel에 따라 감정 태그 조절
-    # Supertonic 3 공식 지원 태그: breath·laugh·sigh (README 기준)
-    # 나머지(hmm, gasp, cry 등)는 실험적으로 동작하나 공식 문서화 미포함
+    # expressionLevel에 따라 감정 태그 결정
+    # Supertonic 3 스펙: 태그는 발화 맨 앞에 위치할 때 효과가 가장 명확함
+    # 공식 문서화 태그: breath·laugh·sigh (나머지 7종은 동작하나 실험적)
     _OFFICIAL_TAGS = frozenset({"breath", "laugh", "sigh"})
     expr = config.expression_level
     if expr == "off":
-        tag_infix = ""           # 태그 완전 제거
+        effective_tag = ""           # 태그 완전 제거
     elif expr == "low":
-        tag_infix = "<breath> "  # 공식 지원 중 가장 중립적인 호흡만
+        effective_tag = "<breath>"   # 공식 지원 중 가장 중립적인 호흡
     elif expr == "high":
-        tag_infix = f"{tag} " if tag else ""  # LLM 선택 10종 그대로 사용
-    else:                        # "normal" — 공식 지원 3종 내로 제한
+        effective_tag = tag if tag else "<breath>"  # LLM 선택 10종 그대로
+    else:                            # "normal" — 공식 지원 3종 내로 제한
         if tag:
             tag_name = tag.strip("<>")
-            tag_infix = f"{tag} " if tag_name in _OFFICIAL_TAGS else "<breath> "
+            effective_tag = tag if tag_name in _OFFICIAL_TAGS else "<breath>"
         else:
-            tag_infix = "<breath> "
+            effective_tag = "<breath>"
 
-    speak_text = f"{label} {voice_name}입니다. {tag_infix}{one_liner}"
+    # 태그를 발화 맨 앞에 위치시켜 Supertonic 효과를 최대화
+    if effective_tag:
+        speak_text = f"{effective_tag} {label} {voice_name}입니다. {one_liner}"
+    else:
+        speak_text = f"{label} {voice_name}입니다. {one_liner}"
     start = _time.time()
     try:
         await speak_agent(speak_text, voice, config.supertonic_port, config.tts_speed, instruct,
