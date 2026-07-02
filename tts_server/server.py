@@ -371,6 +371,20 @@ async def chorus_mode(req: ModeRequest) -> ModeResponse:
     )
 
 
+class ExpressionRequest(BaseModel):
+    level: str  # "off" | "low" | "normal"
+
+
+@app.post("/chorus/expression", summary="감정 표현 레벨 변경", tags=["chorus"])
+async def chorus_expression(req: ExpressionRequest):
+    """서브에이전트 발화의 감정 표현 수준을 변경한다 (off·low·normal)."""
+    from hook_voice.config import _find_default_config, _VOICE_JSON
+    from hook_voice.hook_handlers import handle_expression
+    config_path = _find_default_config() or _VOICE_JSON
+    await handle_expression(["set", req.level], config_path)
+    return {"expression_level": req.level, "message": f"감정 표현 레벨이 {req.level}로 변경됐습니다."}
+
+
 @app.get("/chorus/setup", summary="현재 chorus 설정 상태 조회", tags=["chorus"])
 async def chorus_setup_status():
     """현재 .voice.json 설정과 에이전트별 목소리 매핑을 반환한다."""
@@ -391,6 +405,7 @@ async def chorus_setup_status():
         "tts_speed": cfg.tts_speed,
         "bridge_enabled": cfg.bridge_enabled,
         "usage_tracking": cfg.usage_tracking,
+        "expression_level": cfg.expression_level,
         "agent_voices": agent_voices,
     }
 

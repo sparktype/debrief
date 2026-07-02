@@ -312,7 +312,24 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
         _earcon_path = Path(__file__).parent.parent / _earcon_cfg.get("agent_switch", "assets/earcon_switch.wav")
         enqueue_earcon(_earcon_path, speed=config.tts_speed)
 
-    tag_infix = f"{tag} " if tag else ""
+    # expressionLevel에 따라 감정 태그 조절
+    # Supertonic 3 공식 지원 태그: breath·laugh·sigh (README 기준)
+    # 나머지(hmm, gasp, cry 등)는 실험적으로 동작하나 공식 문서화 미포함
+    _OFFICIAL_TAGS = frozenset({"breath", "laugh", "sigh"})
+    expr = config.expression_level
+    if expr == "off":
+        tag_infix = ""           # 태그 완전 제거
+    elif expr == "low":
+        tag_infix = "<breath> "  # 공식 지원 중 가장 중립적인 호흡만
+    elif expr == "high":
+        tag_infix = f"{tag} " if tag else ""  # LLM 선택 10종 그대로 사용
+    else:                        # "normal" — 공식 지원 3종 내로 제한
+        if tag:
+            tag_name = tag.strip("<>")
+            tag_infix = f"{tag} " if tag_name in _OFFICIAL_TAGS else "<breath> "
+        else:
+            tag_infix = "<breath> "
+
     speak_text = f"{label} {voice_name}입니다. {tag_infix}{one_liner}"
     start = _time.time()
     try:
@@ -595,6 +612,57 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
     _sys.exit(1)
 
 
+_EXPRESSION_LEVELS = {
+    "off":    "감정 태그 없음 — 태그를 완전히 제거합니다. 가장 단조롭지만 가장 안정적입니다.",
+    "low":    "최소 표현 — Supertonic 공식 지원 태그(<breath>)만 사용합니다. 자연스러운 시작 호흡.",
+    "normal": "표준 (기본값) — 공식 지원 3종(<breath>·<laugh>·<sigh>) 내에서 내용에 맞게 선택합니다.",
+    "high":   "전체 표현 — LLM이 10종 태그 중 내용에 가장 어울리는 것을 자유롭게 선택합니다. (실험적)",
+}
+
+
+async def handle_expression(args: list[str], config_path: "Path") -> None:
+    """서브에이전트 발화의 감정 표현 수준을 조절한다.
+
+    expression show               — 현재 설정 확인
+    expression set <off|low|normal> — 레벨 변경
+    expression list               — 레벨 설명 목록
+    """
+    import sys as _sys
+    import json as _json
+
+    action = args[0] if args else "show"
+
+    if action == "list":
+        print("감정 표현 레벨:")
+        for level, desc in _EXPRESSION_LEVELS.items():
+            print(f"  {level:8s} — {desc}")
+        return
+
+    if action == "show":
+        data = _read_json_object(config_path)
+        current = data.get("expressionLevel", "normal")
+        desc = _EXPRESSION_LEVELS.get(current, "")
+        print(f"현재 expressionLevel: {current}")
+        if desc:
+            print(f"  {desc}")
+        return
+
+    if action == "set" and len(args) == 2:
+        level = args[1].lower()
+        if level not in _EXPRESSION_LEVELS:
+            print(f"알 수 없는 레벨: {level}. 사용 가능: {', '.join(_EXPRESSION_LEVELS)}", file=_sys.stderr)
+            _sys.exit(1)
+        data = _read_json_object(config_path)
+        data["expressionLevel"] = level
+        _write_json_object(config_path, data)
+        print(f"expressionLevel = {level} (저장됨)")
+        print(f"  {_EXPRESSION_LEVELS[level]}")
+        return
+
+    print("사용법: hook_voice setup expression [show|list|set <off|low|normal|high>]", file=_sys.stderr)
+    _sys.exit(1)
+
+
 async def handle_mode(args: list[str], config_path: "Path") -> None:
     """상황별 음성 프리셋을 .voice.json에 적용한다."""
     import sys as _sys
@@ -645,6 +713,7 @@ async def handle_setup(args: list[str], config_path: "Path", voice_map_path: "Pa
         print(f"  autoSpeak: {cfg.auto_speak}")
         print(f"  minChars: {cfg.min_chars}")
         print(f"  ttsSpeed: {cfg.tts_speed}")
+        print(f"  expressionLevel: {cfg.expression_level}")
         print(f"  voice-map: {voice_map_path}")
         print("  agent voices:")
         for category, voice_id in sorted(vm.get("voices", {}).items()):
@@ -667,9 +736,13 @@ async def handle_setup(args: list[str], config_path: "Path", voice_map_path: "Pa
         await handle_mode(args[1:] or ["show"], config_path)
         return
 
+    if section == "expression":
+        await handle_expression(args[1:], config_path)
+        return
+
     if section != "voice":
         print(
-            "사용법: hook_voice setup [status|defaults|mode ...|voice list|voice set <category> <voiceId>|voice speed <voiceId> <speed>|voice steps <voiceId> <steps>]",
+            "사용법: hook_voice setup [status|defaults|mode ...|expression ...|voice list|voice set <category> <voiceId>|voice speed <voiceId> <speed>|voice steps <voiceId> <steps>]",
             file=_sys.stderr,
         )
         _sys.exit(1)

@@ -28,6 +28,7 @@ chorus TTS의 현재 상태를 조회하고 런타임에 설정을 변경합니�
 options:
   - "모드 변경" — normal·focus·quiet·verbose·night 선택 → /chorus:mode 로 위임
   - "에이전트 목소리 변경" — 역할별 목소리 지정
+  - "감정 표현 레벨 변경" — off·low·normal·high 중 선택
   - "ttsSpeed 조정" — 재생 속도 직접 입력
   - "기본값으로 초기화" — normal 모드 기본값으로 리셋
   - "현재 상태만 확인" — 변경 없이 종료
@@ -51,6 +52,23 @@ options:
 
 역할: `reviewer` `planner` `builder` `tester` `explorer` `optimizer` `guardian` `ops` `specialist`  
 voiceId: `F1`(연아) `F2`(마리) `F3`(제인) `F4`(셰릴) `F5`(리사) `M1`(스티브) `M2`(빌) `M3`(일론) `M4`(리누스) `M5`(팀)
+
+**감정 표현 레벨 변경**
+
+```bash
+# 레벨 목록 확인 (Supertonic 3 공식 스펙 기반)
+.venv/bin/python -m hook_voice setup expression list
+
+# 변경 (예: normal → high)
+.venv/bin/python -m hook_voice setup expression set normal
+```
+
+| 레벨 | 동작 | Supertonic 태그 |
+|------|------|-----------------|
+| `off` | 태그 완전 제거 (단조롭지만 안정) | 없음 |
+| `low` | `<breath>` 고정 (공식 지원·중립) | breath만 |
+| `normal` | 공식 3종 내 자동 선택 **(기본값)** | breath·laugh·sigh |
+| `high` | LLM이 10종 전체에서 자유 선택 (실험적) | 전체 10종 |
 
 **ttsSpeed 조정**
 
