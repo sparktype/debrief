@@ -21,7 +21,7 @@ _AGENT_COMPLETION_MIN = 0.6  # 에이전트별 완료율 최소값
 _AGENT_MIN_SAMPLES = 5       # 에이전트별 최소 샘플 수
 
 
-def analyze(stats: list[dict]) -> list[Suggestion]:
+def analyze(stats: list[dict], current_speed: float | None = None) -> list[Suggestion]:
     """통계 목록을 분석해 설정 권장안 리스트를 반환한다.
 
     통계가 _MIN_STATS건 미만이면 빈 리스트를 반환한다.
@@ -38,11 +38,25 @@ def analyze(stats: list[dict]) -> list[Suggestion]:
     if interrupt_rate > _INTERRUPT_THRESHOLD:
         suggestions.append(Suggestion(
             key="ttsSpeed",
-            current=None,
+            current=current_speed,
             recommended=0.95,
             reason=(
                 f"최근 {total}건 중 {interrupted}건({interrupt_rate:.0%})이 중단됐습니다. "
                 "재생 속도를 낮추면 끝까지 듣는 비율이 높아질 수 있습니다."
+            ),
+        ))
+
+    # 3. 에러 발화 비중 > 30% → HIGH 우선순위 이미 적용 중 안내
+    error_count = sum(1 for s in stats if s.get("priority", "NORMAL") == "HIGH")
+    error_rate = error_count / total
+    if error_rate > 0.3:
+        suggestions.append(Suggestion(
+            key="error_priority_info",
+            current="HIGH",
+            recommended="HIGH",
+            reason=(
+                f"최근 {total}건 중 {error_count}건({error_rate:.0%})이 에러/HIGH 우선순위 발화였습니다. "
+                "SmartTTS가 에러 응답을 이미 HIGH 우선순위로 처리하고 있습니다."
             ),
         ))
 

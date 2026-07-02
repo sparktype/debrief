@@ -70,3 +70,25 @@ def test_suggestion_has_reason():
     for sug in result:
         assert isinstance(sug.reason, str)
         assert len(sug.reason) > 0
+
+
+def test_analyze_informs_about_high_error_rate():
+    """에러 발화 비중이 30%를 넘으면 info Suggestion이 생성된다."""
+    from hook_voice.learning.advisor import analyze
+    # HIGH priority 4건, NORMAL 6건 → 40% HIGH
+    stats = [_make_stat(priority="HIGH") for _ in range(4)]
+    stats += [_make_stat(priority="NORMAL") for _ in range(6)]
+    result = analyze(stats)
+    keys = [s.key for s in result]
+    assert "error_priority_info" in keys
+
+
+def test_analyze_passes_current_speed():
+    """current_speed가 Suggestion.current에 반영된다."""
+    from hook_voice.learning.advisor import analyze
+    stats = [_make_stat(completed=False) for _ in range(7)]
+    stats += [_make_stat(completed=True) for _ in range(3)]
+    result = analyze(stats, current_speed=1.2)
+    tts_sug = next((s for s in result if s.key == "ttsSpeed"), None)
+    assert tts_sug is not None
+    assert tts_sug.current == 1.2
