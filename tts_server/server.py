@@ -312,3 +312,105 @@ async def dlq_list(limit: int = 50, status: str | None = None):
             for e in entries
         ],
     }
+
+
+# ── chorus CLI 제어 ───────────────────────────────────────────────────────────
+
+class MuteResponse(BaseModel):
+    auto_speak: bool
+    message: str
+
+
+class ModeRequest(BaseModel):
+    mode: str
+
+
+class ModeResponse(BaseModel):
+    voice_mode: str
+    min_chars: int
+    tts_speed: float
+    bridge_enabled: bool
+    message: str
+
+
+class VoiceSetRequest(BaseModel):
+    category: str
+    voice_id: str
+
+
+@app.post("/chorus/mute", summary="TTS 음소거 토글", tags=["chorus"])
+async def chorus_mute() -> MuteResponse:
+    """autoSpeak를 토글한다. 켜져 있으면 끄고, 꺼져 있으면 켠다."""
+    import asyncio as _asyncio
+    from pathlib import Path as _Path
+    from hook_voice.config import _find_default_config, _VOICE_JSON
+    from hook_voice.hook_handlers import handle_mute
+    config_path = _find_default_config() or _VOICE_JSON
+    await handle_mute(config_path)
+    from hook_voice.config import load_config
+    cfg = load_config(config_path)
+    state = "활성화" if cfg.auto_speak else "음소거"
+    return MuteResponse(auto_speak=cfg.auto_speak, message=f"TTS {state}됐습니다.")
+
+
+@app.post("/chorus/mode", summary="음성 모드 프리셋 변경", tags=["chorus"])
+async def chorus_mode(req: ModeRequest) -> ModeResponse:
+    """normal·focus·quiet·verbose·night 중 하나로 음성 모드를 변경한다."""
+    from hook_voice.config import _find_default_config, _VOICE_JSON
+    from hook_voice.hook_handlers import handle_mode
+    config_path = _find_default_config() or _VOICE_JSON
+    await handle_mode(["set", req.mode], config_path)
+    from hook_voice.config import load_config
+    cfg = load_config(config_path)
+    return ModeResponse(
+        voice_mode=cfg.voice_mode,
+        min_chars=cfg.min_chars,
+        tts_speed=cfg.tts_speed,
+        bridge_enabled=cfg.bridge_enabled,
+        message=f"모드가 {req.mode}로 변경됐습니다.",
+    )
+
+
+@app.get("/chorus/setup", summary="현재 chorus 설정 상태 조회", tags=["chorus"])
+async def chorus_setup_status():
+    """현재 .voice.json 설정과 에이전트별 목소리 매핑을 반환한다."""
+    from hook_voice.config import _find_default_config, _VOICE_JSON, load_config
+    from hook_voice.voice_router import load_voice_map
+    config_path = _find_default_config() or _VOICE_JSON
+    cfg = load_config(config_path)
+    vm = load_voice_map()
+    agent_voices = {
+        cat: {"voice_id": vid, "name": vm.get("voice_names", {}).get(vid, vid)}
+        for cat, vid in vm.get("voices", {}).items()
+    }
+    return {
+        "config_path": str(config_path),
+        "voice_mode": cfg.voice_mode,
+        "auto_speak": cfg.auto_speak,
+        "min_chars": cfg.min_chars,
+        "tts_speed": cfg.tts_speed,
+        "bridge_enabled": cfg.bridge_enabled,
+        "usage_tracking": cfg.usage_tracking,
+        "agent_voices": agent_voices,
+    }
+
+
+@app.post("/chorus/voice", summary="에이전트 목소리 변경", tags=["chorus"])
+async def chorus_voice_set(req: VoiceSetRequest):
+    """서브에이전트 역할의 목소리를 변경한다 (voice-map.json 저장)."""
+    from hook_voice.config import _find_default_config, _VOICE_JSON
+    from hook_voice.hook_handlers import handle_setup
+    config_path = _find_default_config() or _VOICE_JSON
+    await handle_setup(["voice", "set", req.category, req.voice_id], config_path)
+    from hook_voice.voice_router import load_voice_map
+    vm = load_voice_map()
+    applied_id = vm.get("voices", {}).get(req.category)
+    applied_name = vm.get("voice_names", {}).get(applied_id, applied_id)
+    return {
+        "category": req.category,
+        "voice_id": applied_id,
+        "voice_name": applied_name,
+        "message": f"{req.category} 목소리가 {applied_id}({applied_name})로 변경됐습니다.",
+    }
+
+
