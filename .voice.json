@@ -13,5 +13,6 @@
     "language": "ko",
     "sampleRate": 16000,
     "announce": true
-  }
+  },
+  "autoSpeak": true
 }

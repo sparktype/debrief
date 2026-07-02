@@ -20,7 +20,7 @@ _inject_context() {
     local escaped
     escaped=$(echo "$ctx" | "$VENV_PY" -c \
       "import sys,json; print(json.dumps(sys.stdin.read()))")
-    echo "{\"continue\":true,\"hookSpecificOutput\":{\"additionalContext\":${escaped}}}"
+    echo "{\"continue\":true,\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":${escaped}}}"
 }
 
 if [ -f "$CTX_FILE" ] && [ -n "$SESSION_ID" ]; then
