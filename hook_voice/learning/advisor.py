@@ -46,7 +46,7 @@ def analyze(stats: list[dict], current_speed: float | None = None) -> list[Sugge
             ),
         ))
 
-    # 3. 에러 발화 비중 > 30% → HIGH 우선순위 이미 적용 중 안내
+    # 2. 에러 발화 비중 > 30% → HIGH 우선순위 이미 적용 중 안내
     error_count = sum(1 for s in stats if s.get("priority", "NORMAL") == "HIGH")
     error_rate = error_count / total
     if error_rate > 0.3:
@@ -60,7 +60,7 @@ def analyze(stats: list[dict], current_speed: float | None = None) -> list[Sugge
             ),
         ))
 
-    # 2. 에이전트별 완료율 < 60% → LOW 우선순위 권장
+    # 3. 에이전트별 완료율 < 60% → LOW 우선순위 권장
     agent_stats: dict[str, list[bool]] = defaultdict(list)
     for s in stats:
         atype = s.get("agent_type", "default")
