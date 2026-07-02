@@ -14,5 +14,6 @@
     "sampleRate": 16000,
     "announce": true
   },
-  "autoSpeak": true
+  "autoSpeak": true,
+  "expressionLevel": "normal"
 }
