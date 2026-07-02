@@ -64,7 +64,7 @@ chorus/
 │   ├── voice_router.py          # agentType → voice ID·이름·instruct 변환
 │   ├── llm_client.py            # HMG Hub LLM 클라이언트 (httpx AsyncClient)
 │   ├── last_message.py          # 마지막 TTS 텍스트 영속화
-│   ├── skill_recommender.py     # transcript 분석 → 스킬 추천
+│   ├── skill_recommender.py     # transcript 분석 → 스킬 추천 판단 + 쿨다운 (발화 없음)
 │   ├── transcript_parser.py     # Claude transcript JSONL 파서
 │   ├── speech_listener.py       # Whisper STT + VAD interrupt
 │   │
@@ -465,6 +465,13 @@ analyze(stats: list[dict], current_speed: float | None = None) -> list[Suggestio
 | 통계 수집 | `hook_handlers.py` | TTS 완료/중단 시 자동 기록 |
 | 분석 엔진 | `learning/advisor.py` | 3가지 규칙 → `Suggestion` 생성 |
 | `suggest-config` / `privacy` CLI | `hook_handlers.py`, `__main__.py` | 권장안 출력 + 데이터 삭제 |
+
+### UX 개선 (2026-07)
+
+| 기능 | 파일 | 설명 |
+|------|------|------|
+| `/mute` 음소거 토글 | `hook_handlers.py`, `__main__.py`, `.claude/skills/mute/SKILL.md` | `autoSpeak` on/off 토글, slash 명령 제공 |
+| 스킬 추천 발화 제거 | `hook_handlers.py` | 반복적인 "지금 상황엔 ... 스킬이 유용할 것 같아요" 발화 제거, 쿨다운 기록은 유지 |
 
 ---
 

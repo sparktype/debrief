@@ -94,7 +94,7 @@ TTS Player Loop (supervisor.py 내 asyncio Task)
   → SessionStart / UserPromptSubmit hook
     → python -m hook_voice hook-suggest
       → read_recent_transcripts() → recommend_skill() (hook_voice/skill_recommender.py)
-      → speak_hook() 로 스킬 음성 추천
+      → 스킬 추천 시 쿨다운 기록 (발화 없음 — 반복 안내 제거)
 
 Whisper STT 음성 입력 (stt.enabled=true 시)
   → Hammerspoon Cmd+Shift+Space 또는 /listen slash 명령
@@ -116,7 +116,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `hook_voice/last_message.py` | 마지막 TTS 텍스트 파일 영속화 |
 | `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 + 코드 블록 축약 + TTS 청크 분할 |
 | `hook_voice/voice_router.py` | agentType → 카테고리 → voice ID·이름·instruct·meta_voice 변환 |
-| `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 + 쿨다운 관리 |
+| `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 판단 + 쿨다운 관리 (발화 없음) |
 | `hook_voice/player.py` | supertonic MLX spool enqueue — speak_hook_chunked / speak_agent / enqueue_earcon |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 (voice test / doctor / control 포함) |
 | `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 + VAD interrupt |
