@@ -249,7 +249,16 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
             "text_len": len(speak_text),
             "agent_type": agent_type,
         })
+        if config.usage_tracking:
+            _record_stat(
+                agent_type=agent_type or "default",
+                mode="full",
+                priority="NORMAL",
+                completed=True,
+                duration_secs=latency_ms / 1000,
+            )
     except Exception as exc:
+        _elapsed_ms = (_time.time() - start) * 1000
         log_event("tts_failed", hook_ctx, {"error": str(exc), "agent_type": agent_type}, level="WARNING")
         get_dlq_store().push(
             event_id=hook_ctx.correlation_id,
@@ -258,6 +267,14 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
             raw_text=speak_text[:200],
             source="subagent_stop",
         )
+        if config.usage_tracking:
+            _record_stat(
+                agent_type=agent_type or "default",
+                mode="full",
+                priority="NORMAL",
+                completed=False,
+                duration_secs=_elapsed_ms / 1000,
+            )
 
 
 async def handle_hook_suggest(raw: str, config: Config) -> None:
