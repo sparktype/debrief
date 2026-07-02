@@ -10,19 +10,49 @@
     "steps": 8
   },
   "voice_settings": {
-    "F1": {"synth_speed": 0.93, "steps": 8},
-    "F2": {"synth_speed": 1.10, "steps": 8},
-    "F3": {"synth_speed": 1.00, "steps": 10},
-    "F4": {"synth_speed": 1.05, "steps": 9},
-    "F5": {"synth_speed": 0.88, "steps": 8},
-    "M1": {"synth_speed": 1.10, "steps": 8},
-    "M2": {"synth_speed": 0.93, "steps": 10},
-    "M3": {"synth_speed": 1.00, "steps": 9},
-    "M4": {"synth_speed": 0.95, "steps": 8},
-    "M5": {"synth_speed": 0.88, "steps": 9}
+    "F1": {
+      "synth_speed": 0.93,
+      "steps": 8
+    },
+    "F2": {
+      "synth_speed": 1.1,
+      "steps": 8
+    },
+    "F3": {
+      "synth_speed": 1.0,
+      "steps": 10
+    },
+    "F4": {
+      "synth_speed": 1.05,
+      "steps": 9
+    },
+    "F5": {
+      "synth_speed": 0.88,
+      "steps": 8
+    },
+    "M1": {
+      "synth_speed": 1.1,
+      "steps": 8
+    },
+    "M2": {
+      "synth_speed": 0.93,
+      "steps": 10
+    },
+    "M3": {
+      "synth_speed": 1.0,
+      "steps": 9
+    },
+    "M4": {
+      "synth_speed": 0.95,
+      "steps": 8
+    },
+    "M5": {
+      "synth_speed": 0.88,
+      "steps": 9
+    }
   },
   "voices": {
-    "reviewer": "M2",
+    "reviewer": "M3",
     "planner": "M1",
     "builder": "M4",
     "tester": "F2",
@@ -60,46 +90,88 @@
   "categories": {
     "reviewer": [
       "feature-reviewer",
-      "code-reviewer", "python-reviewer", "security-reviewer",
-      "typescript-reviewer", "rust-reviewer", "go-reviewer",
-      "kotlin-reviewer", "swift-reviewer", "cpp-reviewer",
-      "java-reviewer", "csharp-reviewer", "flutter-reviewer",
-      "fastapi-reviewer", "database-reviewer", "mle-reviewer",
-      "pr-test-analyzer", "code-simplifier"
+      "code-reviewer",
+      "python-reviewer",
+      "security-reviewer",
+      "typescript-reviewer",
+      "rust-reviewer",
+      "go-reviewer",
+      "kotlin-reviewer",
+      "swift-reviewer",
+      "cpp-reviewer",
+      "java-reviewer",
+      "csharp-reviewer",
+      "flutter-reviewer",
+      "fastapi-reviewer",
+      "database-reviewer",
+      "mle-reviewer",
+      "pr-test-analyzer",
+      "code-simplifier"
     ],
     "planner": [
       "feature-architect",
-      "planner", "architect", "code-architect", "a11y-architect",
-      "plan", "feature-dev", "gan-planner"
+      "planner",
+      "architect",
+      "code-architect",
+      "a11y-architect",
+      "plan",
+      "feature-dev",
+      "gan-planner"
     ],
     "builder": [
       "feature-builder",
-      "build-error-resolver", "dart-build-resolver", "rust-build-resolver",
-      "go-build-resolver", "kotlin-build-resolver", "swift-build-resolver",
-      "cpp-build-resolver", "java-build-resolver", "pytorch-build-resolver",
-      "gan-generator", "multi-execute", "doc-updater", "refactor-cleaner"
+      "build-error-resolver",
+      "dart-build-resolver",
+      "rust-build-resolver",
+      "go-build-resolver",
+      "kotlin-build-resolver",
+      "swift-build-resolver",
+      "cpp-build-resolver",
+      "java-build-resolver",
+      "pytorch-build-resolver",
+      "gan-generator",
+      "multi-execute",
+      "doc-updater",
+      "refactor-cleaner"
     ],
     "tester": [
       "feature-tester",
-      "tdd-guide", "e2e-runner", "gan-evaluator"
+      "tdd-guide",
+      "e2e-runner",
+      "gan-evaluator"
     ],
     "explorer": [
-      "Explore", "code-explorer", "general-purpose",
-      "gitnexus-exploring", "claude-code-guide"
+      "Explore",
+      "code-explorer",
+      "general-purpose",
+      "gitnexus-exploring",
+      "claude-code-guide"
     ],
     "optimizer": [
-      "performance-optimizer", "harness-optimizer", "type-design-analyzer"
+      "performance-optimizer",
+      "harness-optimizer",
+      "type-design-analyzer"
     ],
     "guardian": [
-      "silent-failure-hunter", "comment-analyzer", "conversation-analyzer"
+      "silent-failure-hunter",
+      "comment-analyzer",
+      "conversation-analyzer"
     ],
     "ops": [
-      "loop-operator", "network-troubleshooter", "network-config-reviewer",
-      "opensource-forker", "opensource-packager", "opensource-sanitizer",
-      "hookify", "statusline-setup"
+      "loop-operator",
+      "network-troubleshooter",
+      "network-config-reviewer",
+      "opensource-forker",
+      "opensource-packager",
+      "opensource-sanitizer",
+      "hookify",
+      "statusline-setup"
     ],
     "specialist": [
-      "healthcare-reviewer", "seo-specialist", "chief-of-staff", "claude"
+      "healthcare-reviewer",
+      "seo-specialist",
+      "chief-of-staff",
+      "claude"
     ]
   }
 }
