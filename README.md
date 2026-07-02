@@ -40,6 +40,7 @@ cd chorus
 | 서브에이전트 응답 | 역할에 맞는 목소리 + earcon 전환음 |
 | 세션 시작 / 프롬프트 입력 | 상황에 맞는 스킬 음성 추천 |
 | `/listen` slash 명령 | Whisper STT 음성 입력 (선택) |
+| `/mute` slash 명령 | 음소거 토글 — 켜져 있으면 끄고, 꺼져 있으면 켜기 |
 
 ---
 
@@ -175,6 +176,10 @@ python -m hook_voice privacy clear    # 모든 통계 데이터 삭제
 ## 재생 제어
 
 ```bash
+# 음소거 토글 (slash 명령 또는 CLI)
+# Claude Code에서: /mute
+python -m hook_voice mute             # autoSpeak on/off 토글 (해제 시 음성으로 안내)
+
 # CLI
 python -m hook_voice control skip     # 현재 트랙 건너뜀
 python -m hook_voice control flush    # 재생 큐 비우기
