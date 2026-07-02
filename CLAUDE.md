@@ -50,6 +50,11 @@ python -m hook_voice control flush       # 재생 큐 비우기
 curl -s http://localhost:7777/interrupt -X POST  # TTS 즉시 중단
 curl -s http://localhost:7777/playback/status    # 재생 상태 확인
 curl -s http://localhost:7777/health             # 서버 헬스 (model_loaded, queue_depth 포함)
+
+# 자동 학습·적응
+python -m hook_voice suggest-config   # 사용 패턴 분석 → 설정 권장안 출력
+python -m hook_voice privacy status   # 통계 파일 정보
+python -m hook_voice privacy clear    # 통계 데이터 전체 삭제
 ```
 
 ## 아키텍처
@@ -118,6 +123,8 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `hook_voice/delivery/priority_spool.py` | HIGH/NORMAL/LOW 우선순위 큐 + 30초 TTL 만료 |
 | `hook_voice/event/policy.py` | SmartTTSRouter (SpeechPolicy) — 응답 타입 기반 발화 모드·우선순위 결정 |
 | `hook_voice/event/router.py` | 이벤트 라우터 |
+| `hook_voice/learning/stats_store.py` | TTS 사용 통계 JSONL 저장·조회·삭제 |
+| `hook_voice/learning/advisor.py` | 통계 분석 → 설정 권장안 생성 |
 | `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
 | `assets/earcon_switch.wav` | 에이전트 전환 청각 큐 (0.3초 880Hz 감쇠 톤) |
 | `assets/bridge_thinking.wav` | 브리지 WAV — Stop hook 후 침묵 제거용 (0.5초) |
@@ -148,6 +155,7 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `ttsSpeed` | `1.1` | afplay -r 배속 |
 | `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
 | `speechRetouch` | `true` | LLM으로 마크다운 제거·IT 용어 한국어 발음 변환 후 TTS 전달 |
+| `usageTracking` | `true` | 사용 통계 수집 여부 (false이면 수집 없음) |
 | `bridgeEnabled` | `false` | Stop hook 직후 bridge_thinking.wav 재생 — 침묵 제거 opt-in |
 | `bridgeThresholdMs` | `500` | bridge 재생 최소 텍스트 길이 (글자 수) |
 | `resumeThreshold` | `0.0` | interrupt 후 재개 임계값 (0.0 = 항상 포기, 0.85 = 85% 이상 완료 시 재개) |

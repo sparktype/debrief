@@ -277,9 +277,9 @@ Claude 응답 완료
 
 ---
 
-## 자동 학습·적응 레이어 (보류 기능)
+## 자동 학습·적응 레이어
 
-> **현재 상태**: 설계 단계, 미구현. 개인정보 정책 확정 후 착수 예정.
+> **현재 상태**: 구현 완료. `chorus suggest-config`으로 제안을 확인하고, `chorus privacy clear`로 데이터를 삭제할 수 있습니다.
 
 ### 무엇인가
 
@@ -341,3 +341,19 @@ python -m hook_voice config list
 python -m hook_voice control skip    # 현재 트랙 즉시 건너뜀
 python -m hook_voice control flush   # 대기 중인 모든 발화 제거
 ```
+
+### 사용법
+
+```bash
+# 설정 권장안 확인 (자동 적용 없음)
+python -m hook_voice suggest-config
+
+# 통계 파일 위치 확인
+python -m hook_voice privacy status
+
+# 모든 통계 데이터 삭제
+python -m hook_voice privacy clear
+```
+
+통계는 `~/.local/share/chorus/usage_stats.jsonl`에 로컬 저장됩니다.  
+`.voice.json`에 `"usageTracking": false`를 추가하면 수집이 중단됩니다.
