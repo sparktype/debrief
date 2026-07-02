@@ -171,7 +171,7 @@ async def handle_hook(raw: str, config: Config) -> None:
                     duration_secs=latency_ms / 1000,
                 )
         except Exception as exc:
-            _elapsed = (_time.time() - start) * 1000
+            _elapsed_ms = (_time.time() - start) * 1000
             _status(f"⚠️ chorus: 음성 실패 ({type(exc).__name__})")
             log_event("tts_failed", hook_ctx, {"error": str(exc)}, level="WARNING")
             get_dlq_store().push(
@@ -187,7 +187,7 @@ async def handle_hook(raw: str, config: Config) -> None:
                     mode=_speech_mode,
                     priority=dec.priority,
                     completed=False,
-                    duration_secs=_elapsed / 1000,
+                    duration_secs=_elapsed_ms / 1000,
                 )
 
 
