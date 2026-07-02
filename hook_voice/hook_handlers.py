@@ -42,7 +42,8 @@ from .transcript_parser import get_last_assistant_text, extract_last_agent_type
 from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
-from .learning.stats_store import record_playback as _record_stat
+from .learning.stats_store import record_playback as _record_stat, load_stats as _load_stats, clear_stats as _clear_stats, stats_file_path as _stats_file_path
+from .learning.advisor import analyze as _analyze_stats
 
 
 def _derive_transcript_path() -> Path | None:
@@ -610,3 +611,74 @@ async def handle_pre_tool_monitor(raw: str) -> None:
     if not session_id:
         return
     Path(f"/tmp/tts-monitor-{session_id}").touch()
+
+
+async def handle_suggest_config(config: Config) -> None:
+    """사용 통계를 분석해 .voice.json 개선안을 제안한다."""
+    stats = _load_stats()
+    stats_path = _stats_file_path()
+    print(f"[suggest-config] 통계 파일: {stats_path} ({len(stats)}건)", flush=True)
+
+    if len(stats) < 10:
+        print(
+            f"[suggest-config] 데이터가 부족합니다 ({len(stats)}건). "
+            "최소 10건의 TTS 발화 후 다시 실행해 주세요.",
+            flush=True,
+        )
+        return
+
+    suggestions = _analyze_stats(stats, current_speed=config.tts_speed)
+    if not suggestions:
+        print("[suggest-config] 현재 설정이 사용 패턴에 잘 맞습니다. 제안 사항이 없습니다.", flush=True)
+        return
+
+    print(f"[suggest-config] {len(suggestions)}개 제안이 있습니다.\n", flush=True)
+    for i, sug in enumerate(suggestions, 1):
+        current_str = f"{sug.current}" if sug.current is not None else "(현재값 미확인)"
+        print(
+            f"  [{i}] {sug.key}\n"
+            f"      현재: {current_str}  →  권장: {sug.recommended}\n"
+            f"      이유: {sug.reason}\n",
+            flush=True,
+        )
+    print(
+        "적용하려면 .voice.json을 직접 편집하거나 다음 명령을 사용하세요.",
+        flush=True,
+    )
+    for sug in suggestions:
+        print(f"  python -m hook_voice config set {sug.key} {sug.recommended}", flush=True)
+
+
+async def handle_privacy(args: list[str], config: Config) -> None:
+    """사용 통계 데이터를 관리한다.
+
+    privacy clear  — 모든 통계 데이터를 삭제한다
+    privacy status — 통계 파일 경로와 크기를 출력한다
+    """
+    sub = args[0] if args else ""
+    stats_path = _stats_file_path()
+
+    if sub == "clear":
+        deleted = _clear_stats()
+        if deleted > 0:
+            print(f"[privacy] 통계 데이터 {deleted}건이 삭제됐습니다. ({stats_path})", flush=True)
+        else:
+            print(f"[privacy] 삭제할 통계 데이터가 없습니다. ({stats_path})", flush=True)
+    elif sub == "status":
+        if stats_path.exists():
+            size_kb = stats_path.stat().st_size / 1024
+            count = len(_load_stats())
+            print(
+                f"[privacy] 통계 파일: {stats_path}\n"
+                f"          항목 수: {count}건 ({size_kb:.1f} KB)",
+                flush=True,
+            )
+        else:
+            print(f"[privacy] 통계 파일 없음 ({stats_path})", flush=True)
+    else:
+        print(
+            "사용법\n"
+            "  python -m hook_voice privacy clear   — 모든 통계 삭제\n"
+            "  python -m hook_voice privacy status  — 통계 파일 정보 확인",
+            flush=True,
+        )

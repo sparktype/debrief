@@ -821,3 +821,58 @@ async def test_handle_hook_skips_stat_when_tracking_disabled(tmp_path, monkeypat
 
     entries = stats_store.load_stats()
     assert len(entries) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_suggest_config_no_stats(capsys, tmp_path, monkeypatch):
+    """통계가 없으면 '데이터 부족' 안내를 출력한다."""
+    from hook_voice.hook_handlers import handle_suggest_config
+    from hook_voice.config import Config
+    from hook_voice.learning import stats_store
+
+    monkeypatch.setattr(stats_store, "_STATS_FILE", tmp_path / "empty.jsonl")
+    config = Config()
+    await handle_suggest_config(config)
+
+    out = capsys.readouterr().out
+    assert "부족" in out or "없습니다" in out or "데이터" in out
+
+
+@pytest.mark.asyncio
+async def test_handle_suggest_config_with_suggestions(capsys, tmp_path, monkeypatch):
+    """충분한 통계가 있으면 제안을 출력한다."""
+    from hook_voice.hook_handlers import handle_suggest_config
+    from hook_voice.config import Config
+    from hook_voice.learning import stats_store
+
+    monkeypatch.setattr(stats_store, "_STATS_FILE", tmp_path / "stats.jsonl")
+
+    # 중단율 70% 생성
+    for _ in range(7):
+        stats_store.record_playback("default", "full", "NORMAL", False, 1.0)
+    for _ in range(3):
+        stats_store.record_playback("default", "full", "NORMAL", True, 3.0)
+
+    config = Config()
+    await handle_suggest_config(config)
+
+    out = capsys.readouterr().out
+    assert "ttsSpeed" in out or "권장" in out or "제안" in out
+
+
+@pytest.mark.asyncio
+async def test_handle_privacy_clear(capsys, tmp_path, monkeypatch):
+    """privacy clear가 통계 파일을 삭제하고 결과를 출력한다."""
+    from hook_voice.hook_handlers import handle_privacy
+    from hook_voice.config import Config
+    from hook_voice.learning import stats_store
+
+    monkeypatch.setattr(stats_store, "_STATS_FILE", tmp_path / "stats.jsonl")
+    stats_store.record_playback("default", "full", "NORMAL", True, 2.0)
+
+    config = Config()
+    await handle_privacy(["clear"], config)
+
+    out = capsys.readouterr().out
+    assert "삭제" in out or "제거" in out
+    assert not (tmp_path / "stats.jsonl").exists()

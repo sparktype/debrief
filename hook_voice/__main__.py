@@ -19,6 +19,8 @@ from .hook_handlers import (
     handle_pre_tool_monitor,
     handle_voice_test,
     handle_doctor,
+    handle_suggest_config,
+    handle_privacy,
 )
 
 
@@ -73,6 +75,10 @@ async def main() -> None:
             print("Usage: python -m hook_voice voice test [voice_id] [text]", file=sys.stderr)
     elif subcommand == "doctor":
         await handle_doctor(config)
+    elif subcommand == "suggest-config":
+        await handle_suggest_config(config)
+    elif subcommand == "privacy":
+        await handle_privacy(sys.argv[2:], config)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)
