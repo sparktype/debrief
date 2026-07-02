@@ -21,6 +21,7 @@ from .hook_handlers import (
     handle_doctor,
     handle_suggest_config,
     handle_privacy,
+    handle_mute,
 )
 
 
@@ -79,6 +80,8 @@ async def main() -> None:
         await handle_suggest_config(config)
     elif subcommand == "privacy":
         await handle_privacy(sys.argv[2:], config)
+    elif subcommand == "mute":
+        await handle_mute(_find_default_config() or _VOICE_JSON)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

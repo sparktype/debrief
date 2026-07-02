@@ -876,3 +876,58 @@ async def test_handle_privacy_clear(capsys, tmp_path, monkeypatch):
     out = capsys.readouterr().out
     assert "삭제" in out or "제거" in out
     assert not (tmp_path / "stats.jsonl").exists()
+
+
+@pytest.mark.asyncio
+async def test_handle_mute_toggles_auto_speak_to_false(tmp_path):
+    """autoSpeak=true 상태에서 mute 호출 시 false로 저장된다."""
+    import json
+    from hook_voice.hook_handlers import handle_mute
+
+    config_path = tmp_path / ".voice.json"
+    config_path.write_text('{"autoSpeak": true}', encoding="utf-8")
+
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr("hook_voice.hook_handlers.speak_hook_chunked", lambda *a, **k: __import__("asyncio").sleep(0))
+        await handle_mute(config_path)
+
+    data = json.loads(config_path.read_text())
+    assert data["autoSpeak"] is False
+
+
+@pytest.mark.asyncio
+async def test_handle_mute_toggles_auto_speak_to_true(tmp_path, capsys):
+    """autoSpeak=false 상태에서 mute 호출 시 true로 저장되고 활성화 메시지를 출력한다."""
+    import json
+    from hook_voice.hook_handlers import handle_mute
+    from unittest.mock import AsyncMock, patch
+
+    config_path = tmp_path / ".voice.json"
+    config_path.write_text('{"autoSpeak": false}', encoding="utf-8")
+
+    with patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()):
+        await handle_mute(config_path)
+
+    data = json.loads(config_path.read_text())
+    assert data["autoSpeak"] is True
+    out = capsys.readouterr().out
+    assert "활성화" in out or "🔊" in out
+
+
+@pytest.mark.asyncio
+async def test_handle_mute_creates_config_if_not_exists(tmp_path):
+    """설정 파일이 없어도 mute 실행 시 파일을 생성한다."""
+    import json
+    from hook_voice.hook_handlers import handle_mute
+    from unittest.mock import AsyncMock, patch
+
+    config_path = tmp_path / ".voice.json"
+    assert not config_path.exists()
+
+    with patch("hook_voice.hook_handlers.speak_hook_chunked", new=AsyncMock()):
+        await handle_mute(config_path)
+
+    assert config_path.exists()
+    data = json.loads(config_path.read_text())
+    # 기본값 true에서 false로 토글됐어야 함
+    assert data["autoSpeak"] is False

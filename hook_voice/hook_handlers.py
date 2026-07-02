@@ -700,3 +700,38 @@ async def handle_privacy(args: list[str], config: Config) -> None:
             "  python -m hook_voice privacy status  — 통계 파일 정보 확인",
             flush=True,
         )
+
+
+async def handle_mute(config_path: "Path") -> None:
+    """autoSpeak를 토글해 음성을 켜거나 끈다.
+
+    현재 값이 true이면 false로, false이면 true로 변경한다.
+    변경 후 음성으로 상태를 안내한다 (mute 해제 시에만).
+    """
+    import json as _json
+
+    data: dict = {}
+    if config_path.exists():
+        try:
+            data = _json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+
+    current = data.get("autoSpeak", True)
+    new_val = not current
+    data["autoSpeak"] = new_val
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if new_val:
+        print("🔊 chorus: 음성이 활성화됐습니다.", flush=True)
+        # 음소거 해제 시 음성으로도 안내
+        try:
+            from .config import load_config
+            cfg = load_config(config_path)
+            await speak_hook_chunked("음소거가 해제됐습니다.", cfg.tts_speed)
+        except Exception:
+            pass
+    else:
+        print("🔇 chorus: 음성이 음소거됐습니다.", flush=True)
