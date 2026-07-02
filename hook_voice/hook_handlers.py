@@ -294,7 +294,6 @@ async def handle_hook_suggest(raw: str, config: Config) -> None:
         model=config.summary_model,
     )
     if rec:
-        await speak_hook(f"지금 상황엔 {rec['skill']} 스킬이 유용할 것 같아요", config.tts_speed)
         save_cooldown(rec["skill"])
 
 
