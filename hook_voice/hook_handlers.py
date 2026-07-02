@@ -646,7 +646,8 @@ async def handle_suggest_config(config: Config) -> None:
         flush=True,
     )
     for sug in suggestions:
-        print(f"  python -m hook_voice config set {sug.key} {sug.recommended}", flush=True)
+        if sug.current != sug.recommended:  # info-only Suggestion은 명령 안내 생략
+            print(f"  python -m hook_voice config set {sug.key} {sug.recommended}", flush=True)
 
 
 async def handle_privacy(args: list[str], config: Config) -> None:
