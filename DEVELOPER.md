@@ -358,6 +358,7 @@ analyze(stats: list[dict], current_speed: float | None = None) -> list[Suggestio
 | `voice` | `voice` | `"Sohee"` | 기본 목소리 |
 | `summaryModel` | `summary_model` | `"gemini-3.5-flash"` | LLM 모델 |
 | `ttsSpeed` | `tts_speed` | `1.1` | afplay -r 배속 |
+| `voiceMode` | `voice_mode` | `"normal"` | 상황별 음성 프리셋 |
 | `ttsInstruct` | `tts_instruct` | `"밝고 활기차게 말해주세요"` | 발화 스타일 |
 | `skillCooldownMinutes` | `skill_cooldown_minutes` | `30` | 스킬 추천 쿨다운 |
 | `supertonicPort` | `supertonic_port` | `7777` | TTS 서버 포트 |
@@ -387,6 +388,25 @@ analyze(stats: list[dict], current_speed: float | None = None) -> list[Suggestio
 | `meta_voice_id` | `"F1"` | 에이전트명 발화용 기본 목소리 |
 | `earcon.enabled` | `true` | 에이전트 전환 earcon 활성화 |
 | `earcon.agent_switch` | `"assets/earcon_switch.wav"` | 전환 효과음 경로 |
+
+---
+
+## Setup / Mode CLI
+
+사용자 설정 UX는 `hook_voice/hook_handlers.py`의 `handle_mode`, `handle_setup`에서 관리한다.
+
+```bash
+python -m hook_voice mode list
+python -m hook_voice mode set focus
+python -m hook_voice setup status
+python -m hook_voice setup defaults
+python -m hook_voice setup voice list
+python -m hook_voice setup voice set reviewer F3
+python -m hook_voice setup voice speed M2 0.9
+python -m hook_voice setup voice steps M2 10
+```
+
+`mode`는 `.voice.json`에 여러 설정 키를 한 번에 쓰며, `setup voice`는 `voice-map.json`의 `voices` 및 `voice_settings`를 갱신한다.
 
 ---
 

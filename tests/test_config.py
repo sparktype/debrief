@@ -16,6 +16,7 @@ def test_load_config_returns_defaults_when_no_file(tmp_path):
     assert cfg.supertonic_port == 7777
     assert cfg.supertonic_timeout_ms == 20000
     assert cfg.allow_insecure_tls is True
+    assert cfg.voice_mode == "normal"
 
 def test_load_config_merges_file_values(tmp_path):
     cfg_file = tmp_path / "config.json"
@@ -38,7 +39,7 @@ def test_load_config_all_keys_mapped(tmp_path):
         "summaryModel": "gpt-4", "ttsSpeed": 0.9, "ttsInstruct": "천천히",
         "skillCooldownMinutes": 10, "supertonicPort": 8888,
         "supertonicTimeoutMs": 15000, "allowInsecureTls": False,
-        "speechRetouch": False,
+        "speechRetouch": False, "voiceMode": "focus",
     }
     cfg_file = tmp_path / "config.json"
     cfg_file.write_text(json.dumps(full))
@@ -54,6 +55,7 @@ def test_load_config_all_keys_mapped(tmp_path):
     assert cfg.supertonic_timeout_ms == 15000
     assert cfg.allow_insecure_tls is False
     assert cfg.speech_retouch is False
+    assert cfg.voice_mode == "focus"
 
 
 def test_load_config_normalizes_invalid_values(tmp_path, caplog):
@@ -63,6 +65,7 @@ def test_load_config_normalizes_invalid_values(tmp_path, caplog):
         "ttsSpeed": 0,
         "supertonicPort": 70000,
         "allowInsecureTls": "yes",
+        "voiceMode": "",
         "grafana": {"interval": 1},
     }))
 
@@ -72,6 +75,7 @@ def test_load_config_normalizes_invalid_values(tmp_path, caplog):
     assert cfg.tts_speed == 1.1
     assert cfg.supertonic_port == 7777
     assert cfg.allow_insecure_tls is True
+    assert cfg.voice_mode == "normal"
     assert cfg.grafana.interval == 30
     assert "잘못된 값" in caplog.text
 

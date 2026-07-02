@@ -27,7 +27,7 @@ def _load_classify_rules() -> list[dict]:
         _classify_rules_cache = []
     return _classify_rules_cache
 
-from .config import Config
+from .config import Config, load_config
 from .observability.context import get_or_create_context
 from .observability.structured_log import log_event
 from .observability.metrics import get_registry
@@ -39,11 +39,87 @@ from .summarizer import (
 )
 from .speech.pipeline import get_default_pipeline
 from .transcript_parser import get_last_assistant_text, extract_last_agent_type
-from .voice_router import load_voice_map, resolve_voice, resolve_voice_name, resolve_instruct, get_agent_label, resolve_category, resolve_voice_settings
+from .voice_router import (
+    _DEFAULT_VOICE_MAP_PATH,
+    load_voice_map,
+    resolve_voice,
+    resolve_voice_name,
+    resolve_instruct,
+    get_agent_label,
+    resolve_category,
+    resolve_voice_settings,
+)
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
 from .learning.stats_store import record_playback as _record_stat, load_stats as _load_stats, clear_stats as _clear_stats, stats_file_path as _stats_file_path
 from .learning.advisor import analyze as _analyze_stats
+
+
+_MODE_PRESETS: dict[str, dict[str, object]] = {
+    "normal": {
+        "voiceMode": "normal",
+        "autoSpeak": True,
+        "minChars": 50,
+        "ttsSpeed": 1.1,
+        "speechRetouch": True,
+        "bridgeEnabled": False,
+        "usageTracking": True,
+    },
+    "focus": {
+        "voiceMode": "focus",
+        "autoSpeak": True,
+        "minChars": 120,
+        "ttsSpeed": 1.05,
+        "speechRetouch": True,
+        "bridgeEnabled": False,
+        "usageTracking": True,
+    },
+    "quiet": {
+        "voiceMode": "quiet",
+        "autoSpeak": True,
+        "minChars": 300,
+        "ttsSpeed": 1.0,
+        "speechRetouch": True,
+        "bridgeEnabled": False,
+        "usageTracking": True,
+    },
+    "verbose": {
+        "voiceMode": "verbose",
+        "autoSpeak": True,
+        "minChars": 20,
+        "ttsSpeed": 1.1,
+        "speechRetouch": True,
+        "bridgeEnabled": True,
+        "bridgeThresholdMs": 120,
+        "usageTracking": True,
+    },
+    "night": {
+        "voiceMode": "night",
+        "autoSpeak": True,
+        "minChars": 120,
+        "ttsSpeed": 0.95,
+        "speechRetouch": True,
+        "bridgeEnabled": False,
+        "usageTracking": True,
+    },
+}
+
+_VOICE_IDS = {"F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"}
+
+
+def _read_json_object(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_json_object(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _derive_transcript_path() -> Path | None:
@@ -516,6 +592,163 @@ async def handle_config(args: list[str], config_path: "Path") -> None:
         return
 
     print("사용법: hook_voice config [list|get <key>|set <key> <val>|reset]", file=_sys.stderr)
+    _sys.exit(1)
+
+
+async def handle_mode(args: list[str], config_path: "Path") -> None:
+    """상황별 음성 프리셋을 .voice.json에 적용한다."""
+    import sys as _sys
+
+    action = args[0] if args else "show"
+
+    if action == "list":
+        print("사용 가능한 모드:")
+        for name in _MODE_PRESETS:
+            print(f"  - {name}")
+        return
+
+    if action == "show":
+        data = _read_json_object(config_path)
+        current = data.get("voiceMode", "normal")
+        print(f"현재 모드: {current}")
+        return
+
+    if action == "set" and len(args) == 2:
+        mode = args[1]
+        preset = _MODE_PRESETS.get(mode)
+        if preset is None:
+            print(f"알 수 없는 모드: {mode}. 사용 가능: {', '.join(_MODE_PRESETS)}", file=_sys.stderr)
+            _sys.exit(1)
+        data = _read_json_object(config_path)
+        data.update(preset)
+        _write_json_object(config_path, data)
+        print(f"voiceMode = {mode} (저장됨)")
+        print(f"  minChars={data['minChars']}, ttsSpeed={data['ttsSpeed']}, bridgeEnabled={data['bridgeEnabled']}")
+        return
+
+    print("사용법: hook_voice mode [show|list|set <normal|focus|quiet|verbose|night>]", file=_sys.stderr)
+    _sys.exit(1)
+
+
+async def handle_setup(args: list[str], config_path: "Path", voice_map_path: "Path" = _DEFAULT_VOICE_MAP_PATH) -> None:
+    """초기 설정과 서브에이전트별 목소리 매핑을 관리한다."""
+    import sys as _sys
+
+    section = args[0] if args else "status"
+
+    if section == "status":
+        cfg = load_config(config_path)
+        vm = load_voice_map(voice_map_path)
+        print("[chorus setup]")
+        print(f"  config: {config_path}")
+        print(f"  voiceMode: {cfg.voice_mode}")
+        print(f"  autoSpeak: {cfg.auto_speak}")
+        print(f"  minChars: {cfg.min_chars}")
+        print(f"  ttsSpeed: {cfg.tts_speed}")
+        print(f"  voice-map: {voice_map_path}")
+        print("  agent voices:")
+        for category, voice_id in sorted(vm.get("voices", {}).items()):
+            voice_name = vm.get("voice_names", {}).get(voice_id, voice_id)
+            print(f"    {category}: {voice_id} ({voice_name})")
+        return
+
+    if section == "defaults":
+        data = _read_json_object(config_path)
+        for key, value in _MODE_PRESETS["normal"].items():
+            data.setdefault(key, value)
+        data.setdefault("summaryModel", "gemini-3.5-flash")
+        data.setdefault("resumeThreshold", 0.0)
+        data.setdefault("stt", {"enabled": False, "vadInterrupt": False})
+        _write_json_object(config_path, data)
+        print(f"기본 설정을 준비했습니다: {config_path}")
+        return
+
+    if section == "mode":
+        await handle_mode(args[1:] or ["show"], config_path)
+        return
+
+    if section != "voice":
+        print(
+            "사용법: hook_voice setup [status|defaults|mode ...|voice list|voice set <category> <voiceId>|voice speed <voiceId> <speed>|voice steps <voiceId> <steps>]",
+            file=_sys.stderr,
+        )
+        _sys.exit(1)
+
+    sub = args[1] if len(args) > 1 else "list"
+    vm = _read_json_object(voice_map_path)
+    if not vm:
+        vm = load_voice_map(voice_map_path)  # fallback
+    vm.setdefault("voices", {})
+    vm.setdefault("voice_names", {})
+    vm.setdefault("voice_settings", {})
+    vm.setdefault("categories", {})
+
+    if sub == "list":
+        print("[서브에이전트 목소리]")
+        for category, voice_id in sorted(vm.get("voices", {}).items()):
+            voice_name = vm.get("voice_names", {}).get(voice_id, voice_id)
+            agents = ", ".join(vm.get("categories", {}).get(category, [])[:4])
+            suffix = f" — {agents}" if agents else ""
+            print(f"  {category}: {voice_id} ({voice_name}){suffix}")
+        print("[사용 가능한 voiceId]")
+        for voice_id in sorted(_VOICE_IDS):
+            print(f"  {voice_id}: {vm.get('voice_names', {}).get(voice_id, voice_id)}")
+        return
+
+    if sub == "set" and len(args) == 4:
+        category, voice_id = args[2], args[3].upper()
+        if voice_id not in _VOICE_IDS:
+            print(f"알 수 없는 voiceId: {voice_id}. 사용 가능: {', '.join(sorted(_VOICE_IDS))}", file=_sys.stderr)
+            _sys.exit(1)
+        if category not in vm.get("voices", {}):
+            print(f"알 수 없는 category: {category}. 사용 가능: {', '.join(sorted(vm.get('voices', {})))}", file=_sys.stderr)
+            _sys.exit(1)
+        vm["voices"][category] = voice_id
+        _write_json_object(voice_map_path, vm)
+        voice_name = vm.get("voice_names", {}).get(voice_id, voice_id)
+        print(f"{category} voice = {voice_id} ({voice_name}) (저장됨)")
+        return
+
+    if sub == "speed" and len(args) == 4:
+        voice_id, raw_speed = args[2].upper(), args[3]
+        if voice_id not in _VOICE_IDS:
+            print(f"알 수 없는 voiceId: {voice_id}. 사용 가능: {', '.join(sorted(_VOICE_IDS))}", file=_sys.stderr)
+            _sys.exit(1)
+        try:
+            speed = float(raw_speed)
+        except ValueError:
+            print("speed는 숫자여야 합니다.", file=_sys.stderr)
+            _sys.exit(1)
+        if speed <= 0:
+            print("speed는 0보다 커야 합니다.", file=_sys.stderr)
+            _sys.exit(1)
+        vm["voice_settings"].setdefault(voice_id, {})["synth_speed"] = speed
+        _write_json_object(voice_map_path, vm)
+        print(f"{voice_id} synth_speed = {speed} (저장됨)")
+        return
+
+    if sub == "steps" and len(args) == 4:
+        voice_id, raw_steps = args[2].upper(), args[3]
+        if voice_id not in _VOICE_IDS:
+            print(f"알 수 없는 voiceId: {voice_id}. 사용 가능: {', '.join(sorted(_VOICE_IDS))}", file=_sys.stderr)
+            _sys.exit(1)
+        try:
+            steps = int(raw_steps)
+        except ValueError:
+            print("steps는 정수여야 합니다.", file=_sys.stderr)
+            _sys.exit(1)
+        if steps < 1:
+            print("steps는 1 이상이어야 합니다.", file=_sys.stderr)
+            _sys.exit(1)
+        vm["voice_settings"].setdefault(voice_id, {})["steps"] = steps
+        _write_json_object(voice_map_path, vm)
+        print(f"{voice_id} steps = {steps} (저장됨)")
+        return
+
+    print(
+        "사용법: hook_voice setup voice [list|set <category> <voiceId>|speed <voiceId> <speed>|steps <voiceId> <steps>]",
+        file=_sys.stderr,
+    )
     _sys.exit(1)
 
 

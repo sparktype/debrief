@@ -26,6 +26,7 @@ _KEY_MAP = {
     "bridgeThresholdMs": "bridge_threshold_ms",
     "resumeThreshold": "resume_threshold",
     "usageTracking": "usage_tracking",
+    "voiceMode": "voice_mode",
 }
 
 
@@ -65,6 +66,7 @@ class Config:
     bridge_threshold_ms: int = 500
     resume_threshold: float = 0.0  # 0.0 = 항상 포기, 0.85 = 85% 이상 완료 시 계속
     usage_tracking: bool = True
+    voice_mode: str = "normal"
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
 
@@ -102,6 +104,16 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
             _warn_invalid(key, value, getattr(defaults, key))
             kwargs[key] = getattr(defaults, key)
 
+    def _normalize_str(key: str) -> None:
+        if key not in kwargs:
+            return
+        value = kwargs[key]
+        if not isinstance(value, str) or not value.strip():
+            _warn_invalid(key, value, getattr(defaults, key))
+            kwargs[key] = getattr(defaults, key)
+        else:
+            kwargs[key] = value.strip()
+
     _normalize_bool("auto_speak")
     _normalize_bool("allow_insecure_tls")
     _normalize_bool("speech_retouch")
@@ -111,6 +123,7 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
     _normalize_int("bridge_threshold_ms", 0)
     _normalize_float("tts_speed", 0.0)
     _normalize_float("resume_threshold", -0.1)
+    _normalize_str("voice_mode")
     _normalize_int("skill_cooldown_minutes", 0)
     _normalize_int("supertonic_port", 1, 65535)
     _normalize_int("supertonic_timeout_ms", 100)

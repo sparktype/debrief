@@ -52,6 +52,7 @@ cd chorus
   "autoSpeak": true,
   "minChars": 50,
   "ttsSpeed": 1.1,
+  "voiceMode": "normal",
   "summaryModel": "gemini-3.5-flash",
   "usageTracking": true,
   "bridgeEnabled": false,
@@ -70,6 +71,7 @@ cd chorus
 | `autoSpeak` | `true` | 자동 재생 여부 |
 | `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
 | `ttsSpeed` | `1.1` | 재생 속도 (afplay -r) |
+| `voiceMode` | `"normal"` | 현재 음성 프리셋 모드 |
 | `summaryModel` | `"gemini-3.5-flash"` | 요약에 사용할 LLM 모델 |
 | `speechRetouch` | `true` | LLM으로 마크다운 제거·IT 용어 발음 변환 |
 | `usageTracking` | `true` | 사용 패턴 통계 수집 여부 |
@@ -86,6 +88,21 @@ cd chorus
 | `stt.language` | `"ko"` | 인식 언어 |
 | `stt.announce` | `true` | 녹음 시작/완료 TTS 안내 |
 | `stt.vadInterrupt` | `false` | 발화 감지 시 TTS 자동 중단 (opt-in) |
+
+---
+
+## 음성 모드 프리셋
+
+작업 상황에 맞게 여러 설정을 한 번에 바꿀 수 있습니다.
+
+```bash
+python -m hook_voice mode list
+python -m hook_voice mode set focus     # 긴 응답 위주로 줄여 듣기
+python -m hook_voice mode set quiet     # 방해 최소화
+python -m hook_voice mode set verbose   # 짧은 응답도 적극 발화
+python -m hook_voice mode set night     # 느리고 차분한 야간 모드
+python -m hook_voice mode set normal    # 기본값
+```
 
 ---
 
@@ -109,6 +126,16 @@ cd chorus
 
 에이전트 전환 시 `earcon_switch.wav` (0.3초 880Hz 감쇠 톤)이 먼저 재생됩니다.  
 `voice-map.json`의 `earcon.enabled: false`로 비활성화할 수 있습니다.
+
+CLI로도 서브에이전트 카테고리별 목소리를 바꿀 수 있습니다.
+
+```bash
+python -m hook_voice setup voice list
+python -m hook_voice setup voice set reviewer F3
+python -m hook_voice setup voice set builder M4
+python -m hook_voice setup voice speed M2 0.9
+python -m hook_voice setup voice steps M2 10
+```
 
 ---
 
@@ -210,6 +237,8 @@ curl localhost:7777/health                    # 서버 헬스 체크
 ## 진단
 
 ```bash
+python -m hook_voice setup status       # 설정 파일·모드·voice-map 상태 확인
+python -m hook_voice setup defaults     # 기본 .voice.json 생성/보강
 python -m hook_voice doctor           # TTS 시스템 전체 진단
 python -m hook_voice voice test       # 기본 목소리 TTS 테스트
 python -m hook_voice voice test M2 "안녕하세요"  # 특정 목소리 테스트

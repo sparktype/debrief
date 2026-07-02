@@ -17,6 +17,8 @@ from hook_voice.hook_handlers import (
     handle_config,
     handle_control,
     handle_pre_tool_monitor,
+    handle_mode,
+    handle_setup,
 )
 import hook_voice.hook_handlers as _hh
 
@@ -325,6 +327,59 @@ class TestHandleConfig:
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "알 수 없는 키" in err
+
+
+class TestHandleMode:
+    @pytest.mark.asyncio
+    async def test_mode_set_focus_saves_preset(self, tmp_path):
+        cfg_path = tmp_path / ".voice.json"
+        await handle_mode(["set", "focus"], cfg_path)
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert data["voiceMode"] == "focus"
+        assert data["minChars"] == 120
+        assert data["autoSpeak"] is True
+
+    @pytest.mark.asyncio
+    async def test_mode_list_prints_presets(self, capsys, tmp_path):
+        await handle_mode(["list"], tmp_path / ".voice.json")
+        out = capsys.readouterr().out
+        assert "focus" in out
+        assert "quiet" in out
+
+    @pytest.mark.asyncio
+    async def test_mode_unknown_exits(self, capsys, tmp_path):
+        with pytest.raises(SystemExit):
+            await handle_mode(["set", "unknown"], tmp_path / ".voice.json")
+        assert "알 수 없는 모드" in capsys.readouterr().err
+
+
+class TestHandleSetup:
+    @pytest.mark.asyncio
+    async def test_setup_defaults_creates_config(self, tmp_path):
+        cfg_path = tmp_path / ".voice.json"
+        await handle_setup(["defaults"], cfg_path, tmp_path / "voice-map.json")
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert data["voiceMode"] == "normal"
+        assert data["summaryModel"] == "gemini-3.5-flash"
+        assert data["stt"]["enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_setup_voice_set_updates_category(self, tmp_path):
+        cfg_path = tmp_path / ".voice.json"
+        vm_path = tmp_path / "voice-map.json"
+        vm_path.write_text(json.dumps(MOCK_VOICE_MAP), encoding="utf-8")
+        await handle_setup(["voice", "set", "reviewer", "F3"], cfg_path, vm_path)
+        data = json.loads(vm_path.read_text(encoding="utf-8"))
+        assert data["voices"]["reviewer"] == "F3"
+
+    @pytest.mark.asyncio
+    async def test_setup_voice_speed_updates_voice_settings(self, tmp_path):
+        cfg_path = tmp_path / ".voice.json"
+        vm_path = tmp_path / "voice-map.json"
+        vm_path.write_text(json.dumps(MOCK_VOICE_MAP), encoding="utf-8")
+        await handle_setup(["voice", "speed", "M2", "0.9"], cfg_path, vm_path)
+        data = json.loads(vm_path.read_text(encoding="utf-8"))
+        assert data["voice_settings"]["M2"]["synth_speed"] == 0.9
 
 
 # ── handle_control 테스트 ─────────────────────────────────────
