@@ -25,6 +25,7 @@ from .hook_handlers import (
     handle_mode,
     handle_setup,
     handle_hud_label,
+    handle_digest,
 )
 
 
@@ -91,6 +92,17 @@ async def main() -> None:
         await handle_setup(sys.argv[2:], _find_default_config() or _VOICE_JSON)
     elif subcommand == "hud-label":
         await handle_hud_label()
+    elif subcommand == "digest":
+        last_n = 10
+        args = sys.argv[2:]
+        if "--last" in args:
+            idx = args.index("--last")
+            if idx + 1 < len(args):
+                try:
+                    last_n = int(args[idx + 1])
+                except ValueError:
+                    pass
+        await handle_digest(config, last_n=last_n)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

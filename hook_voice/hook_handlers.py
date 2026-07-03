@@ -1149,6 +1149,96 @@ _HUD_TIMEOUT = 0.25  # 250ms
 _HUD_SNAPSHOT_PATH = Path.home() / ".local" / "share" / "chorus" / "hud.json"
 
 
+_DIGEST_SECRET_RE = re.compile(
+    r"(?i)(api[_\-]?key|password|token|secret|bearer|auth)\s*[:=]\s*\S+",
+)
+
+
+def _redact_secrets(text: str) -> str:
+    """시크릿 패턴을 마스킹한다."""
+    return _DIGEST_SECRET_RE.sub(r"[REDACTED]", text)
+
+
+def _strip_code_blocks(text: str) -> str:
+    """코드 블록을 '[코드 생략]'으로 치환한다."""
+    return re.sub(r"```[\s\S]*?```", "[코드 생략]", text)
+
+
+async def _build_digest_llm(summaries: list[str], model: str) -> str | None:
+    """LLM으로 세션 다이제스트를 생성한다. 실패 시 None 반환."""
+    from .llm_client import chat_completion
+
+    joined = "\n---\n".join(summaries[-10:])
+    prompt = (
+        "아래는 Claude Code 세션의 최근 발화 요약 목록입니다.\n"
+        "다음 4가지를 간결한 한국어 경어체로 정리해 주세요.\n\n"
+        "1. 완료된 작업\n"
+        "2. 미해결 블로커\n"
+        "3. 실패한 체크\n"
+        "4. 권장 다음 단계\n\n"
+        f"[요약 목록]\n{joined}"
+    )
+    result = await chat_completion(
+        [{"role": "user", "content": prompt}],
+        model=model,
+        max_tokens=300,
+    )
+    return result.strip() if result else None
+
+
+async def handle_digest(config: Config, last_n: int = 10) -> None:
+    """최근 N개 발화 히스토리를 분석해 세션 다이제스트를 출력하고 TTS로 읽어준다.
+
+    python -m hook_voice digest [--last N]
+    """
+    from .last_message import read_recent_summaries
+
+    summaries = read_recent_summaries(last_n)
+    if not summaries:
+        msg = "세션 히스토리가 없습니다."
+        print(msg)
+        if config.auto_speak:
+            try:
+                await speak_hook_chunked(msg, config.tts_speed)
+            except Exception:
+                pass
+        return
+
+    # 시크릿 redact + 코드 블록 제거
+    clean = [_strip_code_blocks(_redact_secrets(s)) for s in summaries]
+
+    digest_text = await _build_digest_llm(clean, config.summary_model)
+    if digest_text:
+        print("[세션 다이제스트]")
+        print(digest_text)
+        # reviewer 목소리로 TTS 재생
+        vm = load_voice_map()
+        reviewer_voice = resolve_voice("code-reviewer", vm)
+        reviewer_instruct = resolve_instruct("code-reviewer", vm)
+        settings = resolve_voice_settings("code-reviewer", vm)
+        if config.auto_speak:
+            try:
+                await speak_agent(
+                    digest_text,
+                    reviewer_voice,
+                    port=config.supertonic_port,
+                    speed=config.tts_speed,
+                    instruct=reviewer_instruct,
+                    steps=settings["steps"],
+                    synth_speed=settings["synth_speed"],
+                    supertonic_timeout=config.supertonic_timeout_ms / 1000,
+                )
+            except Exception:
+                pass
+    else:
+        # LLM 실패 — 텍스트 요약만 출력
+        print("[세션 다이제스트]")
+        print(f"최근 {len(summaries)}개 발화:")
+        for i, s in enumerate(summaries[-5:], 1):
+            brief = s[:80].replace("\n", " ")
+            print(f"  {i}. {brief}")
+
+
 async def handle_hud_label() -> None:
     """HUD 레이블을 JSON으로 출력한다.
 

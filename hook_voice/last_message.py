@@ -67,3 +67,25 @@ def load_last_message() -> str | None:
         return f.read_text(encoding="utf-8") if f.exists() else None
     except Exception:
         return None
+
+
+def read_recent_summaries(n: int = 10) -> list[str]:
+    """최근 N개 발화 텍스트를 반환한다. 파일 없거나 빈 경우 빈 리스트."""
+    try:
+        hist = _get_history_file()
+        if not hist.exists():
+            return []
+        lines = [l for l in hist.read_text(encoding="utf-8").splitlines() if l.strip()]
+        results = []
+        for line in lines[-n:]:
+            try:
+                entry = json.loads(line)
+                text = entry.get("text", "")
+                if text:
+                    results.append(text)
+            except Exception:
+                pass
+        return results
+    except Exception as e:
+        _log.debug("read_recent_summaries 실패: %s", e)
+        return []
