@@ -195,3 +195,98 @@ async def explain_command_failure(
         _log.warning("explain_command_failure: LLM 오류 (%s)", type(exc).__name__)
 
     return ""
+
+
+# ── 명령 위험 설명 ──────────────────────────────────────────────────────────────
+
+# 쿨다운 상태: 커맨드 패밀리(첫 단어) → 마지막 경고 시각 (monotonic)
+_RISK_COOLDOWN: dict[str, float] = {}
+_RISK_COOLDOWN_SEC = 60.0
+
+_RISK_SYSTEM = """\
+당신은 개발자에게 위험한 터미널 명령 실행 전 간결하게 주의를 알리는 어시스턴트입니다.
+아래 명령의 위험성을 한국어 1문장 경어체로 설명하세요.
+
+출력 규칙:
+- 마크다운 금지 (**, *, #, ` 등)
+- 경어체 사용 (-습니다/-ㅂ니다)
+- 정확히 1문장만 출력
+"""
+
+# 고위험 패턴: 해당 패턴 매칭 시 LLM 호출
+_HIGH_RISK_PATTERNS = re.compile(
+    r"rm\s+-[^\s]*rf|rm\s+-rf"  # rm -rf (순서 무관)
+    r"|git\s+reset\s+--hard"
+    r"|git\s+clean\s+-[^\s]*f"  # git clean -f, -df 등
+    r"|pip\s+install|pip3\s+install"
+    r"|npm\s+install|npm\s+ci|yarn\s+add|pnpm\s+add"
+    r"|curl\s+[^|]+\|\s*(sh|bash)"  # curl ... | sh/bash
+    r"|\|\s*(sh|bash)\s*$"  # pipe to sh/bash at end
+    r"|\bsudo\b"
+    r"|/etc/|/usr/|/prod/",
+    re.IGNORECASE,
+)
+
+
+def _classify_risk(cmd: str) -> str:
+    """커맨드 위험 수준을 분류한다.
+
+    Returns:
+        "high" — 고위험 (LLM 설명 필요)
+        "low"  — 저위험 (LLM 불필요)
+    """
+    if _HIGH_RISK_PATTERNS.search(cmd):
+        return "high"
+    return "low"
+
+
+async def explain_command_risk(
+    cmd: str,
+    model: str = DEFAULT_MODEL,
+    timeout_ms: int = 2500,
+) -> str:
+    """PreToolUse Bash 실행 전 고위험 커맨드를 LLM으로 설명한다.
+
+    저위험 커맨드는 즉시 "" 반환 (LLM 없음).
+    동일 커맨드 패밀리(첫 단어) 60초 쿨다운 내 재호출도 "" 반환.
+    LLM 실패/timeout 시 "" 반환 (fail-open).
+    최대 1문장 한국어 경어체 출력.
+    """
+    import time as _time_mod
+
+    risk = _classify_risk(cmd)
+    if risk == "low":
+        return ""
+
+    # 쿨다운 확인: 커맨드 첫 단어 기준
+    family = cmd.strip().split()[0] if cmd.strip() else ""
+    now = _time_mod.monotonic()
+    last = _RISK_COOLDOWN.get(family, 0.0)
+    if now - last < _RISK_COOLDOWN_SEC:
+        return ""
+
+    # 고위험 → LLM 호출
+    safe_cmd = _redact_secrets(cmd)
+    timeout_sec = timeout_ms / 1000.0
+    try:
+        raw = await asyncio.wait_for(
+            chat_completion(
+                messages=[
+                    {"role": "system", "content": _RISK_SYSTEM},
+                    {"role": "user", "content": f"명령: {safe_cmd}"},
+                ],
+                model=model,
+                max_completion_tokens=80,
+                temperature=0.2,
+            ),
+            timeout=timeout_sec,
+        )
+        if raw and raw.strip():
+            _RISK_COOLDOWN[family] = now
+            return sanitize_for_speech(raw.strip())
+    except asyncio.TimeoutError:
+        _log.warning("explain_command_risk: LLM timeout (%.1fs)", timeout_sec)
+    except Exception as exc:
+        _log.warning("explain_command_risk: LLM 오류 (%s)", type(exc).__name__)
+
+    return ""

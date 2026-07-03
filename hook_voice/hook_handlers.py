@@ -55,7 +55,7 @@ from .voice_router import (
 )
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
-from .assist.briefing import brief_assistant_response, explain_command_failure
+from .assist.briefing import brief_assistant_response, explain_command_failure, explain_command_risk
 from .hud.snapshot import save_snapshot
 from .learning.stats_store import record_playback as _record_stat, load_stats as _load_stats, clear_stats as _clear_stats, stats_file_path as _stats_file_path
 from .learning.advisor import analyze as _analyze_stats
@@ -428,6 +428,29 @@ async def handle_pre_tool_bash(raw: str, config: Config) -> None:
         cmd = data.get("tool_input", {}).get("command", "")
     except Exception:
         return
+
+    # 고위험 커맨드 LLM 위험 설명 (비차단, fail-open)
+    if config.assistant_tts.risk_explain and cmd:
+        risk_msg = await explain_command_risk(
+            cmd,
+            model=config.summary_model,
+            timeout_ms=config.assistant_tts.llm_timeout_ms,
+        )
+        if risk_msg:
+            # HUD 스냅샷에 risk 이벤트 기록
+            try:
+                snap = load_snapshot(_HUD_SNAPSHOT_PATH)
+                snap["last_event"] = {
+                    "kind": "risk",
+                    "summary": risk_msg[:60],
+                    "ts": _time.time(),
+                }
+                save_snapshot(snap, _HUD_SNAPSHOT_PATH)
+            except Exception:
+                pass
+            await speak_hook(risk_msg, config.tts_speed)
+            return
+
     msg = classify_pre_tool_bash(cmd)
     if msg:
         await speak_hook(msg, config.tts_speed)

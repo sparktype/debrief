@@ -62,6 +62,7 @@ class AssistantTtsConfig:
     briefing_mode: str = "smart"
     llm_timeout_ms: int = 2500
     failure_explain: bool = True
+    risk_explain: bool = True
 
 
 @dataclass
@@ -224,6 +225,7 @@ def load_config(path: Path | None = None) -> Config:
                 briefing_mode=a.get("briefingMode", "smart"),
                 llm_timeout_ms=a.get("llmTimeoutMs", 2500),
                 failure_explain=a.get("failureExplain", True),
+                risk_explain=a.get("riskExplain", True),
             )
         kwargs = _normalize_config(kwargs)
         return Config(**kwargs)
