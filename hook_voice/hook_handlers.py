@@ -55,7 +55,7 @@ from .voice_router import (
 )
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
-from .assist.briefing import brief_assistant_response
+from .assist.briefing import brief_assistant_response, explain_command_failure
 from .hud.snapshot import save_snapshot
 from .learning.stats_store import record_playback as _record_stat, load_stats as _load_stats, clear_stats as _clear_stats, stats_file_path as _stats_file_path
 from .learning.advisor import analyze as _analyze_stats
@@ -530,6 +530,30 @@ async def handle_post_tool_bash(raw: str, config: Config) -> None:
         code = resp.get("exitCode", resp.get("exit_code", 0))
     except Exception:
         return
+
+    # 실패 명령: LLM 설명 생성 (fail-open — 실패해도 hook 지연 없음)
+    if code != 0 and config.assistant_tts.failure_explain:
+        explanation = await explain_command_failure(
+            cmd, out, code,
+            model=config.summary_model,
+            timeout_ms=config.assistant_tts.llm_timeout_ms,
+        )
+        if explanation:
+            # HUD 스냅샷에 failure 이벤트 기록
+            try:
+                snap = load_snapshot(_HUD_SNAPSHOT_PATH)
+                snap["last_event"] = {
+                    "kind": "failure",
+                    "summary": explanation[:60],
+                    "ts": _time.time(),
+                }
+                save_snapshot(snap, _HUD_SNAPSHOT_PATH)
+            except Exception:
+                pass
+            await speak_hook(explanation, config.tts_speed)
+            return
+
+    # 성공 또는 실패 설명 비활성화: 기존 규칙 기반 경로
     msg = classify_post_tool_bash(cmd, out, code)
     if msg:
         await speak_hook(msg, config.tts_speed)

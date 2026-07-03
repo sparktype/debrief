@@ -103,6 +103,83 @@ async def test_handle_post_tool_bash_speaks_on_test_pass():
         await handle_post_tool_bash(raw, _CFG)
         mock.assert_called_once()
 
+
+async def test_handle_post_tool_bash_failure_uses_llm_explanation():
+    """실패 커맨드(exit_code!=0)에서 failure_explain 활성화 시 LLM 설명을 TTS로 발화한다."""
+    from hook_voice.config import AssistantTtsConfig
+    cfg = Config(auto_speak=True)
+    cfg.assistant_tts = AssistantTtsConfig(enabled=True, failure_explain=True)
+    raw = json.dumps({
+        "tool_input": {"command": "pytest tests/"},
+        "tool_response": {"output": "1 failed", "exit_code": 1},
+    })
+    with patch("hook_voice.hook_handlers.explain_command_failure", new=AsyncMock(return_value="테스트 실패 설명입니다.")) as mock_explain, \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak, \
+         patch("hook_voice.hook_handlers.load_snapshot", return_value={}), \
+         patch("hook_voice.hook_handlers.save_snapshot"):
+        await handle_post_tool_bash(raw, cfg)
+    mock_explain.assert_called_once()
+    mock_speak.assert_called_once()
+    assert "테스트 실패 설명입니다." in mock_speak.call_args.args[0]
+
+
+async def test_handle_post_tool_bash_failure_llm_empty_falls_back_to_rule():
+    """LLM 설명이 비어있으면 기존 규칙 기반 경로로 폴백한다."""
+    from hook_voice.config import AssistantTtsConfig
+    cfg = Config(auto_speak=True)
+    cfg.assistant_tts = AssistantTtsConfig(enabled=True, failure_explain=True)
+    raw = json.dumps({
+        "tool_input": {"command": "pytest"},
+        "tool_response": {"output": "1 failed, 2 passed", "exit_code": 1},
+    })
+    with patch("hook_voice.hook_handlers.explain_command_failure", new=AsyncMock(return_value="")) as mock_explain, \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak, \
+         patch("hook_voice.hook_handlers.load_snapshot", return_value={}), \
+         patch("hook_voice.hook_handlers.save_snapshot"):
+        await handle_post_tool_bash(raw, cfg)
+    mock_explain.assert_called_once()
+    # 규칙 기반 경로: "1개 실패했습니다..."
+    mock_speak.assert_called_once()
+    assert "실패" in mock_speak.call_args.args[0]
+
+
+async def test_handle_post_tool_bash_failure_explain_disabled_uses_rule():
+    """failure_explain=False이면 실패해도 규칙 기반 경로만 사용한다."""
+    from hook_voice.config import AssistantTtsConfig
+    cfg = Config(auto_speak=True)
+    cfg.assistant_tts = AssistantTtsConfig(failure_explain=False)
+    raw = json.dumps({
+        "tool_input": {"command": "tsc"},
+        "tool_response": {"output": "error TS2345", "exit_code": 1},
+    })
+    with patch("hook_voice.hook_handlers.explain_command_failure", new=AsyncMock()) as mock_explain, \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock_speak:
+        await handle_post_tool_bash(raw, cfg)
+    mock_explain.assert_not_called()
+    mock_speak.assert_called_once()
+    assert "빌드가 실패했습니다" in mock_speak.call_args.args[0]
+
+
+async def test_handle_post_tool_bash_failure_saves_hud_snapshot():
+    """실패 LLM 설명 성공 시 HUD 스냅샷의 last_event.kind == 'failure'가 저장된다."""
+    from hook_voice.config import AssistantTtsConfig
+    cfg = Config(auto_speak=True)
+    cfg.assistant_tts = AssistantTtsConfig(enabled=True, failure_explain=True)
+    raw = json.dumps({
+        "tool_input": {"command": "cargo build"},
+        "tool_response": {"output": "error[E0308]", "exit_code": 1},
+    })
+    with patch("hook_voice.hook_handlers.explain_command_failure", new=AsyncMock(return_value="빌드 실패 설명")), \
+         patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()), \
+         patch("hook_voice.hook_handlers.load_snapshot", return_value={"mode": "normal"}), \
+         patch("hook_voice.hook_handlers.save_snapshot") as mock_save:
+        await handle_post_tool_bash(raw, cfg)
+    mock_save.assert_called_once()
+    saved = mock_save.call_args.args[0]
+    assert saved["last_event"]["kind"] == "failure"
+    assert saved["last_event"]["summary"] == "빌드 실패 설명"
+
+
 async def test_handle_notification_speaks():
     raw = json.dumps({"message": "Claude가 응답했습니다"})
     with patch("hook_voice.hook_handlers.speak_hook", new=AsyncMock()) as mock:

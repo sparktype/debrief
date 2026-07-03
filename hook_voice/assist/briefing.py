@@ -1,4 +1,4 @@
-# hook_voice/assist/briefing.py — LLM 응답 브리핑 생성 모듈 (10~12초 분량 한국어 음성 요약)
+# hook_voice/assist/briefing.py — LLM 응답 브리핑 및 명령 실패 설명 생성 모듈
 from __future__ import annotations
 
 import asyncio
@@ -111,3 +111,87 @@ async def brief_assistant_response(
         category="fallback",
         confidence=0.5,
     )
+
+
+# ── 명령 실패 설명 ──────────────────────────────────────────────────────────────
+
+# 시크릿 redact: 30자 이상 영숫자+특수문자 연속 패턴
+_SECRET_RE = re.compile(r'[A-Za-z0-9!@#$%^&*()\-_=+\[\]{};:\'",.<>?/\\|`~]{30,}')
+
+_FAILURE_SYSTEM = """\
+당신은 빌드/테스트 실패를 간결하게 설명하는 어시스턴트입니다.
+아래 실패한 명령과 출력을 보고 한국어 1-2문장 경어체로 설명하세요.
+
+포함할 내용:
+- 실패한 명령 타입 (빌드/테스트/패키지설치 등)
+- 핵심 에러 라인 요약
+- 가능성 높은 원인
+- 다음으로 확인할 단계
+
+출력 규칙:
+- 마크다운 금지 (**, *, #, ` 등)
+- 경어체 사용 (-습니다/-ㅂ니다)
+- 1-2문장만 출력
+"""
+
+
+def _redact_secrets(text: str) -> str:
+    """30자 이상 연속 토큰 패턴을 [REDACTED]로 치환한다."""
+    return _SECRET_RE.sub("[REDACTED]", text)
+
+
+def _extract_relevant_lines(output: str, max_lines: int = 30) -> str:
+    """출력에서 마지막 max_lines개 라인을 반환한다.
+
+    error/fail/warning 포함 라인을 우선 포함하되,
+    전체 라인 수가 max_lines를 초과하면 마지막 max_lines개만 사용한다.
+    """
+    lines = output.splitlines()
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    return "\n".join(lines[-max_lines:])
+
+
+async def explain_command_failure(
+    cmd: str,
+    output: str,
+    exit_code: int,
+    model: str = DEFAULT_MODEL,
+    timeout_ms: int = 2500,
+) -> str:
+    """빌드/테스트 명령 실패를 LLM으로 설명한다.
+
+    성공(exit_code == 0)이면 LLM 호출 없이 빈 문자열을 반환한다.
+    LLM 실패 또는 timeout 시 빈 문자열을 반환한다 (fail-open).
+    """
+    if exit_code == 0:
+        return ""
+
+    relevant = _extract_relevant_lines(output)
+    safe_output = _redact_secrets(relevant)
+    safe_cmd = _redact_secrets(cmd)
+
+    user_content = f"명령: {safe_cmd}\nexit code: {exit_code}\n\n출력:\n{safe_output}"
+
+    timeout_sec = timeout_ms / 1000.0
+    try:
+        raw = await asyncio.wait_for(
+            chat_completion(
+                messages=[
+                    {"role": "system", "content": _FAILURE_SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+                model=model,
+                max_completion_tokens=150,
+                temperature=0.2,
+            ),
+            timeout=timeout_sec,
+        )
+        if raw and raw.strip():
+            return sanitize_for_speech(raw.strip())
+    except asyncio.TimeoutError:
+        _log.warning("explain_command_failure: LLM timeout (%.1fs)", timeout_sec)
+    except Exception as exc:
+        _log.warning("explain_command_failure: LLM 오류 (%s)", type(exc).__name__)
+
+    return ""
