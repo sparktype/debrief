@@ -32,6 +32,12 @@ _KEY_MAP = {
 
 
 @dataclass
+class HudConfig:
+    max_label_chars: int = 50
+    snapshot_path: str | None = None
+
+
+@dataclass
 class GrafanaConfig:
     enabled: bool = False
     url: str = ""
@@ -71,6 +77,7 @@ class Config:
     expression_level: str = "normal"  # "off" | "low" | "normal"
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
+    hud: HudConfig = field(default_factory=HudConfig)
 
 
 def _warn_invalid(key: str, value: object, fallback: object) -> None:
