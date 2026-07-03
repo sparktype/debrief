@@ -231,7 +231,8 @@ Claude Code statusline에 chorus TTS 상태를 표시합니다.
 # → {"label": "🔊 normal [F1]"}
 ```
 
-로컬 스냅샷(`~/.local/share/chorus/hud.json`)만 읽으며 LLM·네트워크 호출이 없습니다.  
+LLM·외부 네트워크 호출 없음 (로컬 서버 접근 후 파일 폴백).
+로컬 서버(127.0.0.1:7777, 250ms timeout) → 스냅샷 파일(`~/.local/share/chorus/hud.json`) → `{"label": "chorus offline"}` 순서로 폴백합니다.
 TTS 서버가 Stop hook을 처리할 때마다 스냅샷을 자동 갱신합니다.
 
 ### claude-hud --extra-cmd 연동
