@@ -220,6 +220,95 @@ curl localhost:7777/health                    # 서버 헬스 체크
 
 ---
 
+## TTS 어시스턴트 모드
+
+`assistantTts.enabled: true`(기본값)이면 LLM이 각 hook 이벤트를 분석해 TTS 발화 내용을 생성합니다.  
+설정을 변경해도 TTS 서버는 재시작하지 않아도 됩니다 — 다음 hook 호출 시 자동 반영됩니다.
+
+| hook 이벤트 | LLM 역할 | 발화 방식 |
+|-------------|----------|---------|
+| **Stop** (Claude 응답 완료) | 응답을 10~12초 분량으로 브리핑 — 결론·변경 파일·검증·다음 단계 순 | TTS 발화 |
+| **PostToolUse Bash** (명령 실패) | 실패 명령·에러 라인·원인·다음 단계를 1~2문장으로 설명 | TTS 발화 |
+| **PreToolUse Bash** (고위험 명령 실행 전) | `rm -rf`, `git reset --hard` 등 위험 패턴 감지 시 1문장 경고 | TTS 발화 |
+| **UserPromptSubmit** (프롬프트 입력) | 프롬프트 의도 분석 → `focus/quiet/verbose` voiceMode 추천 | TTS 발화 (모드 변경은 명시적 승인 필요) |
+
+**스냅샷 위치 (HUD용)**: `~/.local/share/chorus/hud.json`  
+HUD에 표시되는 라벨(`🔊 normal [F1]`)은 이 파일에서 읽으며, LLM 호출 없이 로컬 파일만 사용합니다.
+
+### 어시스턴트 설정 (`assistantTts` 블록)
+
+`.voice.json`에 추가해 어시스턴트 동작을 조정합니다.
+
+```json
+{
+  "assistantTts": {
+    "enabled": true,
+    "briefingMode": "smart",
+    "llmTimeoutMs": 2500,
+    "failureExplain": true,
+    "riskExplain": true,
+    "promptAdvice": true
+  }
+}
+```
+
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| `enabled` | `true` | LLM 어시스턴트 전체 활성화 여부 |
+| `briefingMode` | `"smart"` | Stop hook 브리핑 방식 (`"smart"` = 자동, `"always"` = 항상 LLM) |
+| `llmTimeoutMs` | `2500` | LLM 호출 타임아웃 (ms) — 초과 시 규칙 기반 폴백 |
+| `failureExplain` | `true` | PostToolUse Bash 실패 설명 활성화 여부 |
+| `riskExplain` | `true` | PreToolUse Bash 위험 경고 활성화 여부 |
+| `promptAdvice` | `true` | UserPromptSubmit voiceMode 추천 활성화 여부 |
+
+LLM 어시스턴트는 opt-in/configurable이며 자동으로 설정을 변경하지 않습니다.  
+voiceMode 추천은 안내만 할 뿐이며 실제 변경은 사용자가 `python -m hook_voice mode set <mode>` 명령으로 직접 실행해야 합니다.
+
+---
+
+## 세션 다이제스트
+
+현재 세션에서 chorus가 처리한 TTS 이벤트를 시간 순으로 요약합니다.
+
+```bash
+python -m hook_voice digest             # 마지막 10개 이벤트 요약
+python -m hook_voice digest --last 20   # 마지막 20개 이벤트 요약
+```
+
+출력 예시:
+```
+[14:32] Stop hook — 파일 3개 수정, 테스트 통과 요약
+[14:35] Failure — pytest tests/test_foo.py: AssertionError 1건
+[14:41] Stop hook — ONBOARDING.md 업데이트 완료
+```
+
+---
+
+## 프라이버시 및 데이터 흐름
+
+### 로컬 저장 (LLM 전송 없음)
+
+| 데이터 | 경로 | 설명 |
+|--------|------|------|
+| HUD 스냅샷 | `~/.local/share/chorus/hud.json` | TTS 상태, 재생 중 여부 |
+| 사용 통계 | `~/.local/share/chorus/usage_stats.jsonl` | 완료율·중단 빈도 (익명) |
+| 브리핑 캐시 | 메모리 내 | 세션 종료 시 자동 삭제 |
+
+### LLM으로 전송되는 항목
+
+| 트리거 | 전송 내용 | 목적 |
+|--------|----------|------|
+| Stop hook (응답 완료) | Claude 응답 텍스트 (최대 3,000자) | 브리핑 생성 |
+| PostToolUse 실패 | 명령어·exit code·마지막 30줄 출력 | 실패 설명 |
+| PreToolUse 위험 명령 | 명령어 문자열 | 위험 경고 |
+| UserPromptSubmit | 프롬프트 (최대 400자) + 컨텍스트 (최대 600자) | voiceMode 추천 |
+
+**자동 redact**: 30자 이상 영숫자+특수문자 연속 패턴은 `[REDACTED]`로 치환 후 LLM에 전송합니다.  
+**수집 거부**: `"usageTracking": false`로 로컬 통계 수집을 중단할 수 있습니다.  
+**통계 삭제**: `python -m hook_voice privacy clear`로 모든 통계 데이터를 즉시 삭제합니다.
+
+---
+
 ## HUD 연동
 
 Claude Code statusline에 chorus TTS 상태를 표시합니다.
@@ -318,6 +407,22 @@ tail -f .tts_server.log
 ```bash
 cat ~/.claude/settings.json | grep -A5 '"Stop"'
 ./server.sh install    # hook 재등록
+```
+
+**HUD 레이블이 표시 안 될 때**
+```bash
+.venv/bin/python -m hook_voice hud-label       # HUD 레이블 직접 확인
+curl -s localhost:7777/chorus/hud              # 서버 실시간 HUD 상태
+curl -s localhost:7777/playback/status         # 재생 큐 상태 확인
+.venv/bin/python -m hook_voice privacy status  # 통계 파일 위치·건수 확인
+```
+
+**LLM 어시스턴트 브리핑이 안 될 때**
+```bash
+# .voice.json 어시스턴트 설정 확인
+cat .voice.json | grep -A8 '"assistantTts"'
+# LLM 타임아웃 조정 (기본 2500ms)
+# {"assistantTts": {"llmTimeoutMs": 5000}}
 ```
 
 **제거**

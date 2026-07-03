@@ -55,6 +55,10 @@ curl -s http://localhost:7777/health             # 서버 헬스 (model_loaded, 
 python -m hook_voice hud-label           # HUD 레이블 JSON 출력 (LLM·네트워크 호출 없음)
 curl -s http://localhost:7777/chorus/hud # 서버에서 실시간 HUD 스냅샷 조회
 
+# 세션 다이제스트
+python -m hook_voice digest              # 마지막 10개 TTS 이벤트 요약
+python -m hook_voice digest --last 20    # 마지막 20개 이벤트 요약
+
 # 자동 학습·적응
 python -m hook_voice suggest-config   # 사용 패턴 분석 → 설정 권장안 출력
 python -m hook_voice privacy status   # 통계 파일 정보
@@ -108,6 +112,31 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
           └─ recording → idle: InputStream 닫기
                → numpy concatenate → mlx_whisper.transcribe(language="ko")
                → 텍스트 → pbcopy → osascript Cmd+V (클립보드 주입)
+
+LLM 어시스턴트 (assistantTts.enabled=true 시)
+  → Stop hook
+    → brief_assistant_response(text) (hook_voice/assist/briefing.py)
+        ├─ has_heavy_code() → summarize_with_code_hint() (LLM 없음)
+        ├─ LLM 브리핑: 결론·파일·검증·다음 단계 → 100~130자 경어체
+        └─ 타임아웃/실패 시 extract_summary() 폴백 → TTS 발화
+
+  → PostToolUse Bash (exit_code != 0)
+    → explain_command_failure(cmd, output, exit_code) (hook_voice/assist/briefing.py)
+        ├─ _extract_relevant_lines() → 마지막 30줄 추출
+        ├─ _redact_secrets() → 30자+ 토큰 [REDACTED] 치환
+        └─ LLM: 실패 원인·다음 단계 1~2문장 → TTS 발화
+
+  → PreToolUse Bash (고위험 커맨드 감지 시)
+    → explain_command_risk(cmd) (hook_voice/assist/briefing.py)
+        ├─ _classify_risk() → rm -rf·git reset --hard·sudo 등 패턴 매칭
+        ├─ 60초 커맨드 패밀리 쿨다운 내 재호출 → "" (발화 없음)
+        └─ LLM: 위험성 1문장 → TTS 발화
+
+  → UserPromptSubmit
+    → recommend_prompt_assist(prompt, context, stats) (hook_voice/assist/recommend.py)
+        ├─ LLM: focus/quiet/verbose 중 적합한 voiceMode 추천 + 이유
+        ├─ 300초 동일 value 쿨다운 내 재호출 → None (발화 없음)
+        └─ 추천 결과: TTS 발화만 — 설정 자동 변경 없음
 ```
 
 ### 파일별 역할
@@ -135,7 +164,10 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `tts_server/server.py` | FastAPI 단일 서버 — TTS·STT·메트릭·DLQ·인터럽트·헬스 (포트 7777) |
 | `tts_server/supervisor.py` | uvicorn·TTS Player 통합 supervisor |
 | `hook_voice/hud/snapshot.py` | HUD 스냅샷 저장·로드·레이블 생성 (`~/.local/share/chorus/hud.json`) |
+| `hook_voice/assist/briefing.py` | LLM 응답 브리핑(Stop)·명령 실패 설명(PostToolUse)·위험 경고(PreToolUse) |
+| `hook_voice/assist/recommend.py` | 프롬프트 분석 → voiceMode 추천 (UserPromptSubmit), 300초 쿨다운 |
 | `.claude/skills/chorus-hud/SKILL.md` | `/chorus:hud` 스킬 — claude-hud `--extra-cmd` 연동 설정 안내 |
+| `.claude/skills/chorus-digest/SKILL.md` | `/chorus:digest` 스킬 — 세션 다이제스트 실행 안내 |
 
 ### TTS 서버 설계 포인트
 
@@ -176,6 +208,19 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `stt.sampleRate` | `16000` | 마이크 샘플레이트 (Hz) |
 | `stt.announce` | `true` | 녹음 시작/완료 TTS 안내 여부 |
 | `stt.vadInterrupt` | `false` | VAD 발화 감지 시 TTS 자동 중단 (macOS opt-in) |
+
+**LLM 어시스턴트 설정** (`assistantTts` 블록):
+
+| 키 | 기본값 | 설명 |
+|----|--------|------|
+| `assistantTts.enabled` | `true` | LLM 어시스턴트 전체 활성화 여부 |
+| `assistantTts.briefingMode` | `"smart"` | Stop hook 브리핑 방식 (`"smart"` = 자동 판단) |
+| `assistantTts.llmTimeoutMs` | `2500` | LLM 호출 타임아웃 (ms) — 초과 시 폴백 |
+| `assistantTts.failureExplain` | `true` | PostToolUse Bash 실패 설명 활성화 |
+| `assistantTts.riskExplain` | `true` | PreToolUse Bash 위험 경고 활성화 |
+| `assistantTts.promptAdvice` | `true` | UserPromptSubmit voiceMode 추천 활성화 |
+
+LLM 어시스턴트는 opt-in이며 자동으로 설정을 변경하지 않는다. voiceMode 추천은 TTS 발화만 하며, 실제 변경은 사용자가 `python -m hook_voice mode set <mode>`로 직접 실행해야 한다.
 
 **voice-map.json 신규 필드**:
 
