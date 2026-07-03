@@ -425,7 +425,6 @@ async def handle_hook_suggest(raw: str, config: Config) -> None:
 
     # 프롬프트 의도 기반 voiceMode 추천 (prompt_advice=True 시 활성화)
     if config.assistant_tts.prompt_advice and prompt:
-        stats = _load_stats()
         mode_rec = await recommend_prompt_assist(
             prompt=prompt,
             transcript_context=context,
