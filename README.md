@@ -220,6 +220,54 @@ curl localhost:7777/health                    # 서버 헬스 체크
 
 ---
 
+## HUD 연동
+
+Claude Code statusline에 chorus TTS 상태를 표시합니다.
+
+### hud-label 커맨드
+
+```bash
+.venv/bin/python -m hook_voice hud-label
+# → {"label": "🔊 normal [F1]"}
+```
+
+로컬 스냅샷(`~/.local/share/chorus/hud.json`)만 읽으며 LLM·네트워크 호출이 없습니다.  
+TTS 서버가 Stop hook을 처리할 때마다 스냅샷을 자동 갱신합니다.
+
+### claude-hud --extra-cmd 연동
+
+아래 `<VERSION>`과 `<PROJECT_DIR>`을 실제 값으로 치환합니다.
+
+**Path A — claude-hud 직접 사용:**
+
+```bash
+node $HOME/.claude/plugins/cache/claude-hud/claude-hud/<VERSION>/dist/index.js \
+  --extra-cmd "cd <PROJECT_DIR> && .venv/bin/python -m hook_voice hud-label"
+```
+
+**Path B — claudenews parentStatusLine** (`~/.claudenews/config.json`):
+
+```json
+{
+  "parentStatusLine": "node $HOME/.claude/plugins/cache/claude-hud/claude-hud/<VERSION>/dist/index.js --extra-cmd \"cd <PROJECT_DIR> && .venv/bin/python -m hook_voice hud-label\""
+}
+```
+
+기존 claudenews statusline을 유지하면서 chorus 레이블을 추가하는 방식입니다.
+
+### GET /chorus/hud API
+
+TTS 서버가 실행 중일 때 실시간 상태를 확인합니다.
+
+```bash
+curl -s localhost:7777/chorus/hud
+# → {"mode": "normal", "voice": "F1", "auto_speak": true, "label": "🔊 normal [F1]"}
+```
+
+자세한 설정 방법은 `/chorus:hud` 스킬을 실행하거나 `.claude/skills/chorus-hud/SKILL.md`를 참고하세요.
+
+---
+
 ## 서버 관리
 
 ```bash

@@ -51,6 +51,10 @@ curl -s http://localhost:7777/interrupt -X POST  # TTS 즉시 중단
 curl -s http://localhost:7777/playback/status    # 재생 상태 확인
 curl -s http://localhost:7777/health             # 서버 헬스 (model_loaded, queue_depth 포함)
 
+# HUD 레이블
+python -m hook_voice hud-label           # HUD 레이블 JSON 출력 (LLM·네트워크 호출 없음)
+curl -s http://localhost:7777/chorus/hud # 서버에서 실시간 HUD 스냅샷 조회
+
 # 자동 학습·적응
 python -m hook_voice suggest-config   # 사용 패턴 분석 → 설정 권장안 출력
 python -m hook_voice privacy status   # 통계 파일 정보
@@ -130,6 +134,8 @@ Whisper STT 음성 입력 (stt.enabled=true 시)
 | `assets/bridge_thinking.wav` | 브리지 WAV — Stop hook 후 침묵 제거용 (0.5초) |
 | `tts_server/server.py` | FastAPI 단일 서버 — TTS·STT·메트릭·DLQ·인터럽트·헬스 (포트 7777) |
 | `tts_server/supervisor.py` | uvicorn·TTS Player 통합 supervisor |
+| `hook_voice/hud/snapshot.py` | HUD 스냅샷 저장·로드·레이블 생성 (`~/.local/share/chorus/hud.json`) |
+| `.claude/skills/chorus-hud/SKILL.md` | `/chorus:hud` 스킬 — claude-hud `--extra-cmd` 연동 설정 안내 |
 
 ### TTS 서버 설계 포인트
 
