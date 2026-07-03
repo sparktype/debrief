@@ -90,7 +90,7 @@ async def main() -> None:
     elif subcommand == "setup":
         await handle_setup(sys.argv[2:], _find_default_config() or _VOICE_JSON)
     elif subcommand == "hud-label":
-        await handle_hud_label(config)
+        await handle_hud_label()
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

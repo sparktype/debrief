@@ -11,7 +11,7 @@ from pathlib import Path
 _logger = logging.getLogger(__name__)
 
 # 기본 스냅샷 저장 경로
-_DEFAULT_SNAPSHOT_PATH: Path = Path.home() / ".local" / "share" / "chorus" / "hud_snapshot.json"
+_DEFAULT_SNAPSHOT_PATH: Path = Path.home() / ".local" / "share" / "chorus" / "hud.json"
 
 # redact 기준: 30자 이상 영숫자+특수문자(연속)
 _SECRET_PATTERN = re.compile(r'^[A-Za-z0-9!@#$%^&*()\-_=+\[\]{};:\'",.<>?/\\|`~]{30,}$')

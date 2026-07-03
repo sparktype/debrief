@@ -27,7 +27,6 @@ async def test_api_success_returns_label(capsys):
     async def _fake_get(url, timeout):
         return mock_resp
 
-    config = _make_config()
     with patch("hook_voice.hook_handlers.httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=_fake_get)
@@ -36,7 +35,7 @@ async def test_api_success_returns_label(capsys):
         MockClient.return_value = instance
 
         from hook_voice.hook_handlers import handle_hud_label
-        await handle_hud_label(config)
+        await handle_hud_label()
 
     captured = capsys.readouterr()
     assert captured.err == ""
@@ -48,13 +47,10 @@ async def test_api_success_returns_label(capsys):
 async def test_api_timeout_falls_back_to_snapshot(tmp_path, capsys):
     """API timeout → snapshot 폴백 → build_label() 결과를 출력한다."""
     snapshot = {"mode": "focus", "voice": "M2", "auto_speak": True}
-    snap_file = tmp_path / "hud_snapshot.json"
-    snap_file.write_text(json.dumps(snapshot), encoding="utf-8")
 
     async def _timeout_get(url, timeout):
         raise httpx.TimeoutException("timeout")
 
-    config = _make_config()
     with patch("hook_voice.hook_handlers.httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=_timeout_get)
@@ -63,14 +59,18 @@ async def test_api_timeout_falls_back_to_snapshot(tmp_path, capsys):
         MockClient.return_value = instance
 
         with patch(
-            "hook_voice.hook_handlers.load_snapshot",
-            return_value=snapshot,
-        ) as mock_snap, patch(
-            "hook_voice.hook_handlers.build_label",
-            return_value="🔊 focus [M2]",
-        ) as mock_label:
-            from hook_voice.hook_handlers import handle_hud_label
-            await handle_hud_label(config)
+            "hook_voice.hook_handlers._HUD_SNAPSHOT_PATH"
+        ) as mock_path:
+            mock_path.exists.return_value = True
+            with patch(
+                "hook_voice.hook_handlers.load_snapshot",
+                return_value=snapshot,
+            ), patch(
+                "hook_voice.hook_handlers.build_label",
+                return_value="🔊 focus [M2]",
+            ):
+                from hook_voice.hook_handlers import handle_hud_label
+                await handle_hud_label()
 
     captured = capsys.readouterr()
     assert captured.err == ""
@@ -80,12 +80,11 @@ async def test_api_timeout_falls_back_to_snapshot(tmp_path, capsys):
 
 
 async def test_api_timeout_no_snapshot_returns_offline(capsys):
-    """API timeout + snapshot 없음 → chorus offline 출력."""
+    """API timeout + snapshot 파일 없음 → chorus offline 출력."""
 
     async def _timeout_get(url, timeout):
         raise httpx.TimeoutException("timeout")
 
-    config = _make_config()
     with patch("hook_voice.hook_handlers.httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=_timeout_get)
@@ -93,14 +92,12 @@ async def test_api_timeout_no_snapshot_returns_offline(capsys):
         instance.__aexit__ = AsyncMock(return_value=False)
         MockClient.return_value = instance
 
-        # load_snapshot은 기본 safe defaults를 반환하고 build_label은 빈 label 처럼 동작
-        # chorus offline 경로: snapshot 로드가 "실패" 상황 — 파일 없음으로 시뮬레이션
         with patch(
-            "hook_voice.hook_handlers.load_snapshot",
-            side_effect=Exception("no file"),
-        ):
+            "hook_voice.hook_handlers._HUD_SNAPSHOT_PATH"
+        ) as mock_path:
+            mock_path.exists.return_value = False
             from hook_voice.hook_handlers import handle_hud_label
-            await handle_hud_label(config)
+            await handle_hud_label()
 
     captured = capsys.readouterr()
     assert captured.err == ""
@@ -113,7 +110,6 @@ async def test_output_is_parseable_json_with_string_label(capsys):
     async def _timeout_get(url, timeout):
         raise httpx.TimeoutException("t")
 
-    config = _make_config()
     with patch("hook_voice.hook_handlers.httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=_timeout_get)
@@ -122,11 +118,11 @@ async def test_output_is_parseable_json_with_string_label(capsys):
         MockClient.return_value = instance
 
         with patch(
-            "hook_voice.hook_handlers.load_snapshot",
-            side_effect=Exception("no file"),
-        ):
+            "hook_voice.hook_handlers._HUD_SNAPSHOT_PATH"
+        ) as mock_path:
+            mock_path.exists.return_value = False
             from hook_voice.hook_handlers import handle_hud_label
-            await handle_hud_label(config)
+            await handle_hud_label()
 
     captured = capsys.readouterr()
     out = captured.out.strip()
@@ -149,4 +145,4 @@ async def test_hud_label_subcommand_dispatches():
     """hud-label 서브커맨드가 handle_hud_label을 호출한다."""
     with patch("hook_voice.__main__.handle_hud_label", new=AsyncMock()) as mock:
         await _run_main(["prog", "hud-label"])
-        mock.assert_called_once()
+        mock.assert_called_once_with()

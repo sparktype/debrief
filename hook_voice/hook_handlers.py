@@ -1055,7 +1055,7 @@ _HUD_TIMEOUT = 0.25  # 250ms
 _HUD_SNAPSHOT_PATH = Path.home() / ".local" / "share" / "chorus" / "hud.json"
 
 
-async def handle_hud_label(config: "Config") -> None:
+async def handle_hud_label() -> None:
     """HUD 레이블을 JSON으로 출력한다.
 
     폴백 체인:
@@ -1074,14 +1074,12 @@ async def handle_hud_label(config: "Config") -> None:
     except Exception:
         pass
 
-    # 2단계: 스냅샷 폴백
-    try:
+    # 2단계: 스냅샷 파일 존재 확인 후 로드
+    if _HUD_SNAPSHOT_PATH.exists():
         snapshot = load_snapshot(_HUD_SNAPSHOT_PATH)
         label = build_label(snapshot)
         print(json.dumps({"label": label}), flush=True)
         return
-    except Exception:
-        pass
 
-    # 3단계: 오프라인 폴백
+    # 3단계: 파일 없으면 offline
     print(json.dumps({"label": "chorus offline"}), flush=True)
