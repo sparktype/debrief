@@ -54,6 +54,7 @@ from .voice_router import (
     resolve_voice_settings,
 )
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
+from .assist.recommend import recommend_prompt_assist
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
 from .assist.briefing import brief_assistant_response, explain_command_failure, explain_command_risk
 from .hud.snapshot import save_snapshot
@@ -401,6 +402,7 @@ async def handle_subagent_stop(raw: str, agent_type: str, config: Config) -> Non
 
 
 async def handle_hook_suggest(raw: str, config: Config) -> None:
+    prompt = ""
     prompt_hint = ""
     try:
         data = json.loads(raw)
@@ -410,6 +412,8 @@ async def handle_hook_suggest(raw: str, config: Config) -> None:
     except Exception:
         pass
     context = read_recent_transcripts() + prompt_hint
+
+    # 스킬 추천 (기존 로직)
     rec = await recommend_skill(
         context,
         bypass_cooldown=False,
@@ -418,6 +422,28 @@ async def handle_hook_suggest(raw: str, config: Config) -> None:
     )
     if rec:
         save_cooldown(rec["skill"])
+
+    # 프롬프트 의도 기반 voiceMode 추천 (prompt_advice=True 시 활성화)
+    if config.assistant_tts.prompt_advice and prompt:
+        stats = _load_stats()
+        mode_rec = await recommend_prompt_assist(
+            prompt=prompt,
+            transcript_context=context,
+            stats={},
+            model=config.summary_model,
+            timeout_ms=config.assistant_tts.llm_timeout_ms,
+        )
+        if mode_rec:
+            try:
+                snap = load_snapshot(_HUD_SNAPSHOT_PATH)
+                snap["suggestion"] = {
+                    "kind": mode_rec.kind,
+                    "value": mode_rec.value,
+                    "reason": mode_rec.reason,
+                }
+                save_snapshot(snap, _HUD_SNAPSHOT_PATH)
+            except Exception:
+                pass
 
 
 async def handle_pre_tool_bash(raw: str, config: Config) -> None:

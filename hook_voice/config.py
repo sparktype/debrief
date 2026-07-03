@@ -63,6 +63,7 @@ class AssistantTtsConfig:
     llm_timeout_ms: int = 2500
     failure_explain: bool = True
     risk_explain: bool = True
+    prompt_advice: bool = True
 
 
 @dataclass
@@ -226,6 +227,7 @@ def load_config(path: Path | None = None) -> Config:
                 llm_timeout_ms=a.get("llmTimeoutMs", 2500),
                 failure_explain=a.get("failureExplain", True),
                 risk_explain=a.get("riskExplain", True),
+                prompt_advice=a.get("promptAdvice", True),
             )
         kwargs = _normalize_config(kwargs)
         return Config(**kwargs)
