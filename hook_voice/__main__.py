@@ -24,6 +24,7 @@ from .hook_handlers import (
     handle_mute,
     handle_mode,
     handle_setup,
+    handle_hud_label,
 )
 
 
@@ -88,6 +89,8 @@ async def main() -> None:
         await handle_mode(sys.argv[2:], _find_default_config() or _VOICE_JSON)
     elif subcommand == "setup":
         await handle_setup(sys.argv[2:], _find_default_config() or _VOICE_JSON)
+    elif subcommand == "hud-label":
+        await handle_hud_label(config)
     else:
         print(f"Unknown subcommand: {subcommand}", file=sys.stderr)
         sys.exit(1)

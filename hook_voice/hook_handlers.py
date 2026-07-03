@@ -7,6 +7,10 @@ import sys
 import time as _time
 from pathlib import Path
 
+import httpx
+
+from .hud.snapshot import load_snapshot, build_label
+
 
 def _status(msg: str) -> None:
     """터미널 stderr에 chorus 상태를 출력한다."""
@@ -1044,3 +1048,40 @@ async def handle_mute(config_path: "Path") -> None:
             pass
     else:
         print("🔇 chorus: 음성이 음소거됐습니다.", flush=True)
+
+
+_HUD_API_URL = "http://127.0.0.1:7777/chorus/hud"
+_HUD_TIMEOUT = 0.25  # 250ms
+_HUD_SNAPSHOT_PATH = Path.home() / ".local" / "share" / "chorus" / "hud.json"
+
+
+async def handle_hud_label(config: "Config") -> None:
+    """HUD 레이블을 JSON으로 출력한다.
+
+    폴백 체인:
+      1. GET /chorus/hud (timeout 250ms)
+      2. ~/.local/share/chorus/hud.json 스냅샷
+      3. {"label": "chorus offline"}
+    """
+    # 1단계: API
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(_HUD_API_URL, timeout=_HUD_TIMEOUT)
+            data = resp.json()
+            label = data.get("label", "")
+            print(json.dumps({"label": label}), flush=True)
+            return
+    except Exception:
+        pass
+
+    # 2단계: 스냅샷 폴백
+    try:
+        snapshot = load_snapshot(_HUD_SNAPSHOT_PATH)
+        label = build_label(snapshot)
+        print(json.dumps({"label": label}), flush=True)
+        return
+    except Exception:
+        pass
+
+    # 3단계: 오프라인 폴백
+    print(json.dumps({"label": "chorus offline"}), flush=True)
