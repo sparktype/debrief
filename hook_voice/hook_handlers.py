@@ -55,6 +55,8 @@ from .voice_router import (
 )
 from .skill_recommender import read_recent_transcripts, recommend_skill, save_cooldown
 from .event.policy import SpeechPolicy, _ERROR_RE as _POLICY_ERROR_RE
+from .assist.briefing import brief_assistant_response
+from .hud.snapshot import save_snapshot
 from .learning.stats_store import record_playback as _record_stat, load_stats as _load_stats, clear_stats as _clear_stats, stats_file_path as _stats_file_path
 from .learning.advisor import analyze as _analyze_stats
 
@@ -191,7 +193,26 @@ async def handle_hook(raw: str, config: Config) -> None:
                 enqueue_earcon(_bridge_path, speed=1.0)
         _status("🎙️ chorus: 요약 중...")
         is_code_heavy = has_heavy_code(text)
-        if is_code_heavy:
+        if config.assistant_tts.enabled:
+            briefing = await brief_assistant_response(
+                text,
+                mode=config.assistant_tts.briefing_mode,
+                model=config.summary_model,
+                timeout_ms=config.assistant_tts.llm_timeout_ms,
+            )
+            summary = briefing.spoken_text
+            # HUD 스냅샷 업데이트
+            try:
+                snap = load_snapshot(_HUD_SNAPSHOT_PATH)
+                snap["last_event"] = {
+                    "kind": "briefing",
+                    "summary": briefing.hud_summary,
+                    "ts": _time.time(),
+                }
+                save_snapshot(snap, _HUD_SNAPSHOT_PATH)
+            except Exception:
+                pass
+        elif is_code_heavy:
             summary = summarize_with_code_hint(text)
         else:
             summary = await extract_summary(text, config.summary_model)

@@ -481,11 +481,13 @@ class TestHandleControl:
 
 async def test_handle_hook_calls_pipeline_when_retouch_enabled():
     """speech_retouch=True이면 SpeechPipeline이 호출된다."""
-    from hook_voice.config import Config
+    from hook_voice.config import Config, AssistantTtsConfig
     from hook_voice.hook_handlers import handle_hook
     from hook_voice.speech.pipeline import SpeechContext
+    from hook_voice.assist.briefing import Briefing
 
     config = Config(auto_speak=True, min_chars=5, speech_retouch=True)
+    config.assistant_tts = AssistantTtsConfig(enabled=False)
     mock_ctx = SpeechContext(text="정제됨", ssml="정제됨")
     mock_pipeline = AsyncMock()
     mock_pipeline.process = AsyncMock(return_value=mock_ctx)
@@ -501,10 +503,11 @@ async def test_handle_hook_calls_pipeline_when_retouch_enabled():
 
 async def test_handle_hook_skips_pipeline_when_retouch_disabled():
     """speech_retouch=False이면 SpeechPipeline이 호출되지 않는다."""
-    from hook_voice.config import Config
+    from hook_voice.config import Config, AssistantTtsConfig
     from hook_voice.hook_handlers import handle_hook
 
     config = Config(auto_speak=True, min_chars=5, speech_retouch=False)
+    config.assistant_tts = AssistantTtsConfig(enabled=False)
     mock_pipeline = AsyncMock()
 
     with patch("hook_voice.hook_handlers.extract_summary", new=AsyncMock(return_value="요약")), \

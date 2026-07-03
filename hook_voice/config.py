@@ -57,6 +57,17 @@ class SttConfig:
 
 
 @dataclass
+class AssistantTtsConfig:
+    enabled: bool = True
+    briefing_mode: str = "smart"
+    failure_explain: bool = True
+    risk_explain: bool = True
+    prompt_advice: bool = True
+    max_spoken_seconds: int = 12
+    llm_timeout_ms: int = 2500
+
+
+@dataclass
 class Config:
     auto_speak: bool = True
     min_chars: int = 50
@@ -78,6 +89,7 @@ class Config:
     grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
     hud: HudConfig = field(default_factory=HudConfig)
+    assistant_tts: AssistantTtsConfig = field(default_factory=AssistantTtsConfig)
 
 
 def _warn_invalid(key: str, value: object, fallback: object) -> None:
