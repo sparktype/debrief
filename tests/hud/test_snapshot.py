@@ -190,7 +190,7 @@ def test_build_label_always_within_limit_with_long_values():
 def test_hudconfig_default_values():
     from hook_voice.config import HudConfig
     cfg = HudConfig()
-    assert isinstance(cfg.snapshot_path, str) or cfg.snapshot_path is None or True  # 타입 무방
+    assert cfg.snapshot_path is None
     assert isinstance(cfg.max_label_chars, int)
     assert cfg.max_label_chars <= 50
 

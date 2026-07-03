@@ -68,6 +68,7 @@ def save_snapshot(snapshot: dict, path: Path | None = None) -> None:
     시크릿 패턴 값은 저장 전 redact하며, 실패 시 raise하지 않는다(best-effort).
     """
     target = path if path is not None else _DEFAULT_SNAPSHOT_PATH
+    tmp_path: Path | None = None
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         redacted = _redact_snapshot(snapshot)
@@ -87,7 +88,7 @@ def save_snapshot(snapshot: dict, path: Path | None = None) -> None:
         _logger.warning("HUD 스냅샷 저장 실패 (best-effort): %s", e)
         # 임시 파일 정리 시도
         try:
-            if "tmp_path" in dir() and tmp_path.exists():  # type: ignore[used-before-def]
+            if tmp_path is not None and tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
         except Exception:
             pass
