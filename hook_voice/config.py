@@ -60,10 +60,6 @@ class SttConfig:
 class AssistantTtsConfig:
     enabled: bool = True
     briefing_mode: str = "smart"
-    failure_explain: bool = True
-    risk_explain: bool = True
-    prompt_advice: bool = True
-    max_spoken_seconds: int = 12
     llm_timeout_ms: int = 2500
 
 
@@ -219,6 +215,13 @@ def load_config(path: Path | None = None) -> Config:
                 sample_rate=s.get("sampleRate", 16000),
                 announce=s.get("announce", True),
                 vad_interrupt=s.get("vadInterrupt", False),
+            )
+        if "assistantTts" in data:
+            a = data["assistantTts"]
+            kwargs["assistant_tts"] = AssistantTtsConfig(
+                enabled=a.get("enabled", True),
+                briefing_mode=a.get("briefingMode", "smart"),
+                llm_timeout_ms=a.get("llmTimeoutMs", 2500),
             )
         kwargs = _normalize_config(kwargs)
         return Config(**kwargs)

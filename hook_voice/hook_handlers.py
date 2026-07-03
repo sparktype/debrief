@@ -193,14 +193,15 @@ async def handle_hook(raw: str, config: Config) -> None:
                 enqueue_earcon(_bridge_path, speed=1.0)
         _status("🎙️ chorus: 요약 중...")
         is_code_heavy = has_heavy_code(text)
+        used_briefing = False
         if config.assistant_tts.enabled:
             briefing = await brief_assistant_response(
                 text,
-                mode=config.assistant_tts.briefing_mode,
                 model=config.summary_model,
                 timeout_ms=config.assistant_tts.llm_timeout_ms,
             )
             summary = briefing.spoken_text
+            used_briefing = True
             # HUD 스냅샷 업데이트
             try:
                 snap = load_snapshot(_HUD_SNAPSHOT_PATH)
@@ -216,7 +217,7 @@ async def handle_hook(raw: str, config: Config) -> None:
             summary = summarize_with_code_hint(text)
         else:
             summary = await extract_summary(text, config.summary_model)
-        if config.speech_retouch and not is_code_heavy:
+        if config.speech_retouch and not is_code_heavy and not used_briefing:
             _status("🗣️ chorus: 음성 정제 중...")
             pipeline = get_default_pipeline()
             speech_ctx = await pipeline.process(summary)

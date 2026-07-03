@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 
 from ..llm_client import chat_completion, DEFAULT_MODEL
@@ -44,7 +45,6 @@ class Briefing:
 
 async def brief_assistant_response(
     text: str,
-    mode: str = "smart",
     model: str = DEFAULT_MODEL,
     timeout_ms: int = 2500,
 ) -> Briefing:
@@ -101,7 +101,8 @@ async def brief_assistant_response(
     try:
         spoken = await extract_summary(text, model=model)
     except Exception:
-        spoken = sanitize_for_speech(strip_markdown(text)[:200])
+        clean = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+        spoken = sanitize_for_speech(strip_markdown(clean)[:200])
 
     hud = spoken[:60] if spoken else ""
     return Briefing(
