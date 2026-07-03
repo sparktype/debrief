@@ -429,3 +429,99 @@ async def chorus_voice_set(req: VoiceSetRequest):
     }
 
 
+# ── HUD 상태 조회 ─────────────────────────────────────────────────────────────
+
+class HudResponse(BaseModel):
+    """chorus HUD 상태 응답 모델 (클로드 HUD statusline용)."""
+    label: str
+    severity: str          # "ok" | "warn"
+    auto_speak: bool
+    voice_mode: str
+    queue_depth: int
+    is_playing: bool
+    stt_state: str         # "disabled" | "idle" | "recording"
+    dlq_pending: int
+    last_event: str | None = None
+    suggestion: str | None = None
+
+
+@app.get("/chorus/hud", summary="HUD 상태 스냅샷 조회", tags=["chorus"], response_model=HudResponse)
+async def chorus_hud() -> HudResponse:
+    """claude-hud statusline용 상태 스냅샷을 반환한다.
+
+    - LLM/TTS 생성 없이 in-process 상태만 읽는다 (2초 주기 호출 대응).
+    - 모델 로딩 중에도 200을 반환한다 (fail-open).
+    - 응답을 hud.json에 opportunistic 저장한다 (실패 무시).
+    """
+    from hook_voice.hud.snapshot import build_label, save_snapshot
+
+    # 설정 읽기
+    cfg = _load_voice_config()
+    max_label_chars = cfg.hud.max_label_chars if cfg.hud else 50
+    snapshot_path = None
+    if cfg.hud and cfg.hud.snapshot_path:
+        snapshot_path = Path(cfg.hud.snapshot_path)
+
+    # 스풀 큐 깊이 및 재생 상태 (in-process)
+    queue_files = (
+        list(SPOOL_DIR_SERVER.glob("*.wav")) + list(SPOOL_DIR_SERVER.glob("*.mp3"))
+    ) if SPOOL_DIR_SERVER.exists() else []
+    queue_depth = len(queue_files)
+
+    pid_file = SPOOL_DIR_SERVER / ".player.pid"
+    is_playing = False
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            is_playing = True
+        except (ValueError, ProcessLookupError, OSError):
+            pid_file.unlink(missing_ok=True)
+
+    # STT 상태
+    if _stt_listener is None:
+        stt_state = "disabled"
+    else:
+        stt_state = _stt_listener.state
+
+    # DLQ pending 수
+    try:
+        dlq_pending = _get_dlq_store().stats().get("pending", 0)
+    except Exception:
+        dlq_pending = 0
+
+    # severity 결정
+    severity = "warn" if dlq_pending > 0 else "ok"
+
+    # 레이블 생성
+    snapshot = {
+        "mode": cfg.voice_mode,
+        "auto_speak": cfg.auto_speak,
+        "queue_depth": queue_depth,
+        "stt_state": stt_state,
+    }
+    label = build_label(snapshot, max_label_chars)
+
+    response = HudResponse(
+        label=label,
+        severity=severity,
+        auto_speak=cfg.auto_speak,
+        voice_mode=cfg.voice_mode,
+        queue_depth=queue_depth,
+        is_playing=is_playing,
+        stt_state=stt_state,
+        dlq_pending=dlq_pending,
+        last_event=None,
+        suggestion=None,
+    )
+
+    # opportunistic 저장 (실패 무시)
+    try:
+        hud_path = snapshot_path or (Path.home() / ".local" / "share" / "chorus" / "hud.json")
+        save_snapshot(response.model_dump(), hud_path)
+    except Exception:
+        pass
+
+    return response
+
+
