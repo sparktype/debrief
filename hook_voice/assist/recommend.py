@@ -6,14 +6,50 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..llm_client import chat_completion, DEFAULT_MODEL
 
 _log = logging.getLogger(__name__)
 
-# 추천 키(value) 기준 쿨다운 (monotonic 시각)
-_RECOMMEND_COOLDOWN: dict[str, float] = {}
+# 쿨다운 파일 기반 영속화: 각 hook이 새 subprocess이므로 in-memory dict는 무의미
+_RECOMMEND_COOLDOWN_PATH = Path("~/.local/share/chorus/recommend-cooldowns.json").expanduser()
 _RECOMMEND_COOLDOWN_SEC = 300.0
+
+
+def _load_recommend_cooldowns() -> dict[str, float]:
+    """파일에서 쿨다운 타임스탬프를 읽어온다. 파일 없으면 {}."""
+    try:
+        if _RECOMMEND_COOLDOWN_PATH.exists():
+            return json.loads(_RECOMMEND_COOLDOWN_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_recommend_cooldowns(cooldowns: dict[str, float]) -> None:
+    """쿨다운 타임스탬프를 파일에 atomic write로 저장한다."""
+    try:
+        _RECOMMEND_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _RECOMMEND_COOLDOWN_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cooldowns), encoding="utf-8")
+        tmp.replace(_RECOMMEND_COOLDOWN_PATH)
+    except Exception:
+        pass
+
+
+def _is_recommend_in_cooldown(value: str) -> bool:
+    """파일 기반 쿨다운을 확인한다. 300초 이내면 True."""
+    cooldowns = _load_recommend_cooldowns()
+    last = cooldowns.get(value, 0.0)
+    return (time.time() - last) < _RECOMMEND_COOLDOWN_SEC
+
+
+def _set_recommend_cooldown(value: str) -> None:
+    """파일에 현재 시각을 쿨다운으로 저장한다."""
+    cooldowns = _load_recommend_cooldowns()
+    cooldowns[value] = time.time()
+    _save_recommend_cooldowns(cooldowns)
 
 _RECOMMEND_SYSTEM = """\
 당신은 개발자의 Claude Code 입력 프롬프트를 분석해 TTS 음성 모드를 추천하는 어시스턴트입니다.
@@ -52,9 +88,8 @@ def _parse_recommendation(raw: str) -> Recommendation | None:
 
 
 def _is_in_cooldown(value: str) -> bool:
-    """쿨다운 내 동일 value면 True를 반환한다."""
-    last = _RECOMMEND_COOLDOWN.get(value, 0.0)
-    return (time.monotonic() - last) < _RECOMMEND_COOLDOWN_SEC
+    """쿨다운 내 동일 value면 True를 반환한다 (파일 기반)."""
+    return _is_recommend_in_cooldown(value)
 
 
 async def recommend_prompt_assist(
@@ -105,5 +140,5 @@ async def recommend_prompt_assist(
         _log.debug("recommend_prompt_assist: 쿨다운 내 동일 추천 억제 (value=%s)", rec.value)
         return None
 
-    _RECOMMEND_COOLDOWN[rec.value] = time.monotonic()
+    _set_recommend_cooldown(rec.value)
     return rec

@@ -443,6 +443,12 @@ async def handle_hook_suggest(raw: str, config: Config) -> None:
                 save_snapshot(snap, _HUD_SNAPSHOT_PATH)
             except Exception:
                 pass
+            # TTS 발화: UserPromptSubmit hook이므로 추천 결과를 음성으로 안내
+            try:
+                speak_text = f"{mode_rec.value} 모드를 추천드립니다. {mode_rec.reason}"
+                await speak_hook_chunked(speak_text, config.tts_speed)
+            except Exception:
+                pass  # fail-open: TTS 실패해도 hook 지연 없음
 
 
 async def handle_pre_tool_bash(raw: str, config: Config) -> None:

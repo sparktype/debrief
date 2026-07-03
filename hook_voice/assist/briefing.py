@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
+import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..llm_client import chat_completion, DEFAULT_MODEL
 from ..summarizer import (
@@ -199,9 +202,44 @@ async def explain_command_failure(
 
 # ── 명령 위험 설명 ──────────────────────────────────────────────────────────────
 
-# 쿨다운 상태: 커맨드 패밀리(첫 단어) → 마지막 경고 시각 (monotonic)
-_RISK_COOLDOWN: dict[str, float] = {}
+# 쿨다운 파일 기반 영속화: 각 hook이 새 subprocess이므로 in-memory dict는 무의미
+_RISK_COOLDOWN_PATH = Path("~/.local/share/chorus/risk-cooldowns.json").expanduser()
 _RISK_COOLDOWN_SEC = 60.0
+
+
+def _load_risk_cooldowns() -> dict[str, float]:
+    """파일에서 쿨다운 타임스탬프를 읽어온다. 파일 없으면 {}."""
+    try:
+        if _RISK_COOLDOWN_PATH.exists():
+            return json.loads(_RISK_COOLDOWN_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_risk_cooldowns(cooldowns: dict[str, float]) -> None:
+    """쿨다운 타임스탬프를 파일에 atomic write로 저장한다."""
+    try:
+        _RISK_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _RISK_COOLDOWN_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cooldowns), encoding="utf-8")
+        tmp.replace(_RISK_COOLDOWN_PATH)
+    except Exception:
+        pass
+
+
+def _is_risk_in_cooldown(family: str) -> bool:
+    """파일 기반 쿨다운을 확인한다. 60초 이내면 True."""
+    cooldowns = _load_risk_cooldowns()
+    last = cooldowns.get(family, 0.0)
+    return (time.time() - last) < _RISK_COOLDOWN_SEC
+
+
+def _set_risk_cooldown(family: str) -> None:
+    """파일에 현재 시각을 쿨다운으로 저장한다."""
+    cooldowns = _load_risk_cooldowns()
+    cooldowns[family] = time.time()
+    _save_risk_cooldowns(cooldowns)
 
 _RISK_SYSTEM = """\
 당신은 개발자에게 위험한 터미널 명령 실행 전 간결하게 주의를 알리는 어시스턴트입니다.
@@ -249,20 +287,17 @@ async def explain_command_risk(
 
     저위험 커맨드는 즉시 "" 반환 (LLM 없음).
     동일 커맨드 패밀리(첫 단어) 60초 쿨다운 내 재호출도 "" 반환.
+    쿨다운은 파일 기반으로 subprocess 재시작 후에도 유지된다.
     LLM 실패/timeout 시 "" 반환 (fail-open).
     최대 1문장 한국어 경어체 출력.
     """
-    import time as _time_mod
-
     risk = _classify_risk(cmd)
     if risk == "low":
         return ""
 
-    # 쿨다운 확인: 커맨드 첫 단어 기준
+    # 쿨다운 확인: 커맨드 첫 단어 기준 (파일 기반)
     family = cmd.strip().split()[0] if cmd.strip() else ""
-    now = _time_mod.monotonic()
-    last = _RISK_COOLDOWN.get(family, 0.0)
-    if now - last < _RISK_COOLDOWN_SEC:
+    if _is_risk_in_cooldown(family):
         return ""
 
     # 고위험 → LLM 호출
@@ -282,7 +317,7 @@ async def explain_command_risk(
             timeout=timeout_sec,
         )
         if raw and raw.strip():
-            _RISK_COOLDOWN[family] = now
+            _set_risk_cooldown(family)
             return sanitize_for_speech(raw.strip())
     except asyncio.TimeoutError:
         _log.warning("explain_command_risk: LLM timeout (%.1fs)", timeout_sec)
