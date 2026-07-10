@@ -125,6 +125,8 @@ async def recommend_prompt_assist(
             ),
             timeout=timeout_sec,
         )
+    except asyncio.CancelledError:
+        raise
     except asyncio.TimeoutError:
         _log.warning("recommend_prompt_assist: LLM timeout (%.1fs)", timeout_sec)
         return None

@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
         _mlx_executor.submit(lambda: None)  # 실행 가능 여부 확인
     except RuntimeError:
         _mlx_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _load_model():
         from supertonic_mlx import SupertonicMLX
@@ -106,7 +106,8 @@ async def lifespan(app: FastAPI):
 
     if _stt_listener is not None and _stt_listener.state == "recording":
         await _stt_listener.toggle()
-    _mlx_executor.shutdown(wait=False)
+    # wait=True: 실행 중인 MLX 추론이 완료된 후 종료 (모델 상태 손상 방지)
+    _mlx_executor.shutdown(wait=True, cancel_futures=False)
     _model = None
     _log("INFO", "서버 종료.")
 

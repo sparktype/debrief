@@ -1,5 +1,6 @@
 # hook_voice/llm_client.py
 # HMG Hub LLM 클라이언트 — OpenAI 호환 및 Gemini generateContent 엔드포인트 지원
+import asyncio
 import logging
 import os
 import httpx
@@ -112,6 +113,8 @@ async def chat_completion(
     try:
         result = await cb.call(_do, messages, model, fallback="", **kwargs)
         return result or ""
+    except asyncio.CancelledError:
+        raise
     except httpx.TimeoutException as e:
         _log.warning("LLM timeout: %s", type(e).__name__)
         return ""

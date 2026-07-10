@@ -63,6 +63,8 @@ class CircuitBreaker:
 
         try:
             result = await fn(*args, **kwargs)
+        except asyncio.CancelledError:
+            raise  # Task 취소는 실패로 카운트하지 않고 즉시 전파
         except Exception:
             async with self._lock:
                 self._failure_count += 1

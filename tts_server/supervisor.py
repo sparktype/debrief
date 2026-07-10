@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Callable, Optional
 
 from hook_voice.config import load_config
 
@@ -95,6 +96,8 @@ async def player_loop(
                             await proc.wait()
                 for t in pending:
                     t.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
                 try:
                     pid_file.unlink(missing_ok=True)
                 except Exception:
@@ -199,7 +202,10 @@ async def _graceful_shutdown(procs: "list[subprocess.Popen]") -> None:
 
 async def main() -> None:
     shutdown = asyncio.Event()
-    PID_FILE.write_text(str(os.getpid()))
+    try:
+        PID_FILE.write_text(str(os.getpid()))
+    except OSError as e:
+        log.warning("[Supervisor] PID 파일 쓰기 실패 (무시): %s", e)
     log.info(f"[Supervisor] 시작 (PID {os.getpid()})")
 
     procs: list[subprocess.Popen] = []

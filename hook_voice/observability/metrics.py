@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
+
+_HISTOGRAM_MAX_SAMPLES = 10_000  # 장기 운영 시 메모리 무한 증가 방지
 
 try:
     import prometheus_client as _prom
@@ -34,17 +36,24 @@ class _SimpleCounter:
 
 class _SimpleHistogram:
     def __init__(self, buckets: list[float] | None = None) -> None:
-        self._samples: list[float] = []
+        self._samples: deque[float] = deque(maxlen=_HISTOGRAM_MAX_SAMPLES)
+        self._total_count: int = 0  # maxlen으로 잘린 것 포함한 전체 관측 횟수
+        self._total_sum: float = 0.0
         self._buckets = buckets or [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
 
     def observe(self, value: float) -> None:
         self._samples.append(value)
+        self._total_count += 1
+        self._total_sum += value
 
     def summary(self) -> dict:
-        if not self._samples:
+        if self._total_count == 0:
             return {"count": 0, "sum": 0.0, "avg": 0.0}
-        s = sum(self._samples)
-        return {"count": len(self._samples), "sum": s, "avg": s / len(self._samples)}
+        return {
+            "count": self._total_count,
+            "sum": self._total_sum,
+            "avg": self._total_sum / self._total_count,
+        }
 
 
 # ── 메트릭 레지스트리 ──────────────────────────────────────────────────────────

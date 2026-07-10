@@ -6,6 +6,7 @@ import subprocess
 import threading
 from typing import Literal
 
+import httpx
 import numpy as np
 
 from .config import SttConfig
@@ -13,6 +14,20 @@ from .config import SttConfig
 _log = logging.getLogger(__name__)
 
 _VAD_RMS_THRESHOLD = 0.01  # VAD 발화 감지 RMS 임계값
+_MAX_BUFFER_CHUNKS = 3000  # 16kHz×1ch: ~300초 분량 상한 (chunks ≈ 10ms 단위)
+
+# VAD interrupt용 공유 동기 httpx 클라이언트 (스레드 안전)
+_vad_http_client: httpx.Client | None = None
+_vad_client_lock = threading.Lock()
+
+
+def _get_vad_client() -> httpx.Client:
+    global _vad_http_client
+    if _vad_http_client is None:
+        with _vad_client_lock:
+            if _vad_http_client is None:
+                _vad_http_client = httpx.Client(timeout=1.0)
+    return _vad_http_client
 
 
 class SpeechListener:
@@ -35,18 +50,25 @@ class SpeechListener:
         import sounddevice as sd
         self._buffer = []
         self._vad_fired = False  # 새 녹음 세션마다 리셋
+        stream = None
         try:
-            self._stream = sd.InputStream(
+            stream = sd.InputStream(
                 samplerate=self._config.sample_rate,
                 channels=1,
                 dtype="float32",
                 callback=self._audio_callback,
             )
-            self._stream.start()
+            stream.start()
+            self._stream = stream
             self.state = "recording"
             _log.info("[STT] 녹음 시작")
             return {"state": "recording", "text": None}
         except Exception as e:
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
             _log.error("[STT] 마이크 오류: %s", e)
             return {"state": "idle", "error": "no_mic", "text": None}
 
@@ -90,6 +112,9 @@ class SpeechListener:
     def _audio_callback(self, indata: np.ndarray, frames: int, time, status) -> None:
         if status:
             _log.warning("[STT] 오디오 콜백 상태: %s", status)
+        # 버퍼 크기 상한 — 초과 시 가장 오래된 청크 제거
+        if len(self._buffer) >= _MAX_BUFFER_CHUNKS:
+            self._buffer.pop(0)
         self._buffer.append(indata.copy())
         if self._stt_cfg.vad_interrupt and not self._vad_fired:
             rms = float(np.sqrt(np.mean(indata ** 2)))
@@ -103,8 +128,7 @@ class SpeechListener:
     def _fire_interrupt(self) -> None:
         """VAD 감지 시 TTS 중단 신호를 비동기로 전송한다."""
         try:
-            import httpx
-            httpx.post("http://localhost:7777/interrupt", timeout=1.0)
+            _get_vad_client().post("http://localhost:7777/interrupt")
         except Exception:
             pass  # TTS 서버 오프라인 시 조용히 무시
 

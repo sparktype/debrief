@@ -95,6 +95,8 @@ async def brief_assistant_response(
                 category="briefing",
                 confidence=0.9,
             )
+    except asyncio.CancelledError:
+        raise
     except asyncio.TimeoutError:
         _log.warning("brief_assistant_response: LLM timeout (%.1fs) — extract_summary로 폴백", timeout_sec)
     except Exception as exc:
@@ -103,6 +105,8 @@ async def brief_assistant_response(
     # 폴백: 기존 extract_summary 경로
     try:
         spoken = await extract_summary(text, model=model)
+    except asyncio.CancelledError:
+        raise
     except Exception:
         clean = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
         spoken = sanitize_for_speech(strip_markdown(clean)[:200])

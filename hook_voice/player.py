@@ -1,6 +1,7 @@
 # supertonic MLX spool enqueue — speak_hook / speak_agent
 import asyncio
 import logging
+import os
 import random
 import shutil as _shutil
 import string
@@ -69,10 +70,19 @@ async def speak_hook(text: str, speed: float = 1.2,
     try:
         wav_bytes = await hook_cb.call(_st_call, fallback=None)
         if wav_bytes is not None:
-            tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_hook_"))
-            tmp.write_bytes(wav_bytes)
-            _enqueue_priority(tmp, speed=speed, priority=priority, spool_dir=SPOOL_DIR)
+            fd, tmp_str = tempfile.mkstemp(suffix=".wav", prefix="vp_hook_")
+            tmp = Path(tmp_str)
+            try:
+                os.close(fd)
+                tmp.write_bytes(wav_bytes)
+                _enqueue_priority(tmp, speed=speed, priority=priority, spool_dir=SPOOL_DIR)
+                tmp = None  # enqueue가 rename/copy 완료 — 정리 불필요
+            finally:
+                if tmp is not None and tmp.exists():
+                    tmp.unlink(missing_ok=True)
             save_last_message(text)
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         _log.warning("Hook TTS 생성 실패: %s", type(e).__name__)
 
@@ -97,10 +107,19 @@ async def speak_agent(text: str, voice: str, port: int, speed: float, instruct: 
     try:
         wav_bytes = await st_cb.call(_st_call, fallback=None)
         if wav_bytes is not None:
-            tmp = Path(tempfile.mktemp(suffix=".wav", prefix="vp_st_"))
-            tmp.write_bytes(wav_bytes)
-            _enqueue_priority(tmp, speed=speed, priority="NORMAL", spool_dir=SPOOL_DIR)
+            fd, tmp_str = tempfile.mkstemp(suffix=".wav", prefix="vp_st_")
+            tmp = Path(tmp_str)
+            try:
+                os.close(fd)
+                tmp.write_bytes(wav_bytes)
+                _enqueue_priority(tmp, speed=speed, priority="NORMAL", spool_dir=SPOOL_DIR)
+                tmp = None
+            finally:
+                if tmp is not None and tmp.exists():
+                    tmp.unlink(missing_ok=True)
             save_last_message(text)
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         _log.warning("Supertonic 생성 실패: %s", type(e).__name__)
 

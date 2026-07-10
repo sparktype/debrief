@@ -173,7 +173,16 @@ class DLQStore:
         return cur.rowcount
 
     def close(self) -> None:
-        self._conn.close()
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+    def __enter__(self) -> "DLQStore":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.close()
 
     @staticmethod
     def _row_to_entry(row: sqlite3.Row) -> DLQEntry:
@@ -201,5 +210,7 @@ _store: DLQStore | None = None
 def get_dlq_store(db_path: Path | None = None) -> DLQStore:
     global _store
     if _store is None:
+        import atexit
         _store = DLQStore(db_path)
+        atexit.register(_store.close)
     return _store
