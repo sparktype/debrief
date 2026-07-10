@@ -1,8 +1,7 @@
-#!/bin/bash
+#!/bin/zsh -l
 # Claude Code UserPromptSubmit hook — knowhow 컨텍스트 주입 + 스킬 추천
 PAYLOAD=$(cat)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR/.."
+PROJECT_DIR="/Users/hmc7102758/Develop/Workspaces/chorus"
 VENV_PY="$PROJECT_DIR/.venv/bin/python"
 
 # payload 파싱
@@ -32,7 +31,7 @@ elif echo "$PROMPT" | grep -qiE \
   'hmg|사내망|hub api|internal-apigw|clawub|service hub|ssl.*(cert|인증)|엔드포인트|접속.*(설정|정보)'; then
     # HMG 키워드 감지: 추가 검색 후 주입
     if [ -n "$CWD" ]; then
-        ENCODED_CWD=$(python3 -c \
+        ENCODED_CWD=$("$VENV_PY" -c \
           "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$CWD" 2>/dev/null)
         SEARCH=$(curl -sf --max-time 3 \
           "http://localhost:8765/api/session-context?project_dir=${ENCODED_CWD}" 2>/dev/null)

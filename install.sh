@@ -58,30 +58,34 @@ if "hooks" not in data:
 def add_hook(sec, matcher, script, timeout):
     cmd = hooks_dir + "/" + script
     existing = data["hooks"].get(sec, [])
-    if not any(
-        isinstance(h, dict) and h.get("matcher") == matcher
-        and cmd in json.dumps(h.get("hooks", []))
-        for h in existing
-    ):
-        existing.append({
-            "matcher": matcher,
-            "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]
-        })
+    # 동일 section·matcher 조합에서 이미 이 커맨드가 있으면 추가하지 않음
+    for entry in existing:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("matcher") != matcher:
+            continue
+        if any(h.get("command") == cmd for h in entry.get("hooks", [])):
+            return
+    existing.append({
+        "matcher": matcher,
+        "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]
+    })
     data["hooks"][sec] = existing
 
-add_hook("Stop",             "", "stop.sh",          15)
-add_hook("SubagentStop",     "", "subagent-stop.sh", 15)
-add_hook("Notification",     "", "notification.sh",  10)
-add_hook("UserPromptSubmit", "", "prompt-submit.sh", 10)
-add_hook("SessionStart",     "", "session-start.sh", 10)
-add_hook("PreToolUse",  "Bash", "pre-tool-bash.sh",  5)
-add_hook("PostToolUse", "Bash", "post-tool-bash.sh", 5)
+add_hook("Stop",             "", "stop.sh",             15)
+add_hook("SubagentStop",     "", "subagent-stop.sh",    15)
+add_hook("Notification",     "", "notification.sh",     10)
+add_hook("UserPromptSubmit", "", "prompt-submit.sh",    10)
+add_hook("SessionStart",     "", "session-start.sh",    10)
+add_hook("PreToolUse",  "Bash", "pre-tool-bash.sh",      5)
+add_hook("PreToolUse", "Monitor", "pre-tool-monitor.sh", 5)
+add_hook("PostToolUse", "Bash", "post-tool-bash.sh",     5)
 
 with open(settings_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 PYEOF
 
-  echo "  ✓ Claude Code — 7종 hook 등록 완료"
+  echo "  ✓ Claude Code — 8종 hook 등록 완료"
   echo "    파일: $HOME/.claude/settings.json"
 }
 

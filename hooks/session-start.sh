@@ -1,8 +1,7 @@
-#!/bin/bash
+#!/bin/zsh -l
 # Claude Code SessionStart hook — 세션 시작 시 knowhow 컨텍스트 사전 로드
 PAYLOAD=$(cat)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR/.."
+PROJECT_DIR="/Users/hmc7102758/Develop/Workspaces/chorus"
 VENV_PY="$PROJECT_DIR/.venv/bin/python"
 
 # session_id, cwd 추출
@@ -13,7 +12,7 @@ CWD=$(echo "$PAYLOAD" | "$VENV_PY" -c \
 
 # knowhow 서버 호출 (timeout 3초, 실패 시 조용히 스킵)
 if [ -n "$SESSION_ID" ] && [ -n "$CWD" ]; then
-    ENCODED_CWD=$(python3 -c \
+    ENCODED_CWD=$("$VENV_PY" -c \
       "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$CWD" 2>/dev/null)
     if [ -n "$ENCODED_CWD" ]; then
         RESULT=$(curl -sf --max-time 3 \
