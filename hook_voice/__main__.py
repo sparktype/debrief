@@ -15,7 +15,6 @@ from .hook_handlers import (
     handle_health,
     handle_config,
     handle_control,
-    handle_grafana,
     handle_pre_tool_monitor,
     handle_voice_test,
     handle_doctor,
@@ -70,8 +69,6 @@ async def main() -> None:
         await handle_control(action)
     elif subcommand == "pre-tool-monitor":
         await handle_pre_tool_monitor(raw)
-    elif subcommand == "grafana":
-        await handle_grafana(sys.argv[2:], _find_default_config() or _VOICE_JSON)
     elif subcommand == "voice":
         sub = sys.argv[2] if len(sys.argv) > 2 else ""
         if sub == "test":

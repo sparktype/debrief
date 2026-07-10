@@ -38,15 +38,6 @@ class HudConfig:
 
 
 @dataclass
-class GrafanaConfig:
-    enabled: bool = False
-    url: str = ""
-    token: str = ""
-    interval: int = 30
-    alerts: list[str] = field(default_factory=list)
-
-
-@dataclass
 class SttConfig:
     enabled: bool = False
     model: str = "mlx-community/whisper-small-mlx"
@@ -85,7 +76,6 @@ class Config:
     usage_tracking: bool = True
     voice_mode: str = "normal"
     expression_level: str = "normal"  # "off" | "low" | "normal"
-    grafana: GrafanaConfig = field(default_factory=GrafanaConfig)
     stt: SttConfig = field(default_factory=SttConfig)
     hud: HudConfig = field(default_factory=HudConfig)
     assistant_tts: AssistantTtsConfig = field(default_factory=AssistantTtsConfig)
@@ -152,15 +142,6 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
     _normalize_int("supertonic_port", 1, 65535)
     _normalize_int("supertonic_timeout_ms", 100)
 
-    grafana = kwargs.get("grafana")
-    if isinstance(grafana, GrafanaConfig):
-        if grafana.interval < 5:
-            _warn_invalid("grafana.interval", grafana.interval, defaults.grafana.interval)
-            grafana.interval = defaults.grafana.interval
-        if not isinstance(grafana.alerts, list) or not all(isinstance(a, str) for a in grafana.alerts):
-            _warn_invalid("grafana.alerts", grafana.alerts, defaults.grafana.alerts)
-            grafana.alerts = defaults.grafana.alerts
-
     stt = kwargs.get("stt")
     if isinstance(stt, SttConfig):
         if not isinstance(stt.enabled, bool):
@@ -200,15 +181,6 @@ def load_config(path: Path | None = None) -> Config:
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
         kwargs = {py_k: data[json_k] for json_k, py_k in _KEY_MAP.items() if json_k in data}
-        if "grafana" in data:
-            g = data["grafana"]
-            kwargs["grafana"] = GrafanaConfig(
-                enabled=g.get("enabled", False),
-                url=g.get("url", ""),
-                token=g.get("token", ""),
-                interval=g.get("interval", 30),
-                alerts=g.get("alerts", []),
-            )
         if "stt" in data:
             s = data["stt"]
             kwargs["stt"] = SttConfig(

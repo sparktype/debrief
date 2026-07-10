@@ -153,9 +153,9 @@ LLM 어시스턴트 (assistantTts.enabled=true 시)
 | `hook_voice/player.py` | supertonic MLX spool enqueue — speak_hook_chunked / speak_agent / enqueue_earcon |
 | `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 (voice test / doctor / control 포함) |
 | `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 + VAD interrupt |
+| `hook_voice/speech/pipeline.py` | Speech Preparation Plugin Chain — 언어 감지·발음 정규화·SSML 추상화 |
 | `hook_voice/delivery/priority_spool.py` | HIGH/NORMAL/LOW 우선순위 큐 + 30초 TTL 만료 |
 | `hook_voice/event/policy.py` | SmartTTSRouter (SpeechPolicy) — 응답 타입 기반 발화 모드·우선순위 결정 |
-| `hook_voice/event/router.py` | 이벤트 라우터 |
 | `hook_voice/learning/stats_store.py` | TTS 사용 통계 JSONL 저장·조회·삭제 |
 | `hook_voice/learning/advisor.py` | 통계 분석 → 설정 권장안 생성 |
 | `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
@@ -222,7 +222,7 @@ LLM 어시스턴트 (assistantTts.enabled=true 시)
 
 LLM 어시스턴트는 opt-in이며 자동으로 설정을 변경하지 않는다. voiceMode 추천은 TTS 발화만 하며, 실제 변경은 사용자가 `python -m hook_voice mode set <mode>`로 직접 실행해야 한다.
 
-**voice-map.json 신규 필드**:
+**voice-map.json 필드**:
 
 | 필드 | 기본값 | 설명 |
 |------|--------|------|
@@ -248,16 +248,16 @@ LLM 어시스턴트는 opt-in이며 자동으로 설정을 변경하지 않는�
 
 | Voice ID | 이름 | 역할 | 인물 모티프 | Instruct |
 |----------|------|------|------------|---------|
-| F1 | 연아 | default | 김연아 | 밝고 친절하게 |
+| F1 | 연아 | default | 김연아 | 차분하고 안정적으로 |
 | F2 | 마리 | tester | Marie Curie | 또렷하고 정확하게 |
-| F3 | 제인 | explorer | Jane Goodall | 밝고 호기심 있게 |
-| F4 | 셰릴 | ops | Sheryl Sandberg | 침착하고 명확하게 |
-| F5 | 리사 | specialist | Lisa Su | 전문적이고 자신감 있게 |
-| M1 | 스티브 | planner | Steve Jobs | 차분하고 논리적으로 |
-| M2 | 빌 | reviewer | Bill Gates | 신중하게, 차분한 톤으로 |
-| M3 | 일론 | optimizer | Elon Musk | 군더더기 없이 빠르게 |
-| M4 | 리누스 | builder | Linus Torvalds | 빠르고 자신감 있게 |
-| M5 | 팀 | guardian | Tim Berners-Lee | 꼼꼼하고 신중하게 |
+| F3 | 제인 | explorer | Jane Goodall | 명확하고 체계적으로 |
+| F4 | 셰릴 | ops | Sheryl Sandberg | 선명하고 자신감 있게 |
+| F5 | 리사 | specialist | Lisa Su | 공감하며 친절하게 |
+| M1 | 스티브 | planner | Steve Jobs | 활기차고 자신감 있게 |
+| M2 | 빌 | (미사용) | Bill Gates | 신중하게, 차분한 톤으로 |
+| M3 | 일론 | reviewer·optimizer | Elon Musk | 자신감 있고 단호하게 |
+| M4 | 리누스 | builder | Linus Torvalds | 친근하고 부드럽게 |
+| M5 | 팀 | guardian | Tim Berners-Lee | 따뜻하게, 차분히 설명하듯 |
 
 역할·이름·instruct는 `voice-map.json`에서 코드 변경 없이 수정 가능.  
 speak_hook(메인 응답)은 F1(연아) 목소리를 사용하며, 위 목소리는 서브에이전트 전용.

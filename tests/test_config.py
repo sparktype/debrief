@@ -66,7 +66,6 @@ def test_load_config_normalizes_invalid_values(tmp_path, caplog):
         "supertonicPort": 70000,
         "allowInsecureTls": "yes",
         "voiceMode": "",
-        "grafana": {"interval": 1},
     }))
 
     cfg = load_config(cfg_file)
@@ -76,7 +75,6 @@ def test_load_config_normalizes_invalid_values(tmp_path, caplog):
     assert cfg.supertonic_port == 7777
     assert cfg.allow_insecure_tls is True
     assert cfg.voice_mode == "normal"
-    assert cfg.grafana.interval == 30
     assert "잘못된 값" in caplog.text
 
 
