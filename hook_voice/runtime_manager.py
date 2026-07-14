@@ -166,6 +166,28 @@ def apply_privacy_preset(name: str, config_path: Path) -> dict[str, object]:
     return current
 
 
+def import_legacy_config(legacy_path: Path, config_path: Path, preset: str) -> dict[str, object]:
+    selected = dict(PRESETS[preset])
+    legacy = _read_json(legacy_path)
+    imported: dict[str, object] = {}
+    if isinstance(legacy, dict):
+        for key in ("voice", "ttsSpeed", "ttsInstruct", "minChars", "supertonicPort", "voiceMode", "expressionLevel", "stt"):
+            if key in legacy:
+                imported[key] = legacy[key]
+        if legacy.get("autoSpeak") is False:
+            selected["autoSpeak"] = False
+        if legacy.get("usageTracking") is False:
+            selected["usageTracking"] = False
+        assistant = legacy.get("assistantTts")
+        if isinstance(assistant, dict) and assistant.get("enabled") is False:
+            selected["externalLlm"] = False
+            selected["assistantTts"] = {"enabled": False, "failureExplain": False, "riskExplain": False, "promptAdvice": False}
+    imported.update(selected)
+    imported.update({"configured": True, "privacyPreset": preset, "migration": {"importedLegacy": legacy_path.exists(), "source": str(legacy_path)}})
+    atomic_write_json(config_path, imported)
+    return imported
+
+
 def collect_status(paths: RuntimePaths) -> dict[str, object]:
     config: dict[str, object] = {}
     if paths.config.exists():
@@ -173,6 +195,8 @@ def collect_status(paths: RuntimePaths) -> dict[str, object]:
             config = json.loads(paths.config.read_text(encoding="utf-8"))
         except Exception:
             pass
+    claude_delivery = _read_json(paths.data_dir / "last_hook_delivery_claude.json")
+    codex_delivery = _read_json(paths.data_dir / "last_hook_delivery_codex.json")
     return {
         "configured": bool(config.get("configured", False)),
         "privacy_preset": config.get("privacyPreset"),
@@ -181,9 +205,20 @@ def collect_status(paths: RuntimePaths) -> dict[str, object]:
         "usage_tracking": bool(config.get("usageTracking", False)),
         "runtime_release": str(paths.current.resolve()) if paths.current.exists() else None,
         "daemon_healthy": daemon_healthy(),
+        "hook_delivery": {"claude": claude_delivery, "codex": codex_delivery},
+        "codex_hook_guidance": None if codex_delivery else "Codex에서 /hooks를 열어 chorus 훅을 검토하고 신뢰하세요.",
+        "queue_depth": _queue_depth(),
+        "mute_state": _read_json(paths.data_dir / "mute.json"),
         "data_dir": str(paths.data_dir),
         "last_error": _read_json(paths.data_dir / "last_hook_delivery_error.json"),
     }
+
+
+def _queue_depth() -> int:
+    spool = Path("/tmp/tts-spool")
+    if not spool.exists():
+        return 0
+    return len(list(spool.glob("*.wav"))) + len(list(spool.glob("*.mp3")))
 
 
 def _read_json(path: Path) -> object | None:
