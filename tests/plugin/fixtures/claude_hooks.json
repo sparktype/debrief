@@ -1,0 +1,8 @@
+{
+  "Stop": {"session_id": "claude-s1", "cwd": "/work", "transcript_path": "/tmp/claude.jsonl", "last_assistant_message": "완료했습니다."},
+  "SubagentStop": {"session_id": "claude-s1", "agent_id": "a1", "agent_type": "reviewer", "last_assistant_message": "검토 완료"},
+  "PreToolUse": {"session_id": "claude-s1", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}},
+  "PostToolUse": {"session_id": "claude-s1", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}, "tool_response": {"exit_code": 0, "output": "2 passed"}},
+  "UserPromptSubmit": {"session_id": "claude-s1", "message": "테스트해줘"},
+  "SessionStart": {"session_id": "claude-s1", "cwd": "/work"}
+}

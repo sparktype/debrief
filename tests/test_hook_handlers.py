@@ -22,7 +22,7 @@ from hook_voice.hook_handlers import (
 )
 import hook_voice.hook_handlers as _hh
 
-_CFG = Config()
+_CFG = Config(configured=True, auto_speak=True)
 
 
 @pytest.fixture(autouse=True)
