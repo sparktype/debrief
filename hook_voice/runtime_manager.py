@@ -44,6 +44,13 @@ PRESETS: dict[str, dict[str, object]] = {
         "assistantTts": {"enabled": True, "failureExplain": True, "riskExplain": True, "promptAdvice": True},
     },
 }
+MODE_PRESETS: dict[str, dict[str, object]] = {
+    "normal": {"voiceMode": "normal", "minChars": 50, "ttsSpeed": 1.1, "bridgeEnabled": False},
+    "focus": {"voiceMode": "focus", "minChars": 120, "ttsSpeed": 1.05, "bridgeEnabled": False},
+    "quiet": {"voiceMode": "quiet", "minChars": 300, "ttsSpeed": 1.0, "bridgeEnabled": False},
+    "verbose": {"voiceMode": "verbose", "minChars": 20, "ttsSpeed": 1.1, "bridgeEnabled": True},
+    "night": {"voiceMode": "night", "minChars": 120, "ttsSpeed": 0.95, "bridgeEnabled": False},
+}
 
 
 class ReleaseValidationError(RuntimeError):
@@ -228,6 +235,38 @@ def _read_json(path: Path) -> object | None:
         return None
 
 
+def set_mute(paths: RuntimePaths, scope: str) -> dict[str, object]:
+    if scope not in {"global", "session", "30m", "off"}:
+        raise ValueError("mute scope must be global, session, 30m, or off")
+    state = {"scope": scope, "muted": scope != "off", "expiresAt": time.time() + 1800 if scope == "30m" else None}
+    if scope == "session":
+        state["sessionId"] = os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_SESSION_ID")
+    atomic_write_json(paths.data_dir / "mute.json", state)
+    return state
+
+
+def set_mode(paths: RuntimePaths, name: str) -> dict[str, object]:
+    if name not in MODE_PRESETS:
+        raise ValueError(f"unknown mode: {name}")
+    current = _read_json(paths.config)
+    config = dict(current) if isinstance(current, dict) else {}
+    config.update(MODE_PRESETS[name])
+    atomic_write_json(paths.config, config)
+    return MODE_PRESETS[name]
+
+
+def recent_digest(paths: RuntimePaths, count: int = 10) -> list[dict[str, object]]:
+    events = []
+    for path in sorted(paths.data_dir.glob("last_hook_delivery_*.json")):
+        value = _read_json(path)
+        if isinstance(value, dict):
+            events.append(value)
+    error = _read_json(paths.data_dir / "last_hook_delivery_error.json")
+    if isinstance(error, dict):
+        events.append(error)
+    return sorted(events, key=lambda item: float(item.get("timestamp", 0)))[-count:]
+
+
 def run_doctor(paths: RuntimePaths, *, health: Callable[[], bool] = daemon_healthy) -> list[Check]:
     checks = [
         Check("platform", platform.system() == "Darwin" and platform.machine() == "arm64", f"{platform.system()} {platform.machine()}", "Chorus TTS는 macOS Apple Silicon에서 실행하세요."),
@@ -257,7 +296,7 @@ def _print_status(value: Mapping[str, object], as_json: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="chorus-runtime")
-    parser.add_argument("command", choices=["install", "setup", "status", "doctor", "start", "stop", "restart", "uninstall"])
+    parser.add_argument("command", choices=["install", "setup", "status", "doctor", "start", "stop", "restart", "mute", "listen", "mode", "digest", "uninstall"])
     parser.add_argument("argument", nargs="?")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--purge", action="store_true")
@@ -277,6 +316,21 @@ def main(argv: list[str] | None = None) -> int:
         checks = run_doctor(paths)
         _print_status({check.name: asdict(check) for check in checks}, args.json)
         return 0 if all(check.ok for check in checks) else 1
+    elif args.command == "mute":
+        _print_status(set_mute(paths, args.argument or "global"), args.json)
+    elif args.command == "mode":
+        _print_status(set_mode(paths, args.argument or "normal"), args.json)
+    elif args.command == "digest":
+        count = int(args.argument or "10")
+        print(json.dumps(recent_digest(paths, count), ensure_ascii=False, indent=2))
+    elif args.command == "listen":
+        try:
+            request = __import__("urllib.request", fromlist=["Request"]).Request("http://127.0.0.1:7777/stt/toggle", data=b"", method="POST")
+            with urlopen(request, timeout=1) as response:
+                print(response.read().decode("utf-8"))
+        except Exception as error:
+            print(json.dumps({"status": "disabled", "detail": str(error), "recovery": "chorus-runtime start"}, ensure_ascii=False))
+            return 1
     elif args.command == "uninstall":
         if paths.runtime_dir.exists():
             shutil.rmtree(paths.runtime_dir)
