@@ -117,6 +117,18 @@ def test_load_config_voice_json_takes_priority(tmp_path, monkeypatch):
     assert cfg.min_chars == 10
 
 
+def test_stable_runtime_config_takes_priority_over_checkout_config(tmp_path, monkeypatch):
+    stable = tmp_path / ".local/share/chorus/config.json"
+    stable.parent.mkdir(parents=True)
+    stable.write_text(json.dumps({"configured": True, "autoSpeak": False, "minChars": 7}))
+    checkout = tmp_path / ".voice.json"
+    checkout.write_text(json.dumps({"minChars": 99}))
+    import hook_voice.config as cfg_mod
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cfg_mod, "_VOICE_JSON", checkout)
+    assert load_config().min_chars == 7
+
+
 def test_load_config_speech_retouch_default():
     """speech_retouch 기본값은 True."""
     cfg = load_config(None)

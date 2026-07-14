@@ -172,6 +172,11 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
 
 
 def _find_default_config() -> Path | None:
+    from .runtime_paths import RuntimePaths
+
+    stable = RuntimePaths.from_environment().config
+    if stable.exists():
+        return stable
     if _VOICE_JSON.exists():
         return _VOICE_JSON
     if _VOICE_PERSONA_JSON.exists():

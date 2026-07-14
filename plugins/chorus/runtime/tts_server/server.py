@@ -7,7 +7,7 @@ import os
 import re
 import signal
 
-os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ.setdefault("HF_HUB_OFFLINE", "0")
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,8 +22,6 @@ from hook_voice.hook_ingest import ingest_hook_event
 from hook_voice.observability.metrics import get_registry as _get_metrics
 from hook_voice.observability.dlq import get_dlq_store as _get_dlq_store
 from hook_voice.speech_listener import SpeechListener
-
-MODEL_DIR = Path.home() / ".cache" / "supertonic3-mlx"
 
 # 한국어 TTS에서 발음이 부자연스러운 영문 기술 용어 → 한국어 발음 치환 사전
 _TECH_PHONETICS: dict[str, str] = {
@@ -85,12 +83,14 @@ async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
 
     def _load_model():
-        from supertonic_mlx import SupertonicMLX
+        from supertonic import TTS
         import logging
-        model = SupertonicMLX(MODEL_DIR)
+        model = TTS(auto_download=True)
         try:
-            style = model.get_voice_style("M1")
-            model.synthesize("워밍업.", "ko", style, total_step=2)
+            style = model.get_voice_style(voice_name="M1")
+            model.synthesize(
+                text="워밍업.", lang="ko", voice_style=style, total_steps=2
+            )
         except Exception as e:
             logging.getLogger(__name__).warning("워밍업 실패 (무시): %s", e)
         return model
@@ -239,13 +239,16 @@ async def tts(req: TTSRequest):
     loop = asyncio.get_event_loop()
 
     def _sync_synthesize() -> bytes:
-        style = _model.get_voice_style(req.voice)
+        style = _model.get_voice_style(voice_name=req.voice)
         wav, _ = _model.synthesize(
-            processed, req.lang, style,
-            total_step=req.steps, speed=req.speed,
+            text=processed,
+            lang=req.lang,
+            voice_style=style,
+            total_steps=req.steps,
+            speed=req.speed,
         )
         buf = io.BytesIO()
-        sf.write(buf, wav[0], _model.sample_rate, format="WAV")
+        sf.write(buf, wav[0], getattr(_model, "sample_rate", 44100), format="WAV")
         return buf.getvalue()
 
     wav_bytes = await loop.run_in_executor(_mlx_executor, _sync_synthesize)

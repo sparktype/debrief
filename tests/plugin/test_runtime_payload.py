@@ -5,6 +5,7 @@ def test_runtime_payload_contains_required_packages():
     assert Path("plugins/chorus/runtime/hook_voice/__init__.py").exists()
     assert Path("plugins/chorus/runtime/tts_server/__init__.py").exists()
     assert Path("plugins/chorus/runtime/assets/bridge_thinking.wav").exists()
+    assert Path("plugins/chorus/runtime/requirements.txt").exists()
 
 
 def test_runtime_payload_excludes_caches_and_credentials():

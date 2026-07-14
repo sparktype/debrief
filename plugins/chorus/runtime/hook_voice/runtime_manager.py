@@ -7,7 +7,6 @@ import platform
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -77,19 +76,20 @@ def validate_release(release: Path) -> None:
     missing = [str(path.relative_to(release)) for path in required if not path.exists()]
     if missing:
         raise ReleaseValidationError(f"missing runtime files: {', '.join(missing)}")
-    result = subprocess.run(
-        [sys.executable, "-m", "compileall", "-q", str(release / "hook_voice"), str(release / "tts_server")],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise ReleaseValidationError(result.stderr.strip() or "runtime compilation failed")
+    try:
+        for path in list((release / "hook_voice").rglob("*.py")) + list((release / "tts_server").rglob("*.py")):
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
+    except (OSError, SyntaxError) as error:
+        raise ReleaseValidationError(f"runtime compilation failed: {error}") from error
 
 
 def install_release(source: Path, version: str, paths: RuntimePaths) -> InstallResult:
     paths.releases.mkdir(parents=True, exist_ok=True)
     previous = paths.current.resolve() if paths.current.exists() else None
     destination = paths.releases / version
+    if previous == destination and destination.exists():
+        validate_release(destination)
+        return InstallResult(version, destination, previous)
     staging = paths.releases / f".{version}.{uuid.uuid4().hex}.staging"
     next_link = paths.runtime_dir / ".current.next"
     try:
@@ -110,7 +110,7 @@ def install_release(source: Path, version: str, paths: RuntimePaths) -> InstallR
 
 
 def render_launchagent(paths: RuntimePaths, python: Path | None = None) -> str:
-    executable = python or Path(sys.executable)
+    executable = python or paths.runtime_dir / "venv/bin/python"
     log = paths.logs / "server.log"
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -118,10 +118,34 @@ def render_launchagent(paths: RuntimePaths, python: Path | None = None) -> str:
 <key>Label</key><string>{LAUNCHAGENT_LABEL}</string>
 <key>ProgramArguments</key><array><string>{executable}</string><string>-m</string><string>tts_server.supervisor</string></array>
 <key>WorkingDirectory</key><string>{paths.current}</string>
-<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 <key>StandardOutPath</key><string>{log}</string><key>StandardErrorPath</key><string>{log}</string>
 <key>EnvironmentVariables</key><dict><key>CHORUS_DATA_DIR</key><string>{paths.data_dir}</string><key>PYTHONPATH</key><string>{paths.current}</string></dict>
 </dict></plist>\n'''
+
+
+def ensure_runtime_environment(
+    paths: RuntimePaths,
+    release: Path,
+    *,
+    run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> Path:
+    requirements = release / "requirements.txt"
+    if not requirements.exists():
+        raise ReleaseValidationError("missing runtime requirements.txt")
+    venv = paths.runtime_dir / "venv"
+    python = venv / "bin/python"
+    if not python.exists():
+        run([sys.executable, "-m", "venv", str(venv)], check=True)
+    run([str(python), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements)], check=True)
+    result = run(
+        [str(python), "-c", "import fastapi, httpx, numpy, soundfile, supertonic"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise ReleaseValidationError(result.stderr.strip() or "runtime dependency import failed")
+    return python
 
 
 def install_launchagent(paths: RuntimePaths, *, home: Path | None = None, run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> Path:
@@ -134,6 +158,31 @@ def install_launchagent(paths: RuntimePaths, *, home: Path | None = None, run: C
     run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHAGENT_LABEL}"], capture_output=True)
     run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)], capture_output=True)
     return plist
+
+
+def service_action(action: str, *, home: Path | None = None, run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> None:
+    if action not in {"start", "stop", "restart"}:
+        raise ValueError(f"unknown service action: {action}")
+    user_home = home or Path.home()
+    plist = user_home / "Library/LaunchAgents" / f"{LAUNCHAGENT_LABEL}.plist"
+    domain = f"gui/{os.getuid()}/{LAUNCHAGENT_LABEL}"
+    if action in {"stop", "restart"}:
+        run(["launchctl", "bootout", domain], capture_output=True)
+    if action in {"start", "restart"}:
+        if not plist.exists():
+            raise FileNotFoundError(f"LaunchAgent가 없습니다: {plist}. chorus-runtime install을 실행하세요.")
+        run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)], check=True)
+
+
+def uninstall_runtime(paths: RuntimePaths, *, purge: bool = False, home: Path | None = None, run: Callable[..., subprocess.CompletedProcess] = subprocess.run) -> None:
+    user_home = home or Path.home()
+    plist = user_home / "Library/LaunchAgents" / f"{LAUNCHAGENT_LABEL}.plist"
+    run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHAGENT_LABEL}"], capture_output=True)
+    plist.unlink(missing_ok=True)
+    if paths.runtime_dir.exists():
+        shutil.rmtree(paths.runtime_dir)
+    if purge and paths.data_dir.exists():
+        shutil.rmtree(paths.data_dir)
 
 
 def daemon_healthy(url: str = "http://127.0.0.1:7777/health") -> bool:
@@ -305,6 +354,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install":
         version = args.argument or os.environ.get("CHORUS_VERSION", "dev")
         result = install_release(_runtime_source(), version, paths)
+        ensure_runtime_environment(paths, result.release)
+        if platform.system() == "Darwin":
+            install_launchagent(paths)
+            for _ in range(40):
+                if daemon_healthy():
+                    remove_legacy_launchagent_after_health(paths)
+                    break
+                time.sleep(0.25)
         print(result.release)
     elif args.command == "setup":
         preset = args.argument or "local"
@@ -332,12 +389,9 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"status": "disabled", "detail": str(error), "recovery": "chorus-runtime start"}, ensure_ascii=False))
             return 1
     elif args.command == "uninstall":
-        if paths.runtime_dir.exists():
-            shutil.rmtree(paths.runtime_dir)
-        if args.purge and paths.data_dir.exists():
-            shutil.rmtree(paths.data_dir)
+        uninstall_runtime(paths, purge=args.purge)
     else:
-        subprocess.run(["launchctl", "kickstart" if args.command != "stop" else "kill", f"gui/{os.getuid()}/{LAUNCHAGENT_LABEL}"], check=False)
+        service_action(args.command)
     return 0
 
 

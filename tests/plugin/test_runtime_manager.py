@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from hook_voice.runtime_manager import ReleaseValidationError, apply_privacy_preset, install_release, render_launchagent
+from hook_voice.runtime_manager import ReleaseValidationError, apply_privacy_preset, ensure_runtime_environment, install_release, render_launchagent, uninstall_runtime
 from hook_voice.runtime_paths import RuntimePaths
 
 
@@ -47,6 +47,49 @@ def test_launchagent_uses_stable_current_path(tmp_path):
     assert "io.chorus.server" in plist
     assert str(p.current) in plist
     assert "com.voice-persona" not in plist
+
+
+def test_launchagent_defaults_to_stable_runtime_venv(tmp_path):
+    p = paths(tmp_path)
+    assert str(p.runtime_dir / "venv/bin/python") in render_launchagent(p)
+
+
+def test_same_version_reinstall_is_idempotent(tmp_path):
+    p = paths(tmp_path)
+    first = install_release(runtime_fixture(tmp_path, "one"), "1.0.0", p)
+    marker = first.release / "installed.marker"
+    marker.write_text("preserve")
+    second = install_release(runtime_fixture(tmp_path, "one-copy"), "1.0.0", p)
+    assert second.release == first.release
+    assert marker.read_text() == "preserve"
+
+
+def test_runtime_environment_installs_declared_requirements(tmp_path):
+    p = paths(tmp_path)
+    release = runtime_fixture(tmp_path, "deps")
+    (release / "requirements.txt").write_text("fastapi==1.0\n")
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[1:3] == ["-m", "venv"]:
+            python = p.runtime_dir / "venv/bin/python"
+            python.parent.mkdir(parents=True)
+            python.touch()
+        return __import__("subprocess").CompletedProcess(command, 0)
+
+    python = ensure_runtime_environment(p, release, run=run)
+    assert python == p.runtime_dir / "venv/bin/python"
+    assert any(any(str(item).endswith("requirements.txt") for item in command) for command in calls)
+
+
+def test_uninstall_preserves_user_data_unless_purged(tmp_path):
+    p = paths(tmp_path)
+    p.runtime_dir.mkdir(parents=True)
+    p.config.write_text('{"configured":true}')
+    uninstall_runtime(p, home=tmp_path, run=lambda command, **kwargs: __import__("subprocess").CompletedProcess(command, 0))
+    assert not p.runtime_dir.exists()
+    assert p.config.exists()
 
 
 @pytest.mark.parametrize(("name", "external", "tracking"), [("local", False, False), ("standard", True, False), ("detailed", True, True)])
