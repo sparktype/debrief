@@ -6,7 +6,8 @@ from hook_voice.config import Config, load_config, SttConfig
 
 def test_load_config_returns_defaults_when_no_file(tmp_path):
     cfg = load_config(tmp_path / "nonexistent.json")
-    assert cfg.auto_speak is True
+    assert cfg.configured is False
+    assert cfg.auto_speak is False
     assert cfg.min_chars == 50
     assert cfg.voice == "Sohee"
     assert cfg.summary_model == "gemini-3.5-flash"
@@ -31,7 +32,7 @@ def test_load_config_returns_defaults_on_invalid_json(tmp_path):
     cfg_file = tmp_path / "config.json"
     cfg_file.write_text("not json{{")
     cfg = load_config(cfg_file)
-    assert cfg.auto_speak is True
+    assert cfg.auto_speak is False
 
 def test_load_config_all_keys_mapped(tmp_path):
     full = {
@@ -156,11 +157,11 @@ def test_load_config_bridge_enabled_normalizes_invalid(tmp_path, caplog):
     assert "잘못된 값" in caplog.text
 
 
-def test_usage_tracking_default_true():
-    """usage_tracking 기본값은 True다."""
+def test_usage_tracking_default_false():
+    """설정 전에는 사용 통계를 기록하지 않는다."""
     from hook_voice.config import Config
     cfg = Config()
-    assert cfg.usage_tracking is True
+    assert cfg.usage_tracking is False
 
 
 def test_load_config_usage_tracking_false(tmp_path):
@@ -173,9 +174,9 @@ def test_load_config_usage_tracking_false(tmp_path):
 
 
 def test_load_config_usage_tracking_invalid(tmp_path):
-    """usageTracking에 비-bool 값이 오면 기본값 True로 복원한다."""
+    """usageTracking에 비-bool 값이 오면 안전한 기본값 False로 복원한다."""
     from hook_voice.config import load_config
     cfg_file = tmp_path / ".voice.json"
     cfg_file.write_text('{"usageTracking": "yes"}', encoding="utf-8")
     cfg = load_config(cfg_file)
-    assert cfg.usage_tracking is True
+    assert cfg.usage_tracking is False

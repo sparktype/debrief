@@ -11,6 +11,8 @@ _VOICE_JSON = Path(__file__).parent.parent / ".voice.json"
 _VOICE_PERSONA_JSON = Path(__file__).parent.parent / ".voice-persona.json"
 
 _KEY_MAP = {
+    "configured": "configured",
+    "privacyPreset": "privacy_preset",
     "autoSpeak": "auto_speak",
     "minChars": "min_chars",
     "voice": "voice",
@@ -49,17 +51,19 @@ class SttConfig:
 
 @dataclass
 class AssistantTtsConfig:
-    enabled: bool = True
+    enabled: bool = False
     briefing_mode: str = "smart"
     llm_timeout_ms: int = 2500
-    failure_explain: bool = True
-    risk_explain: bool = True
-    prompt_advice: bool = True
+    failure_explain: bool = False
+    risk_explain: bool = False
+    prompt_advice: bool = False
 
 
 @dataclass
 class Config:
-    auto_speak: bool = True
+    configured: bool = False
+    privacy_preset: str | None = None
+    auto_speak: bool = False
     min_chars: int = 50
     voice: str = "Sohee"
     summary_model: str = "gemini-3.5-flash"
@@ -73,7 +77,7 @@ class Config:
     bridge_enabled: bool = False
     bridge_threshold_ms: int = 500
     resume_threshold: float = 0.0  # 0.0 = 항상 포기, 0.85 = 85% 이상 완료 시 계속
-    usage_tracking: bool = True
+    usage_tracking: bool = False
     voice_mode: str = "normal"
     expression_level: str = "normal"  # "off" | "low" | "normal"
     stt: SttConfig = field(default_factory=SttConfig)
@@ -125,6 +129,7 @@ def _normalize_config(kwargs: dict[str, object]) -> dict[str, object]:
             kwargs[key] = value.strip()
 
     _normalize_bool("auto_speak")
+    _normalize_bool("configured")
     _normalize_bool("allow_insecure_tls")
     _normalize_bool("speech_retouch")
     _normalize_bool("bridge_enabled")
@@ -194,12 +199,12 @@ def load_config(path: Path | None = None) -> Config:
         if "assistantTts" in data:
             a = data["assistantTts"]
             kwargs["assistant_tts"] = AssistantTtsConfig(
-                enabled=a.get("enabled", True),
+                enabled=a.get("enabled", False),
                 briefing_mode=a.get("briefingMode", "smart"),
                 llm_timeout_ms=a.get("llmTimeoutMs", 2500),
-                failure_explain=a.get("failureExplain", True),
-                risk_explain=a.get("riskExplain", True),
-                prompt_advice=a.get("promptAdvice", True),
+                failure_explain=a.get("failureExplain", False),
+                risk_explain=a.get("riskExplain", False),
+                prompt_advice=a.get("promptAdvice", False),
             )
         kwargs = _normalize_config(kwargs)
         return Config(**kwargs)
