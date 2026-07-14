@@ -6,6 +6,7 @@ dist/
 .venv/
 *.wav
 !assets/*.wav
+!plugins/chorus/runtime/assets/*.wav
 .tts_server.pid
 .supertonic.pid
 **/__pycache__/

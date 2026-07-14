@@ -1,0 +1,177 @@
+{
+  "meta_voice_id": "F1",
+  "earcon": {
+    "agent_switch": "assets/earcon_switch.wav",
+    "enabled": true,
+    "duration_ms": 300
+  },
+  "supertonic": {
+    "lang": "ko",
+    "steps": 8
+  },
+  "voice_settings": {
+    "F1": {
+      "synth_speed": 0.93,
+      "steps": 8
+    },
+    "F2": {
+      "synth_speed": 1.1,
+      "steps": 8
+    },
+    "F3": {
+      "synth_speed": 1.0,
+      "steps": 10
+    },
+    "F4": {
+      "synth_speed": 1.05,
+      "steps": 9
+    },
+    "F5": {
+      "synth_speed": 0.88,
+      "steps": 8
+    },
+    "M1": {
+      "synth_speed": 1.1,
+      "steps": 8
+    },
+    "M2": {
+      "synth_speed": 0.93,
+      "steps": 10
+    },
+    "M3": {
+      "synth_speed": 1.0,
+      "steps": 9
+    },
+    "M4": {
+      "synth_speed": 0.95,
+      "steps": 8
+    },
+    "M5": {
+      "synth_speed": 0.88,
+      "steps": 9
+    }
+  },
+  "voices": {
+    "reviewer": "M3",
+    "planner": "M1",
+    "builder": "M4",
+    "tester": "F2",
+    "explorer": "F3",
+    "optimizer": "M3",
+    "guardian": "M5",
+    "ops": "F4",
+    "specialist": "F5",
+    "default": "F1"
+  },
+  "voice_names": {
+    "F1": "연아",
+    "F2": "마리",
+    "F3": "제인",
+    "F4": "셰릴",
+    "F5": "리사",
+    "M1": "스티브",
+    "M2": "빌",
+    "M3": "일론",
+    "M4": "리누스",
+    "M5": "팀"
+  },
+  "instructs": {
+    "reviewer": "진지하고 신중하게, 하나씩 꼼꼼히 살펴보듯 말해주세요",
+    "planner": "활기차고 자신감 있게, 비전을 그리며 계획을 제시해주세요",
+    "builder": "친근하고 부드럽게, 함께 만들어가듯 자연스럽게 말해주세요",
+    "tester": "밝고 경쾌하게, 검증 결과를 또렷하고 명확하게 전달해주세요",
+    "explorer": "명확하고 체계적으로, 발견한 내용을 정확히 보고하듯 말해주세요",
+    "optimizer": "자신감 있고 단호하게, 핵심만 짚어 간결하게 말해주세요",
+    "guardian": "따뜻하게, 이야기를 풀어가듯 문제를 차분히 설명해주세요",
+    "ops": "선명하고 자신감 있게, 상황을 정확히 보고하듯 말해주세요",
+    "specialist": "공감하며 친절하게, 전문 지식을 나눠주세요",
+    "default": "차분하고 안정적으로, 자연스럽게 말해주세요"
+  },
+  "categories": {
+    "reviewer": [
+      "feature-reviewer",
+      "code-reviewer",
+      "python-reviewer",
+      "security-reviewer",
+      "typescript-reviewer",
+      "rust-reviewer",
+      "go-reviewer",
+      "kotlin-reviewer",
+      "swift-reviewer",
+      "cpp-reviewer",
+      "java-reviewer",
+      "csharp-reviewer",
+      "flutter-reviewer",
+      "fastapi-reviewer",
+      "database-reviewer",
+      "mle-reviewer",
+      "pr-test-analyzer",
+      "code-simplifier"
+    ],
+    "planner": [
+      "feature-architect",
+      "planner",
+      "architect",
+      "code-architect",
+      "a11y-architect",
+      "plan",
+      "feature-dev",
+      "gan-planner"
+    ],
+    "builder": [
+      "feature-builder",
+      "build-error-resolver",
+      "dart-build-resolver",
+      "rust-build-resolver",
+      "go-build-resolver",
+      "kotlin-build-resolver",
+      "swift-build-resolver",
+      "cpp-build-resolver",
+      "java-build-resolver",
+      "pytorch-build-resolver",
+      "gan-generator",
+      "multi-execute",
+      "doc-updater",
+      "refactor-cleaner"
+    ],
+    "tester": [
+      "feature-tester",
+      "tdd-guide",
+      "e2e-runner",
+      "gan-evaluator"
+    ],
+    "explorer": [
+      "Explore",
+      "code-explorer",
+      "general-purpose",
+      "gitnexus-exploring",
+      "claude-code-guide"
+    ],
+    "optimizer": [
+      "performance-optimizer",
+      "harness-optimizer",
+      "type-design-analyzer"
+    ],
+    "guardian": [
+      "silent-failure-hunter",
+      "comment-analyzer",
+      "conversation-analyzer"
+    ],
+    "ops": [
+      "loop-operator",
+      "network-troubleshooter",
+      "network-config-reviewer",
+      "opensource-forker",
+      "opensource-packager",
+      "opensource-sanitizer",
+      "hookify",
+      "statusline-setup"
+    ],
+    "specialist": [
+      "healthcare-reviewer",
+      "seo-specialist",
+      "chief-of-staff",
+      "claude"
+    ]
+  }
+}
