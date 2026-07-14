@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from hook_voice.config import load_config as _load_voice_config
+from hook_voice.hook_ingest import ingest_hook_event
 from hook_voice.observability.metrics import get_registry as _get_metrics
 from hook_voice.observability.dlq import get_dlq_store as _get_dlq_store
 from hook_voice.speech_listener import SpeechListener
@@ -131,6 +132,17 @@ async def health():
         "queue_depth": len(queue_files),
         "stt_enabled": _stt_listener is not None,
     }
+
+
+class HookRequest(BaseModel):
+    source: str
+    event_name: str
+    payload: dict[str, object]
+
+
+@app.post("/hooks/events", status_code=202)
+async def ingest_hook(request: HookRequest):
+    return await ingest_hook_event(request.source, request.event_name, request.payload)
 
 
 # ── 재생 제어 ─────────────────────────────────────────────────────────────────
@@ -524,5 +536,3 @@ async def chorus_hud() -> HudResponse:
         pass
 
     return response
-
-
