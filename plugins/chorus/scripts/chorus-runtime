@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DATA_DIR="${CHORUS_DATA_DIR:-$HOME/.local/share/chorus}"
+if [[ -f "$DATA_DIR/runtime/current/hook_voice/runtime_manager.py" ]]; then
+  export PYTHONPATH="$DATA_DIR/runtime/current${PYTHONPATH:+:$PYTHONPATH}"
+else
+  export PYTHONPATH="$PLUGIN_ROOT/runtime${PYTHONPATH:+:$PYTHONPATH}"
+  export CHORUS_RUNTIME_SOURCE="$PLUGIN_ROOT/runtime"
+fi
+exec "${CHORUS_PYTHON:-python3}" -m hook_voice.runtime_manager "$@"
