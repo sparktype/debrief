@@ -1,0 +1,11 @@
+{
+  "description": "Deliver shared coding-agent lifecycle events to the local Chorus daemon.",
+  "hooks": {
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=$([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude) CHORUS_HOOK_EVENT=Stop \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/chorus-hook\"", "timeout": 2}]}],
+    "SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=$([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude) CHORUS_HOOK_EVENT=SubagentStop \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/chorus-hook\"", "timeout": 2}]}],
+    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=$([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude) CHORUS_HOOK_EVENT=PreToolUse \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/chorus-hook\"", "timeout": 2}]}],
+    "PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=$([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude) CHORUS_HOOK_EVENT=PostToolUse \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/chorus-hook\"", "timeout": 2}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=$([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude) CHORUS_HOOK_EVENT=UserPromptSubmit \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/chorus-hook\"", "timeout": 2}]}],
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=$([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude) CHORUS_HOOK_EVENT=SessionStart \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/scripts/chorus-hook\"", "timeout": 2}]}]
+  }
+}

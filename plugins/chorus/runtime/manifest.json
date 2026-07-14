@@ -1,0 +1,10 @@
+{
+  "name": "chorus-runtime",
+  "version": "1.0.0",
+  "platform": "macOS",
+  "architecture": "arm64",
+  "configured": false,
+  "autoSpeak": false,
+  "usageTracking": false,
+  "externalLlm": false
+}

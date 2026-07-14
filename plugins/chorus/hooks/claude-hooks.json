@@ -1,0 +1,6 @@
+{
+  "description": "Claude-only notification event; shared events live in hooks.json.",
+  "hooks": {
+    "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": "CHORUS_HOOK_SOURCE=claude CHORUS_HOOK_EVENT=Notification \"$CLAUDE_PLUGIN_ROOT/scripts/chorus-hook\"", "timeout": 2}]}]
+  }
+}

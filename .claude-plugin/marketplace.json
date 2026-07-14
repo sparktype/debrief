@@ -1,0 +1,13 @@
+{
+  "name": "chorus-local",
+  "owner": {"name": "Chorus contributors"},
+  "plugins": [{
+    "name": "chorus",
+    "source": "../plugins/chorus",
+    "description": "Private-by-default local voice feedback for coding agents on macOS Apple Silicon.",
+    "category": "developer-tools",
+    "installation": "Install the plugin, then run /chorus:setup.",
+    "authentication": "No credentials for local mode; optional external summary provider credentials for standard or detailed mode.",
+    "privacy": "Local audio by default. Listen mode needs microphone permission. Standard and detailed modes can transmit selected text after explicit setup consent."
+  }]
+}
