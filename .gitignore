@@ -16,6 +16,7 @@ dist/
 !.claude/skills/
 !.claude/skills/**/
 .superpowers/
+.worktrees/
 
 # gitnexus 로컬 인덱스
 .gitnexus/
