@@ -1,6 +1,7 @@
 .direnv/
 node_modules/
 dist/
+.build/
 *.mp3
 .siren.json
 .venv/
