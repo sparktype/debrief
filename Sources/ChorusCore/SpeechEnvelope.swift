@@ -23,12 +23,7 @@ public struct SpeechEnvelope: Codable, Equatable, Sendable {
         self.volume = volume
     }
 
-    public func validate(
-        allowedVoices: Set<String> = Set([
-            "F1", "F2", "F3", "F4", "F5",
-            "M1", "M2", "M3", "M4", "M5",
-        ])
-    ) throws {
+    public func validate(allowedVoices: Set<String> = VoiceCatalog.allowedVoiceIDs) throws {
         guard v == 1 else { throw EnvelopeError.unsupportedVersion }
         guard !text.isEmpty, text.count <= 800, !text.contains("-->") else {
             throw EnvelopeError.invalidText
