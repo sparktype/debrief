@@ -1,8 +1,16 @@
 import ChorusCore
+import Darwin
 import Foundation
 
+let command: ChorusCommand
 do {
-    let command = try ChorusCommand.parse(Array(CommandLine.arguments.dropFirst()))
+    command = try ChorusCommand.parse(Array(CommandLine.arguments.dropFirst()))
+} catch {
+    FileHandle.standardError.write(Data("error: \(error)\n\n\(ChorusCommand.usageText)\n".utf8))
+    exit(64)
+}
+
+do {
     let home = ProcessInfo.processInfo.environment["CHORUS_HOME"]
         .map { URL(fileURLWithPath: $0, isDirectory: true) }
         ?? FileManager.default.homeDirectoryForCurrentUser
@@ -22,10 +30,45 @@ do {
         let input = FileHandle.standardInput.readDataToEndOfFile()
         let output = await HookCommandRunner.run(input: input, source: source, home: home)
         FileHandle.standardOutput.write(output)
+    case .daemon:
+        let paths = ChorusPaths.forHome(home)
+        let server = try UnixSocketServer(socketURL: paths.socketURL)
+        let modelDirectory = paths.modelsDirectory.appending(
+            path: "supertonic-3/current",
+            directoryHint: .isDirectory
+        )
+        let daemon = ChorusDaemon(
+            source: server,
+            queue: SpeechQueue(),
+            backend: try SupertonicEngine(modelDirectory: modelDirectory),
+            audio: AudioPlayer(),
+            configuration: { ChorusConfiguration.load(from: paths.configURL) }
+        )
+        signal(SIGTERM, SIG_IGN)
+        signal(SIGINT, SIG_IGN)
+        let termination = DispatchSource.makeSignalSource(signal: SIGTERM)
+        let interruption = DispatchSource.makeSignalSource(signal: SIGINT)
+        termination.setEventHandler { Task { await daemon.shutdown() } }
+        interruption.setEventHandler { Task { await daemon.shutdown() } }
+        termination.resume()
+        interruption.resume()
+        defer {
+            termination.cancel()
+            interruption.cancel()
+        }
+        try await daemon.run()
+    case let .speak(text, voice, speed, volume):
+        try await DirectSpeechCommand.submit(
+            text: text,
+            voice: voice,
+            speed: speed,
+            volume: volume,
+            home: home
+        )
     default:
         print("chorus: \(command) is not implemented yet")
     }
 } catch {
-    FileHandle.standardError.write(Data("error: \(error)\n\n\(ChorusCommand.usageText)\n".utf8))
-    exit(64)
+    FileHandle.standardError.write(Data("error: \(error)\n".utf8))
+    exit(1)
 }

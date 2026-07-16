@@ -77,6 +77,25 @@ struct UnixSocketTests {
         }
     }
 
+    @Test func closingServerUnblocksAccept() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = try UnixSocketServer(socketURL: directory.appending(path: "chorus.sock"))
+
+        async let stopped: Bool = {
+            do {
+                _ = try await server.accept()
+                return false
+            } catch {
+                return true
+            }
+        }()
+        await Task.yield()
+        await server.close()
+
+        #expect(await stopped)
+    }
+
     private func temporaryDirectory() -> URL {
         let url = URL(fileURLWithPath: "/tmp", isDirectory: true)
             .appending(path: "cs-\(UUID().uuidString)")

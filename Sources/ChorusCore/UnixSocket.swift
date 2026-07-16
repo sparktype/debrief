@@ -16,6 +16,8 @@ public final class UnixSocketServer: @unchecked Sendable {
 
     private let socketURL: URL
     private let fileDescriptor: Int32
+    private let stateLock = NSLock()
+    private var closed = false
 
     public init(socketURL: URL) throws {
         self.socketURL = socketURL
@@ -46,6 +48,10 @@ public final class UnixSocketServer: @unchecked Sendable {
             guard Darwin.listen(descriptor, 8) == 0 else {
                 throw UnixSocketError.systemCall("listen", errno)
             }
+            let flags = fcntl(descriptor, F_GETFL)
+            guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else {
+                throw UnixSocketError.systemCall("fcntl(O_NONBLOCK)", errno)
+            }
             fileDescriptor = descriptor
         } catch {
             Darwin.close(descriptor)
@@ -65,11 +71,10 @@ public final class UnixSocketServer: @unchecked Sendable {
     }
 
     public func accept() async throws -> SpeechRequest {
-        let listener = fileDescriptor
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    continuation.resume(returning: try Self.acceptOne(listener))
+                    continuation.resume(returning: try self.acceptOne())
                 } catch {
                     continuation.resume(throwing: error)
                 }
@@ -77,37 +82,65 @@ public final class UnixSocketServer: @unchecked Sendable {
         }
     }
 
-    private static func acceptOne(_ listener: Int32) throws -> SpeechRequest {
+    func requestClose() {
+        stateLock.lock()
+        closed = true
+        stateLock.unlock()
+        _ = Darwin.shutdown(fileDescriptor, SHUT_RDWR)
+    }
+
+    private func acceptOne() throws -> SpeechRequest {
         var descriptor: Int32
-        repeat {
-            descriptor = Darwin.accept(listener, nil, nil)
-        } while descriptor < 0 && errno == EINTR
-        guard descriptor >= 0 else {
+        while true {
+            descriptor = Darwin.accept(fileDescriptor, nil, nil)
+            if descriptor >= 0 { break }
+            if errno == EINTR { continue }
+            if errno == EAGAIN || errno == EWOULDBLOCK {
+                if isClosed { throw UnixSocketError.disconnected }
+                var event = pollfd(fd: fileDescriptor, events: Int16(POLLIN), revents: 0)
+                let result = Darwin.poll(&event, 1, 100)
+                if result < 0, errno != EINTR {
+                    throw UnixSocketError.systemCall("poll", errno)
+                }
+                continue
+            }
+            if isClosed { throw UnixSocketError.disconnected }
             throw UnixSocketError.systemCall("accept", errno)
         }
         defer { Darwin.close(descriptor) }
-        try configure(descriptor)
+        let acceptedFlags = fcntl(descriptor, F_GETFL)
+        guard acceptedFlags >= 0,
+              fcntl(descriptor, F_SETFL, acceptedFlags & ~O_NONBLOCK) == 0 else {
+            throw UnixSocketError.systemCall("fcntl(blocking)", errno)
+        }
+        try Self.configure(descriptor)
 
         do {
-            let header = try readExactly(4, from: descriptor)
+            let header = try Self.readExactly(4, from: descriptor)
             let length = header.withUnsafeBytes { raw -> UInt32 in
                 raw.loadUnaligned(as: UInt32.self).bigEndian
             }
-            guard length <= maximumPayloadBytes else {
-                try? writeAll(Data([0x15]), to: descriptor)
+            guard length <= Self.maximumPayloadBytes else {
+                try? Self.writeAll(Data([0x15]), to: descriptor)
                 throw UnixSocketError.payloadTooLarge
             }
-            let payload = try readExactly(Int(length), from: descriptor)
+            let payload = try Self.readExactly(Int(length), from: descriptor)
             let request = try JSONDecoder().decode(SpeechRequest.self, from: payload)
-            try writeAll(Data([0x06]), to: descriptor)
+            try Self.writeAll(Data([0x06]), to: descriptor)
             return request
         } catch let error as UnixSocketError {
-            try? writeAll(Data([0x15]), to: descriptor)
+            try? Self.writeAll(Data([0x15]), to: descriptor)
             throw error
         } catch {
-            try? writeAll(Data([0x15]), to: descriptor)
+            try? Self.writeAll(Data([0x15]), to: descriptor)
             throw UnixSocketError.invalidFrame
         }
+    }
+
+    private var isClosed: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return closed
     }
 
     private static func removeStaleSocketIfSafe(at url: URL) throws {
