@@ -3,9 +3,18 @@ import Foundation
 
 do {
     let command = try ChorusCommand.parse(Array(CommandLine.arguments.dropFirst()))
+    let home = ProcessInfo.processInfo.environment["CHORUS_HOME"]
+        .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        ?? FileManager.default.homeDirectoryForCurrentUser
     switch command {
     case .help:
         print(ChorusCommand.usageText)
+    case let .mode(value):
+        let configuration = try ConfigurationCommands.applyMode(value, home: home)
+        print("mode: \(configuration.mode.rawValue)")
+    case let .mute(value):
+        let configuration = try ConfigurationCommands.applyMute(value, home: home)
+        print("muted: \(configuration.muted)")
     default:
         print("chorus: \(command) is not implemented yet")
     }
