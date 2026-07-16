@@ -17,6 +17,41 @@ do {
     switch command {
     case .help:
         print(ChorusCommand.usageText)
+    case let .install(codex, claude, repair):
+        let paths = ChorusPaths.forHome(home)
+        let hosts = selectedHosts(codex: codex, claude: claude)
+        let runtime = RuntimeInstaller(
+            home: home,
+            sourceExecutable: URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath(),
+            modelInstaller: ModelInstaller(
+                modelsDirectory: paths.modelsDirectory,
+                manifest: .supertonic3,
+                downloader: URLSessionModelDownloader()
+            ),
+            launchctl: ProcessLaunchctlRunner()
+        )
+        let result = try await runtime.install(hosts: hosts, repair: repair)
+        print("installed: \(hosts.map(\.rawValue).sorted().joined(separator: ","))")
+        if result.codexReviewRequired {
+            print("Codex에서 /hooks를 열어 Chorus hook을 검토하고 신뢰하세요.")
+        }
+        printPreservedFiles(result.preservedModifiedFiles)
+    case let .uninstall(codex, claude):
+        let paths = ChorusPaths.forHome(home)
+        let hosts = selectedHosts(codex: codex, claude: claude)
+        let runtime = RuntimeInstaller(
+            home: home,
+            sourceExecutable: paths.executableURL,
+            modelInstaller: ModelInstaller(
+                modelsDirectory: paths.modelsDirectory,
+                manifest: .supertonic3,
+                downloader: URLSessionModelDownloader()
+            ),
+            launchctl: ProcessLaunchctlRunner()
+        )
+        let result = try await runtime.uninstall(hosts: hosts)
+        print("uninstalled: \(hosts.map(\.rawValue).sorted().joined(separator: ","))")
+        printPreservedFiles(result.preservedModifiedFiles)
     case let .mode(value):
         let configuration = try ConfigurationCommands.applyMode(value, home: home)
         print("mode: \(configuration.mode.rawValue)")
@@ -62,10 +97,24 @@ do {
             volume: volume,
             home: home
         )
-    default:
+    case .status, .doctor:
         print("chorus: \(command) is not implemented yet")
     }
 } catch {
     FileHandle.standardError.write(Data("error: \(error)\n".utf8))
     exit(1)
+}
+
+private func selectedHosts(codex: Bool, claude: Bool) -> Set<HostSource> {
+    if !codex, !claude { return Set(HostSource.allCases) }
+    var hosts = Set<HostSource>()
+    if codex { hosts.insert(.codex) }
+    if claude { hosts.insert(.claude) }
+    return hosts
+}
+
+private func printPreservedFiles(_ paths: [String]) {
+    for path in paths {
+        print("preserved modified file: \(path)")
+    }
 }
