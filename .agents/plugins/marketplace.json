@@ -15,10 +15,10 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Developer Tools",
-      "description": "Private-by-default local voice feedback for coding agents on macOS Apple Silicon.",
-      "installation": "Install the plugin, review its hooks, then run /chorus:setup in a new thread.",
-      "authentication": "No credentials for local mode; optional external summary provider credentials for standard or detailed mode.",
-      "privacy": "Local audio by default. Listen mode needs microphone permission. Standard and detailed modes can transmit selected text after explicit setup consent."
+      "description": "Single-binary local TTS for coding agents on macOS Apple Silicon.",
+      "installation": "Install the plugin, make the chorus executable available, then run /chorus:setup in a new thread.",
+      "authentication": "No credentials required.",
+      "privacy": "Speaks only explicit agent-provided text through the local daemon."
     }
   ]
 }

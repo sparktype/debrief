@@ -1,33 +1,23 @@
-# Chorus 온보딩
+# Chorus onboarding
 
-Chorus는 Claude Code와 Codex에서 같은 `/chorus:*` 명령과 같은 로컬 음성 런타임을 사용합니다.
+Chorus speaks text prepared by Codex or Claude Code through one local Swift executable.
 
-## 안전한 시작 상태
+## First installation
 
-플러그인 설치만으로는 음성이나 외부 통신이 시작되지 않습니다.
+1. Build or obtain the `chorus` executable.
+2. Run `chorus install`.
+3. Wait for the pinned Supertonic 3 model download and checksum verification.
+4. In Codex, review the five installed definitions in `/hooks`.
+5. Run `chorus status`; use `chorus doctor` if a check fails.
+6. Ask the agent for a short explicit speech test with voice, speed, and volume.
 
-- `configured=false`
-- `autoSpeak=false`
-- `usageTracking=false`
-- `externalLlm=false`
+The installer supports both hosts by default. Use `--codex` or `--claude` to limit host integration, and `--repair` to restore owned files without overwriting unrelated settings.
 
-## 시작 체크리스트
+## Daily use
 
-- [ ] Claude Code 또는 Codex에 이 저장소의 `chorus` 플러그인을 설치합니다.
-- [ ] Codex에서는 `/hooks`에서 Chorus hook을 검토하고 신뢰합니다.
-- [ ] `/chorus:setup`을 실행하고 `local`, `standard`, `detailed` 중 하나를 선택합니다.
-- [ ] 개인정보 요약과 외부 endpoint를 확인합니다.
-- [ ] 음성 테스트 후 `/chorus:status`에서 runtime과 hook delivery를 확인합니다.
-- [ ] 실패 항목이 있으면 `/chorus:doctor`가 제시하는 복구 명령을 실행합니다.
+- Use `/chorus:mode` to select `normal`, `focus`, `quiet`, `verbose`, or `night`.
+- Use `/chorus:mute` to pause or restore speech.
+- Use `/chorus:speak` for an explicit audible message.
+- Use `/chorus:status` and `/chorus:doctor` for current-state checks.
 
-외부 전송이 필요하지 않다면 `local`을 선택하세요. `standard`는 Stop 요약만, `detailed`은 추가 도움 기능과 사용 통계를 명시적으로 활성화합니다.
-
-## 일상 사용
-
-- 집중이 필요하면 `/chorus:mode focus` 또는 `/chorus:mode quiet`
-- 잠시 멈추려면 `/chorus:mute 30m`
-- 음성 입력은 `/chorus:listen`
-- 최근 이벤트는 `/chorus:digest`
-- 이상 상태는 `/chorus:status` 후 `/chorus:doctor`
-
-사용자 데이터는 `~/.local/share/chorus`에 있고 일반 제거 시 보존됩니다. 완전 삭제가 필요한 경우에만 `chorus-runtime uninstall --purge`를 사용합니다.
+Agents are responsible for the spoken text and must always specify voice, speed, and volume. Chorus performs no text generation or summarization.

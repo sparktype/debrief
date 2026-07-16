@@ -1,8 +1,0 @@
-{
-  "Stop": {"conversationId": "codex-s1", "turnId": "t1", "cwd": "/work", "assistantMessage": "완료했습니다."},
-  "SubagentStop": {"conversationId": "codex-s1", "agentId": "a1", "agentType": "explore", "assistantMessage": "탐색 완료"},
-  "PreToolUse": {"conversationId": "codex-s1", "toolName": "Bash", "toolInput": {"command": "pytest -q"}},
-  "PostToolUse": {"conversationId": "codex-s1", "toolName": "Bash", "toolInput": {"command": "pytest -q"}, "toolResponse": {"exit_code": 0, "output": "2 passed"}},
-  "UserPromptSubmit": {"conversationId": "codex-s1", "message": "테스트해줘"},
-  "SessionStart": {"conversationId": "codex-s1", "workingDirectory": "/work"}
-}

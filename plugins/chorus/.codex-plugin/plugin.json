@@ -1,22 +1,35 @@
 {
   "id": "chorus",
   "name": "chorus",
-  "version": "1.0.0",
-  "description": "Private-by-default local voice feedback for Codex and Claude Code on macOS Apple Silicon.",
+  "version": "1.0.0+codex.20260716070111",
+  "description": "Single-binary local TTS for Codex and Claude Code on Apple Silicon.",
   "author": {
     "name": "Chorus contributors"
   },
   "license": "MIT",
-  "keywords": ["voice", "tts", "codex", "claude", "accessibility"],
+  "keywords": [
+    "voice",
+    "tts",
+    "codex",
+    "claude",
+    "accessibility"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Chorus",
     "shortDescription": "Local voice feedback for coding agents",
-    "longDescription": "Hear concise local voice feedback from Codex and Claude Code with explicit privacy presets, diagnostics, and optional speech input.",
+    "longDescription": "Speak only explicit text selected by Codex or Claude Code through a local Swift TTS daemon.",
     "developerName": "Chorus contributors",
     "category": "Developer Tools",
-    "capabilities": ["Local audio", "Optional microphone", "Optional external summaries"],
-    "defaultPrompt": ["Run /chorus:setup", "Show /chorus:status", "Diagnose Chorus with /chorus:doctor"],
+    "capabilities": [
+      "Local TTS",
+      "Agent-selected voice, speed, and volume"
+    ],
+    "defaultPrompt": [
+      "Run /chorus:setup",
+      "Show /chorus:status",
+      "Diagnose Chorus with /chorus:doctor"
+    ],
     "brandColor": "#6D5BD0",
     "screenshots": []
   }

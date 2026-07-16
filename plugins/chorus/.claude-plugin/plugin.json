@@ -1,7 +1,7 @@
 {
   "name": "chorus",
   "version": "1.0.0",
-  "description": "Private-by-default local voice feedback for Claude Code and Codex on macOS Apple Silicon.",
+  "description": "Single-binary local TTS for Claude Code and Codex on Apple Silicon.",
   "author": {
     "name": "Chorus contributors"
   },
