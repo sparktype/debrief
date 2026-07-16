@@ -37,19 +37,22 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
     private let modelInstaller: Model
     private let launchctl: Launchctl
     private let userID: UInt32
+    private let healthCheck: @Sendable (ChorusPaths) async -> Bool
 
     public init(
         home: URL,
         sourceExecutable: URL,
         modelInstaller: Model,
         launchctl: Launchctl,
-        userID: UInt32 = getuid()
+        userID: UInt32 = getuid(),
+        healthCheck: @escaping @Sendable (ChorusPaths) async -> Bool = RuntimeInstaller.liveHealthCheck
     ) {
         self.home = home
         self.sourceExecutable = sourceExecutable
         self.modelInstaller = modelInstaller
         self.launchctl = launchctl
         self.userID = userID
+        self.healthCheck = healthCheck
     }
 
     @discardableResult
@@ -74,6 +77,7 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
             arguments: ["bootstrap", domain, paths.launchAgentURL.path],
             allowFailure: false
         )
+        try await migrateLegacyIfPresent(paths: paths)
         return hostResult
     }
 
@@ -147,5 +151,55 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
             )
         })
         try manifest.save(to: paths.installManifestURL)
+    }
+
+    private func migrateLegacyIfPresent(paths: ChorusPaths) async throws {
+        let legacyRoot = home.appending(path: ".local/share/chorus", directoryHint: .isDirectory)
+        let configURL = legacyRoot.appending(path: "config.json")
+        let voiceMapURL = legacyRoot.appending(path: "runtime/current/voice-map.json")
+        let legacyPlists = LegacyMigration.knownLaunchAgentLabels.map {
+            home.appending(path: "Library/LaunchAgents/\($0).plist")
+        }
+        let hasLegacy = FileManager.default.fileExists(atPath: configURL.path)
+            || FileManager.default.fileExists(atPath: voiceMapURL.path)
+            || legacyPlists.contains { FileManager.default.fileExists(atPath: $0.path) }
+        guard hasLegacy else { return }
+        let source = LegacyMigrationSource(
+            configuration: try? Data(contentsOf: configURL),
+            voiceMap: try? Data(contentsOf: voiceMapURL)
+        )
+        let plan = try LegacyMigration.plan(from: source)
+        let healthy = await healthCheck(paths)
+        try await LegacyMigration.apply(
+            plan,
+            home: home,
+            afterHealthCheck: healthy,
+            runner: RuntimeLegacyServiceRunner(launchctl: launchctl, userID: userID)
+        )
+    }
+
+    public static func liveHealthCheck(paths: ChorusPaths) async -> Bool {
+        for _ in 0..<25 {
+            let snapshot = Diagnostics(home: paths.home).status()
+            if snapshot.process == .running,
+               snapshot.socketPresent,
+               snapshot.modelValid {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return false
+    }
+}
+
+private struct RuntimeLegacyServiceRunner<Launchctl: LaunchctlRunning>: LegacyServiceRunning {
+    let launchctl: Launchctl
+    let userID: UInt32
+
+    func unload(label: String) async throws {
+        try await launchctl.run(
+            arguments: ["bootout", "gui/\(userID)/\(label)"],
+            allowFailure: true
+        )
     }
 }

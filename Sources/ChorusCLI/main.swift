@@ -10,10 +10,11 @@ do {
     exit(64)
 }
 
+let home = ProcessInfo.processInfo.environment["CHORUS_HOME"]
+    .map { URL(fileURLWithPath: $0, isDirectory: true) }
+    ?? FileManager.default.homeDirectoryForCurrentUser
+
 do {
-    let home = ProcessInfo.processInfo.environment["CHORUS_HOME"]
-        .map { URL(fileURLWithPath: $0, isDirectory: true) }
-        ?? FileManager.default.homeDirectoryForCurrentUser
     switch command {
     case .help:
         print(ChorusCommand.usageText)
@@ -67,6 +68,18 @@ do {
         FileHandle.standardOutput.write(output)
     case .daemon:
         let paths = ChorusPaths.forHome(home)
+        try FileManager.default.createDirectory(
+            at: paths.pidURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let daemonPID = "\(getpid())"
+        try Data(daemonPID.utf8).write(to: paths.pidURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: paths.pidURL.path)
+        defer {
+            if (try? String(contentsOf: paths.pidURL, encoding: .utf8)) == daemonPID {
+                try? FileManager.default.removeItem(at: paths.pidURL)
+            }
+        }
         let server = try UnixSocketServer(socketURL: paths.socketURL)
         let modelDirectory = try InstalledModel.resolveCurrent(in: paths.modelsDirectory).directory
         let daemon = ChorusDaemon(
@@ -97,10 +110,25 @@ do {
             volume: volume,
             home: home
         )
-    case .status, .doctor:
-        print("chorus: \(command) is not implemented yet")
+    case .status:
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        FileHandle.standardOutput.write(try encoder.encode(Diagnostics(home: home).status()))
+        print()
+    case .doctor:
+        let findings = Diagnostics(home: home).doctor()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        FileHandle.standardOutput.write(try encoder.encode(findings))
+        print()
+        if findings.contains(where: { !$0.ok }) { exit(1) }
     }
 } catch {
+    try? Diagnostics(home: home).recordError(
+        component: "cli",
+        code: "command_failed",
+        message: "command failed; run chorus doctor"
+    )
     FileHandle.standardError.write(Data("error: \(error)\n".utf8))
     exit(1)
 }

@@ -1,0 +1,158 @@
+import Darwin
+import Foundation
+
+public enum DaemonProcessState: String, Codable, Equatable, Sendable {
+    case missing
+    case running
+    case stale
+    case invalid
+}
+
+public struct StatusSnapshot: Codable, Equatable, Sendable {
+    public let mode: ChorusMode
+    public let muted: Bool
+    public let process: DaemonProcessState
+    public let socketPresent: Bool
+    public let modelRevision: String?
+    public let modelValid: Bool
+    public let launchAgentInstalled: Bool
+    public let hostSettingsReadable: [String: Bool]
+    public let ownedHookCount: Int
+    public let ownedSkillCount: Int
+}
+
+public struct DiagnosticFinding: Codable, Equatable, Sendable {
+    public let code: String
+    public let ok: Bool
+    public let recovery: String?
+}
+
+public struct CurrentError: Codable, Equatable, Sendable {
+    public static let maximumMessageLength = 160
+    public let timestamp: Date
+    public let component: String
+    public let code: String
+    public let message: String
+}
+
+public struct Diagnostics: Sendable {
+    private let paths: ChorusPaths
+    private let processExists: @Sendable (Int32) -> Bool
+
+    public init(home: URL, processExists: @escaping @Sendable (Int32) -> Bool = Diagnostics.liveProcessExists) {
+        paths = ChorusPaths.forHome(home)
+        self.processExists = processExists
+    }
+
+    public func status() -> StatusSnapshot {
+        let configuration = ChorusConfiguration.load(from: paths.configURL)
+        let process = processState()
+        let model = modelState()
+        let manifest = (try? InstallManifest.load(from: paths.installManifestURL)) ?? InstallManifest()
+        return StatusSnapshot(
+            mode: configuration.mode,
+            muted: configuration.muted,
+            process: process,
+            socketPresent: FileManager.default.fileExists(atPath: paths.socketURL.path),
+            modelRevision: model.revision,
+            modelValid: model.valid,
+            launchAgentInstalled: FileManager.default.fileExists(atPath: paths.launchAgentURL.path),
+            hostSettingsReadable: [
+                HostSource.codex.rawValue: settingsReadable(paths.home.appending(path: ".codex/hooks.json")),
+                HostSource.claude.rawValue: settingsReadable(paths.home.appending(path: ".claude/settings.json")),
+            ],
+            ownedHookCount: manifest.hooks.count,
+            ownedSkillCount: manifest.files.count
+        )
+    }
+
+    public func doctor() -> [DiagnosticFinding] {
+        let snapshot = status()
+        var findings: [DiagnosticFinding] = []
+        switch snapshot.process {
+        case .running:
+            findings.append(.init(code: "daemon.running", ok: true, recovery: nil))
+        case .stale:
+            findings.append(.init(code: "daemon.stale_pid", ok: false, recovery: "chorus install --repair"))
+        case .invalid:
+            findings.append(.init(code: "daemon.invalid_pid", ok: false, recovery: "chorus install --repair"))
+        case .missing:
+            findings.append(.init(code: "daemon.missing", ok: false, recovery: "chorus install --repair"))
+        }
+        if snapshot.modelRevision == nil {
+            findings.append(.init(code: "model.missing", ok: false, recovery: "chorus install --repair"))
+        } else if !snapshot.modelValid {
+            findings.append(.init(code: "model.invalid_marker", ok: false, recovery: "chorus install --repair"))
+        } else {
+            findings.append(.init(code: "model.valid", ok: true, recovery: nil))
+        }
+        for host in HostSource.allCases where snapshot.hostSettingsReadable[host.rawValue] == false {
+            findings.append(.init(
+                code: "host.\(host.rawValue).invalid_json",
+                ok: false,
+                recovery: "repair the host JSON, then run chorus install --\(host.rawValue) --repair"
+            ))
+        }
+        findings.append(.init(
+            code: snapshot.socketPresent ? "socket.present" : "socket.missing",
+            ok: snapshot.socketPresent,
+            recovery: snapshot.socketPresent ? nil : "chorus install --repair"
+        ))
+        findings.append(.init(
+            code: snapshot.launchAgentInstalled ? "launch_agent.installed" : "launch_agent.missing",
+            ok: snapshot.launchAgentInstalled,
+            recovery: snapshot.launchAgentInstalled ? nil : "chorus install --repair"
+        ))
+        return findings
+    }
+
+    public func recordError(component: String, code: String, message: String) throws {
+        let normalized = message
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = CurrentError(
+            timestamp: Date(),
+            component: String(component.prefix(64)),
+            code: String(code.prefix(64)),
+            message: String(normalized.prefix(CurrentError.maximumMessageLength))
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try AtomicInstallerFile.write(try encoder.encode(value), to: paths.lastErrorURL, permissions: 0o600)
+    }
+
+    public static func liveProcessExists(_ pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    private func processState() -> DaemonProcessState {
+        guard let data = try? Data(contentsOf: paths.pidURL),
+              let raw = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let pid = Int32(raw), pid > 0 else {
+            return FileManager.default.fileExists(atPath: paths.pidURL.path) ? .invalid : .missing
+        }
+        return processExists(pid) ? .running : .stale
+    }
+
+    private func modelState() -> (revision: String?, valid: Bool) {
+        guard let installed = try? InstalledModel.resolveCurrent(in: paths.modelsDirectory) else {
+            return (nil, false)
+        }
+        let marker = installed.directory.appending(path: ".validated.json")
+        guard let data = try? Data(contentsOf: marker),
+              let manifest = try? JSONDecoder().decode(ModelManifest.self, from: data),
+              manifest.revision == installed.revision,
+              manifest == ModelManifest.supertonic3,
+              (try? manifest.validate()) != nil else {
+            return (installed.revision, false)
+        }
+        return (installed.revision, true)
+    }
+
+    private func settingsReadable(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        guard let data = try? Data(contentsOf: url),
+              (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else { return false }
+        return true
+    }
+}

@@ -13,6 +13,8 @@ struct ConfigurationTests {
         #expect(paths.configURL.path == "/Users/example/Library/Application Support/Chorus/config.json")
         #expect(paths.socketURL.path == "/Users/example/Library/Caches/Chorus/chorus.sock")
         #expect(paths.launchAgentURL.path == "/Users/example/Library/LaunchAgents/com.chorus.tts.plist")
+        #expect(paths.pidURL.path == "/Users/example/Library/Caches/Chorus/daemon.pid")
+        #expect(paths.lastErrorURL.path == "/Users/example/Library/Caches/Chorus/last-error.json")
     }
 
     @Test func missingAndCorruptFilesRecoverToDefaults() throws {

@@ -22,15 +22,35 @@ public struct ChorusConfiguration: Codable, Equatable, Sendable {
     public var mode: ChorusMode
     public var muted: Bool
     public var volumeCeilings: [String: Double]
+    public var categoryVoices: [String: String]
+    public var voiceSpeeds: [String: Double]
 
     public init(
         mode: ChorusMode,
         muted: Bool,
-        volumeCeilings: [String: Double] = defaultVolumeCeilings
+        volumeCeilings: [String: Double] = defaultVolumeCeilings,
+        categoryVoices: [String: String] = [:],
+        voiceSpeeds: [String: Double] = [:]
     ) {
         self.mode = mode
         self.muted = muted
         self.volumeCeilings = volumeCeilings
+        self.categoryVoices = categoryVoices
+        self.voiceSpeeds = voiceSpeeds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, muted, volumeCeilings, categoryVoices, voiceSpeeds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(ChorusMode.self, forKey: .mode) ?? .normal
+        muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+        volumeCeilings = try container.decodeIfPresent([String: Double].self, forKey: .volumeCeilings)
+            ?? Self.defaultVolumeCeilings
+        categoryVoices = try container.decodeIfPresent([String: String].self, forKey: .categoryVoices) ?? [:]
+        voiceSpeeds = try container.decodeIfPresent([String: Double].self, forKey: .voiceSpeeds) ?? [:]
     }
 
     public static func load(from url: URL) -> ChorusConfiguration {
