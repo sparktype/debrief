@@ -15,6 +15,13 @@ do {
     case let .mute(value):
         let configuration = try ConfigurationCommands.applyMute(value, home: home)
         print("muted: \(configuration.muted)")
+    case let .hook(sourceValue):
+        guard let source = HostSource(rawValue: sourceValue) else {
+            throw CommandError.usage("--source must be codex or claude")
+        }
+        let input = FileHandle.standardInput.readDataToEndOfFile()
+        let output = await HookCommandRunner.run(input: input, source: source, home: home)
+        FileHandle.standardOutput.write(output)
     default:
         print("chorus: \(command) is not implemented yet")
     }
