@@ -33,10 +33,7 @@ do {
     case .daemon:
         let paths = ChorusPaths.forHome(home)
         let server = try UnixSocketServer(socketURL: paths.socketURL)
-        let modelDirectory = paths.modelsDirectory.appending(
-            path: "supertonic-3/current",
-            directoryHint: .isDirectory
-        )
+        let modelDirectory = try InstalledModel.resolveCurrent(in: paths.modelsDirectory).directory
         let daemon = ChorusDaemon(
             source: server,
             queue: SpeechQueue(),
