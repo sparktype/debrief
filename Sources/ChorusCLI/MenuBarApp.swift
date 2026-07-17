@@ -25,7 +25,7 @@ enum MenuBarApp {
         do {
             try await service.start()
         } catch {
-            controller.noteError(String(describing: error))
+            controller.noteError(error)
         }
         await controller.refresh()
 
@@ -51,15 +51,20 @@ enum MenuBarApp {
 }
 
 @MainActor
-final class MenuBarHost: NSObject, NSApplicationDelegate {
+final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let controller: MenuBarController
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    /// Stable menu instance — rebuild mutates items in place so open menus stay visible.
+    private let menu = NSMenu()
     private var signalSources: [any DispatchSourceProtocol] = []
     private var isShuttingDown = false
 
     init(controller: MenuBarController) {
         self.controller = controller
         super.init()
+        menu.autoenablesItems = false
+        menu.delegate = self
+        item.menu = menu
         controller.onStatusChange = { [weak self] in
             self?.rebuildMenu()
         }
@@ -96,9 +101,13 @@ final class MenuBarHost: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
+    /// Refresh status when the menu opens so header/icon track service death and config.
+    func menuWillOpen(_ menu: NSMenu) {
+        Task { await controller.refresh() }
+    }
+
     private func rebuildMenu() {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
+        menu.removeAllItems()
 
         let header = NSMenuItem(
             title: controller.status.summaryLine,
@@ -176,7 +185,6 @@ final class MenuBarHost: NSObject, NSApplicationDelegate {
             systemSymbolName: symbol,
             accessibilityDescription: "Chorus"
         )
-        item.menu = menu
     }
 
     @objc private func toggleMute() {
@@ -197,4 +205,3 @@ final class MenuBarHost: NSObject, NSApplicationDelegate {
         Task { await controller.stop() }
     }
 }
-
