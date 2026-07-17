@@ -114,7 +114,8 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.toolTip = "Chorus"
             // Icon only — no title text in the menu bar.
             button.title = ""
-            button.image = menuBarSymbol(named: "waveform")
+            button.image = menuBarSymbol(named: "play.fill")
+                ?? menuBarSymbol(named: "waveform")
         } else {
             NSLog("Chorus: NSStatusItem.button is nil")
         }
@@ -252,22 +253,26 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let status = controller.status
         button.title = ""
         button.imagePosition = .imageOnly
+        button.alphaValue = 1.0
+        button.appearsDisabled = false
 
         if let voice = status.activeVoice, !voice.isEmpty {
             // Speaking: monochrome badge icon for the active voice (F1 / M1 / …).
             button.image = voiceBadgeImage(for: voice)
-            button.alphaValue = 1.0
-        } else if let custom = menuBarCustomImage() {
-            button.image = custom
-            button.alphaValue = (status.muted || !status.serviceRunning) ? 0.55 : 1.0
-        } else if let symbol = menuBarSymbol(named: status.muted ? "speaker.slash.fill" : "waveform") {
-            button.image = symbol
-            button.alphaValue = 1.0
         } else {
-            button.image = menuBarSymbol(named: "waveform")
-            button.alphaValue = 1.0
+            // Idle: transport-style status — play / stop / pause.
+            let symbolName: String
+            if status.muted {
+                symbolName = "pause.fill"
+            } else if status.serviceRunning {
+                symbolName = "play.fill"
+            } else {
+                symbolName = "stop.fill"
+            }
+            button.image = menuBarSymbol(named: symbolName)
+                ?? menuBarSymbol(named: "play.fill")
+                ?? menuBarSymbol(named: "waveform")
         }
-        button.appearsDisabled = false
         item?.isVisible = true
     }
 
