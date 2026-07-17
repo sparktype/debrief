@@ -59,8 +59,10 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var signalSources: [any DispatchSourceProtocol] = []
     private var isShuttingDown = false
     private var didInstallStatusItem = false
-    /// Template badge images keyed by voice ID (`F1`, `M3`, …).
-    private var voiceBadgeCache: [String: NSImage] = [:]
+    /// Template badge images keyed by voice ID (`F1`, `M3`, …) or transport key (`play`/`stop`/`pause`).
+    private var badgeImageCache: [String: NSImage] = [:]
+    /// Shared badge frame — same width/height for voice and transport icons.
+    private static let badgeSize = NSSize(width: 28, height: 16)
 
     init(controller: MenuBarController, service: ResidentService) {
         self.controller = controller
@@ -114,8 +116,6 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.toolTip = "Chorus"
             // Icon only — no title text in the menu bar.
             button.title = ""
-            button.image = menuBarSymbol(named: "play.fill")
-                ?? menuBarSymbol(named: "waveform")
         } else {
             NSLog("Chorus: NSStatusItem.button is nil")
         }
@@ -258,31 +258,35 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if let voice = status.activeVoice, !voice.isEmpty {
             // Speaking: monochrome badge icon for the active voice (F1 / M1 / …).
-            button.image = voiceBadgeImage(for: voice)
-        } else {
-            // Idle: transport-style status — play / stop / pause.
-            let symbolName: String
-            if status.muted {
-                symbolName = "pause.fill"
-            } else if status.serviceRunning {
-                symbolName = "play.fill"
-            } else {
-                symbolName = "stop.fill"
+            button.image = badgeImage(cacheKey: "voice:\(voice)") { bounds in
+                Self.drawBadgeBorder(in: bounds)
+                Self.drawBadgeLabel(voice, in: bounds)
             }
-            button.image = menuBarSymbol(named: symbolName)
-                ?? menuBarSymbol(named: "play.fill")
-                ?? menuBarSymbol(named: "waveform")
+        } else {
+            // Idle: play / stop / pause inside the same bordered badge frame as voice IDs.
+            let transport: (key: String, symbol: String)
+            if status.muted {
+                transport = ("pause", "pause.fill")
+            } else if status.serviceRunning {
+                transport = ("play", "play.fill")
+            } else {
+                transport = ("stop", "stop.fill")
+            }
+            button.image = badgeImage(cacheKey: "transport:\(transport.key)") { bounds in
+                Self.drawBadgeBorder(in: bounds)
+                Self.drawBadgeSymbol(named: transport.symbol, in: bounds)
+            }
         }
         item?.isVisible = true
     }
 
-    /// Draws `F1` / `M3`-style voice codes as a template badge (icon image, not button title).
-    private func voiceBadgeImage(for voice: String) -> NSImage {
-        if let cached = voiceBadgeCache[voice] {
+    /// Shared badge canvas (same size as voice badges) with a cache key.
+    private func badgeImage(cacheKey: String, draw: (NSRect) -> Void) -> NSImage {
+        if let cached = badgeImageCache[cacheKey] {
             return cached
         }
 
-        let size = NSSize(width: 28, height: 16)
+        let size = Self.badgeSize
         let scale = 2
         let image = NSImage(size: size)
         guard let bitmap = NSBitmapImageRep(
@@ -308,32 +312,60 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let bounds = NSRect(origin: .zero, size: size)
             NSColor.clear.setFill()
             bounds.fill()
-
-            let inset = bounds.insetBy(dx: 0.5, dy: 0.5)
-            let path = NSBezierPath(roundedRect: inset, xRadius: 3.5, yRadius: 3.5)
-            NSColor.black.setStroke()
-            path.lineWidth = 1.25
-            path.stroke()
-
-            let label = voice as NSString
-            let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.black,
-            ]
-            let textSize = label.size(withAttributes: attributes)
-            let textOrigin = NSPoint(
-                x: (size.width - textSize.width) / 2,
-                y: (size.height - textSize.height) / 2 - 0.5
-            )
-            label.draw(at: textOrigin, withAttributes: attributes)
+            draw(bounds)
         }
         NSGraphicsContext.restoreGraphicsState()
 
         image.addRepresentation(bitmap)
         image.isTemplate = true
-        voiceBadgeCache[voice] = image
+        badgeImageCache[cacheKey] = image
         return image
+    }
+
+    private static func drawBadgeBorder(in bounds: NSRect) {
+        let inset = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: inset, xRadius: 3.5, yRadius: 3.5)
+        NSColor.black.setStroke()
+        path.lineWidth = 1.25
+        path.stroke()
+    }
+
+    private static func drawBadgeLabel(_ text: String, in bounds: NSRect) {
+        let label = text as NSString
+        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black,
+        ]
+        let textSize = label.size(withAttributes: attributes)
+        let textOrigin = NSPoint(
+            x: (bounds.width - textSize.width) / 2,
+            y: (bounds.height - textSize.height) / 2 - 0.5
+        )
+        label.draw(at: textOrigin, withAttributes: attributes)
+    }
+
+    private static func drawBadgeSymbol(named name: String, in bounds: NSRect) {
+        let candidates = [name, "play.fill", "waveform"]
+        let configuration = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        guard let base = candidates.lazy.compactMap({
+            NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+        }).first else { return }
+        let symbol = base.withSymbolConfiguration(configuration) ?? base
+        symbol.isTemplate = true
+        // Fit glyph inside the pill with even padding (same outer frame as F1/M1).
+        let maxSide = min(bounds.width, bounds.height) - 5
+        let glyphSize = NSSize(width: maxSide, height: maxSide)
+        let origin = NSPoint(
+            x: (bounds.width - glyphSize.width) / 2,
+            y: (bounds.height - glyphSize.height) / 2
+        )
+        symbol.draw(
+            in: NSRect(origin: origin, size: glyphSize),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1.0
+        )
     }
 
     private func menuBarCustomImage() -> NSImage? {
