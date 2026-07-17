@@ -67,41 +67,25 @@ do {
         let output = await HookCommandRunner.run(input: input, source: source, home: home)
         FileHandle.standardOutput.write(output)
     case .daemon:
-        let paths = ChorusPaths.forHome(home)
-        try FileManager.default.createDirectory(
-            at: paths.pidURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+        let service = ResidentService(
+            home: home,
+            backendFactory: { try SupertonicEngine(modelDirectory: $0) },
+            audioFactory: { AudioPlayer() }
         )
-        let daemonPID = "\(getpid())"
-        try Data(daemonPID.utf8).write(to: paths.pidURL, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: paths.pidURL.path)
-        defer {
-            if (try? String(contentsOf: paths.pidURL, encoding: .utf8)) == daemonPID {
-                try? FileManager.default.removeItem(at: paths.pidURL)
-            }
-        }
-        let server = try UnixSocketServer(socketURL: paths.socketURL)
-        let modelDirectory = try InstalledModel.resolveCurrent(in: paths.modelsDirectory).directory
-        let daemon = ChorusDaemon(
-            source: server,
-            queue: SpeechQueue(),
-            backend: try SupertonicEngine(modelDirectory: modelDirectory),
-            audio: AudioPlayer(),
-            configuration: { ChorusConfiguration.load(from: paths.configURL) }
-        )
+        try await service.start()
         signal(SIGTERM, SIG_IGN)
         signal(SIGINT, SIG_IGN)
         let termination = DispatchSource.makeSignalSource(signal: SIGTERM)
         let interruption = DispatchSource.makeSignalSource(signal: SIGINT)
-        termination.setEventHandler { Task { await daemon.shutdown() } }
-        interruption.setEventHandler { Task { await daemon.shutdown() } }
+        termination.setEventHandler { Task { await service.stop() } }
+        interruption.setEventHandler { Task { await service.stop() } }
         termination.resume()
         interruption.resume()
         defer {
             termination.cancel()
             interruption.cancel()
         }
-        try await daemon.run()
+        await service.waitUntilStopped()
     case let .speak(text, voice, speed, volume):
         try await DirectSpeechCommand.submit(
             text: text,

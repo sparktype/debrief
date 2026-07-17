@@ -47,6 +47,27 @@ struct ResidentServiceTests {
         await service.stop()
     }
 
+    @Test func waitUntilStoppedUnblocksAfterStop() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let service = ResidentService(
+            home: home,
+            modelDirectoryProvider: { _ in home },
+            backendFactory: { _ in RecordingBackend() },
+            audioFactory: { RecordingAudio() }
+        )
+        try await service.start()
+        #expect(await service.isRunning)
+
+        let waiter = Task { await service.waitUntilStopped() }
+        // Let the waiter enter the poll loop before stopping.
+        try await Task.sleep(for: .milliseconds(50))
+        await service.stop()
+        await waiter.value
+        #expect(await service.isRunning == false)
+    }
+
     private func temporaryHome() -> URL {
         let url = URL(fileURLWithPath: "/tmp", isDirectory: true)
             .appending(path: "cr-\(UUID().uuidString)")

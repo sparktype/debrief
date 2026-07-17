@@ -93,17 +93,33 @@ public actor ResidentService {
         self.daemon = daemon
         self.ownedPID = pid
         self.running = true
-        self.runTask = Task {
-            try await daemon.run()
+        self.runTask = Task { [weak self] in
+            do {
+                try await daemon.run()
+            } catch {
+                // fall through to clear state
+            }
+            await self?.clearStateIfOwned()
         }
     }
 
     public func stop() async {
         guard running else { return }
-        let paths = ChorusPaths.forHome(home)
         await daemon?.shutdown()
         runTask?.cancel()
         _ = try? await runTask?.value
+        clearStateIfOwned()
+    }
+
+    public func waitUntilStopped() async {
+        while running {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+    }
+
+    private func clearStateIfOwned() {
+        guard running else { return }
+        let paths = ChorusPaths.forHome(home)
         runTask = nil
         daemon = nil
         server = nil
