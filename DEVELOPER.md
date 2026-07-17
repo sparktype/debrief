@@ -18,15 +18,22 @@ The coding agent owns summarization and selects text, voice, speed, and volume.
 Package.swift
 Sources/
 ├── ChorusCLI/                 command parsing and process entry point
+│   ├── main.swift             subcommand dispatch (menubar / daemon / CLI)
+│   ├── MenuBarApp.swift       LSUIElement NSStatusItem + NSMenu host
+│   └── MenuBarModel.swift     menu actions against ResidentService
 └── ChorusCore/
-    ├── EnvelopeParser.swift   strict invisible-envelope validation
-    ├── HookAdapter.swift      Codex and Claude event adaptation
+    ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
+    ├── ChorusDaemon.swift     speech accept loop over Unix socket
+    ├── SpeechEnvelopeParser.swift  strict invisible-envelope validation
+    ├── HookAdapters.swift     Codex and Claude event adaptation
     ├── ModePolicy.swift       suppression and effective-volume policy
     ├── SpeechQueue.swift      bounded serialized speech queue
-    ├── SupertonicBackend.swift
-    ├── UnixSocket.swift       local daemon transport
+    ├── SupertonicEngine.swift local ONNX TTS backend
+    ├── UnixSocket.swift       local resident transport
+    ├── MenuBarStatus.swift    pure status snapshot for menu header
     ├── ModelInstaller.swift   pinned download, checksum, and atomic swap
     ├── RuntimeInstaller.swift executable and LaunchAgent lifecycle
+    ├── EmbeddedTemplates.swift hooks, skills, LaunchAgent (args: menubar)
     ├── HostInstaller.swift    safe hook and skill merge/uninstall
     ├── LegacyMigration.swift  one-time allowlisted configuration import
     └── Diagnostics.swift      bounded current-state diagnostics
@@ -34,6 +41,29 @@ SwiftTests/
 ├── ChorusCoreTests/
 └── ChorusIntegrationTests/
 plugins/chorus/               marketplace metadata, five hooks, six skills
+```
+
+## Process model
+
+```text
+Login / chorus install
+        │
+        ▼
+LaunchAgent (com.chorus.tts)
+        │ ProgramArguments: [<bin>/chorus, "menubar"]
+        ▼
+chorus (LSUIElement menu bar)
+        ├── Menu: status · mute · mode · start · stop  (no Quit)
+        └── ResidentService (in-process)
+              ├── pid file
+              ├── Unix socket server
+              ├── ChorusDaemon + SpeechQueue
+              ├── SupertonicEngine
+              └── AudioPlayer
+
+Codex / Claude ──► chorus hook ──► socket ──► ResidentService
+CLI              ──► chorus speak|status|mute|mode|…
+Debug            ──► chorus daemon (headless ResidentService; not install path)
 ```
 
 ## Speech envelope
@@ -48,9 +78,9 @@ All fields are mandatory. Validation rejects unknown fields, invalid voice ident
 
 ## Runtime lifecycle
 
-`chorus install` performs staged executable installation, pinned model installation, hook and skill merge, LaunchAgent replacement, and a health-gated legacy service cutover. Owned-file digests prevent uninstall or repair from overwriting user modifications. Model activation uses a verified staging directory and atomic replacement.
+`chorus install` performs staged executable installation, pinned model installation, hook and skill merge, LaunchAgent replacement, and a health-gated legacy service cutover. Owned-file digests prevent uninstall or repair from overwriting user modifications. Model activation uses a verified staging directory and atomic replacement. LaunchAgent `ProgramArguments` are `[installedBinary, "menubar"]`.
 
-The daemon writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework.
+The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive.
 
 ## Build and verification
 

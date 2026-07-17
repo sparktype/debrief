@@ -35,7 +35,7 @@ public enum EmbeddedTemplates {
             "status": skill(
                 name: "chorus-status",
                 description: "Show the current local Chorus TTS state.",
-                body: "Run `\(command) status` and report the current daemon, model, hook, mute, and mode state."
+                body: "Run `\(command) status` and report the current resident process, model, hook, mute, and mode state."
             ),
             "mode": skill(
                 name: "chorus-mode",

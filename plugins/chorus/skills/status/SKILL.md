@@ -5,4 +5,4 @@ description: Show the current local Chorus TTS installation state without changi
 
 # Chorus Status
 
-Run `chorus status`. Report the daemon, socket, pinned model revision, hook ownership, skill ownership, mode, mute state, and current bounded error record.
+Run `chorus status` and report the current resident process, model, hook, mute, and mode state. Include socket health, pinned model revision, hook ownership, skill ownership, and any current bounded error record when present.
