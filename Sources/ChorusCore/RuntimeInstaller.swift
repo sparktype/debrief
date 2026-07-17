@@ -108,6 +108,8 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
             paths.executableURL,
             AppBundleInstaller.infoPlistURL(appBundle: paths.applicationBundleURL),
             AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL),
+            AppBundleInstaller.menuBarIconURL(appBundle: paths.applicationBundleURL),
+            AppBundleInstaller.menuBarIcon2xURL(appBundle: paths.applicationBundleURL),
         ]
         for url in removable {
             guard let owned = manifest.runtimeFiles.first(where: { $0.path == url.path }),
@@ -190,6 +192,14 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         let icon = AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL)
         if FileManager.default.fileExists(atPath: icon.path) {
             urls.append(icon)
+        }
+        let menuBarIcon = AppBundleInstaller.menuBarIconURL(appBundle: paths.applicationBundleURL)
+        if FileManager.default.fileExists(atPath: menuBarIcon.path) {
+            urls.append(menuBarIcon)
+        }
+        let menuBarIcon2x = AppBundleInstaller.menuBarIcon2xURL(appBundle: paths.applicationBundleURL)
+        if FileManager.default.fileExists(atPath: menuBarIcon2x.path) {
+            urls.append(menuBarIcon2x)
         }
         manifest.runtimeFiles.removeAll { owned in
             urls.contains { $0.path == owned.path }

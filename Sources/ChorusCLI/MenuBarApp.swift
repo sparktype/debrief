@@ -199,10 +199,16 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyStatusIcon()
     }
 
-    /// Menu-bar SF Symbols must be template images at a fixed point size.
-    /// Unconfigured symbols often render oversized, multicolored, or clipped.
+    /// Prefers the installed app `MenuBarIcon` PNG (template), then SF Symbol fallback.
     private func applyStatusIcon() {
         let status = controller.status
+        if let custom = Self.menuBarCustomImage() {
+            item.button?.image = custom
+            // Dim when muted or service stopped so one image still conveys state.
+            item.button?.appearsDisabled = status.muted || !status.serviceRunning
+            return
+        }
+
         let symbolName: String
         if status.muted {
             symbolName = "speaker.slash.fill"
@@ -211,10 +217,60 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             symbolName = "speaker.wave.2"
         }
-
         item.button?.image = Self.menuBarSymbol(named: symbolName)
-        // Keep full opacity — `appearsDisabled` looks washed-out/broken in the menu bar.
         item.button?.appearsDisabled = false
+    }
+
+    /// Loads `Contents/Resources/MenuBarIcon.png` (+ @2x) next to the running binary.
+    private static func menuBarCustomImage() -> NSImage? {
+        let resources = resourcesDirectory()
+        let oneX = resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName).png")
+        let twoX = resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName)@2x.png")
+        let icns = resources.appending(path: "\(AppBundleInstaller.iconFileName).icns")
+
+        // Prefer Retina @2x asset when present; otherwise 1x PNG; finally AppIcon.icns.
+        let sourceURL: URL?
+        if FileManager.default.fileExists(atPath: twoX.path) {
+            sourceURL = twoX
+        } else if FileManager.default.fileExists(atPath: oneX.path) {
+            sourceURL = oneX
+        } else if FileManager.default.fileExists(atPath: icns.path) {
+            sourceURL = icns
+        } else {
+            sourceURL = nil
+        }
+        guard let sourceURL, let source = NSImage(contentsOf: sourceURL) else { return nil }
+        return preparedMenuBarImage(source)
+    }
+
+    private static func resourcesDirectory() -> URL {
+        // Prefer Bundle.main when launched as Chorus.app.
+        if let resourceURL = Bundle.main.resourceURL,
+           FileManager.default.fileExists(atPath: resourceURL.path) {
+            return resourceURL
+        }
+        // Bare path: …/Chorus.app/Contents/MacOS/chorus → …/Contents/Resources
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        return executable
+            .deletingLastPathComponent() // MacOS
+            .deletingLastPathComponent() // Contents
+            .appending(path: "Resources", directoryHint: .isDirectory)
+    }
+
+    private static func preparedMenuBarImage(_ source: NSImage) -> NSImage {
+        let side: CGFloat = 18
+        let image = NSImage(size: NSSize(width: side, height: side))
+        image.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        source.draw(
+            in: NSRect(x: 0, y: 0, width: side, height: side),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1.0
+        )
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
     }
 
     /// Builds a monochrome template glyph sized for `NSStatusItem`.
@@ -226,7 +282,6 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             else { continue }
             let image = base.withSymbolConfiguration(configuration) ?? base
             image.isTemplate = true
-            // Explicit pixel size helps bare executables (no asset catalog) scale cleanly.
             let side: CGFloat = 18
             image.size = NSSize(width: side, height: side)
             return image

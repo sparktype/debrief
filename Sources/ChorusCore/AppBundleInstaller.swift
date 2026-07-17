@@ -15,6 +15,8 @@ public enum AppBundleInstaller {
     public static let executableName = "chorus"
     public static let bundleIdentifier = "com.chorus.tts"
     public static let iconFileName = "AppIcon"
+    /// Template-friendly PNG used by `NSStatusItem` (installed beside AppIcon.icns).
+    public static let menuBarIconFileName = "MenuBarIcon"
 
     public static func bundleURL(applicationsDirectory: URL) -> URL {
         applicationsDirectory.appending(path: appName, directoryHint: .isDirectory)
@@ -41,6 +43,14 @@ public enum AppBundleInstaller {
 
     public static func iconURL(appBundle: URL) -> URL {
         resourcesURL(appBundle: appBundle).appending(path: "\(iconFileName).icns")
+    }
+
+    public static func menuBarIconURL(appBundle: URL) -> URL {
+        resourcesURL(appBundle: appBundle).appending(path: "\(menuBarIconFileName).png")
+    }
+
+    public static func menuBarIcon2xURL(appBundle: URL) -> URL {
+        resourcesURL(appBundle: appBundle).appending(path: "\(menuBarIconFileName)@2x.png")
     }
 
     /// Builds or replaces the `.app` bundle. Optional PNG becomes `AppIcon.icns` via sips/iconutil.
@@ -73,6 +83,33 @@ public enum AppBundleInstaller {
 
         if let iconPNG {
             try installIcon(png: iconPNG, destination: iconURL(appBundle: appBundle))
+            try installMenuBarIcons(png: iconPNG, resources: resources)
+        }
+    }
+
+    /// 18pt-class PNGs for `NSStatusItem` (1x + 2x). Template rendering uses alpha.
+    private static func installMenuBarIcons(png: Data, resources: URL) throws {
+        let fileManager = FileManager.default
+        let staging = fileManager.temporaryDirectory
+            .appending(path: "chorus-menubar-icon-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? fileManager.removeItem(at: staging) }
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+        let pngURL = staging.appending(path: "source.png")
+        try png.write(to: pngURL)
+
+        let oneX = resources.appending(path: "\(menuBarIconFileName).png")
+        let twoX = resources.appending(path: "\(menuBarIconFileName)@2x.png")
+        for (size, destination) in [(32, oneX), (64, twoX)] {
+            let out = staging.appending(path: "out-\(size).png")
+            try runTool(
+                "/usr/bin/sips",
+                arguments: ["-z", "\(size)", "\(size)", pngURL.path, "--out", out.path]
+            )
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try fileManager.copyItem(at: out, to: destination)
+            try fileManager.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destination.path)
         }
     }
 
