@@ -105,13 +105,12 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.isVisible = true
 
         if let button = statusItem.button {
-            button.imagePosition = .imageLeading
+            button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
-            button.imageHugsTitle = true
+            button.imageHugsTitle = false
             button.toolTip = "Chorus"
-            // Text title is always visible even if image/template fails.
-            button.title = "Chorus"
-            button.font = NSFont.menuBarFont(ofSize: 0)
+            // Icon only — no title text in the menu bar.
+            button.title = ""
             button.image = menuBarSymbol(named: "waveform")
         } else {
             NSLog("Chorus: NSStatusItem.button is nil")
@@ -248,19 +247,18 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyStatusIcon() {
         guard let button = item?.button else { return }
         let status = controller.status
-        button.title = "Chorus"
+        button.title = ""
+        button.imagePosition = .imageOnly
 
         if let custom = menuBarCustomImage() {
             button.image = custom
-            button.imagePosition = .imageLeading
             button.alphaValue = (status.muted || !status.serviceRunning) ? 0.55 : 1.0
         } else if let symbol = menuBarSymbol(named: status.muted ? "speaker.slash.fill" : "waveform") {
             button.image = symbol
-            button.imagePosition = .imageLeading
             button.alphaValue = 1.0
         } else {
-            button.image = nil
-            button.imagePosition = .imageOnly
+            // Last resort: keep a glyph so the item is not an empty gap.
+            button.image = menuBarSymbol(named: "waveform")
             button.alphaValue = 1.0
         }
         button.appearsDisabled = false
