@@ -62,6 +62,11 @@ public actor ChorusDaemon {
         self.configuration = configuration
     }
 
+    /// Voice ID of the request currently synthesizing/playing, if any (e.g. `F1`, `M3`).
+    public var activeVoice: String? {
+        active?.envelope.voice
+    }
+
     public func run() async throws {
         guard let source else { throw ChorusDaemonError.missingRequestSource }
         while !shuttingDown, !Task.isCancelled {

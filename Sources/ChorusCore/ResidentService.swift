@@ -65,6 +65,11 @@ public actor ResidentService {
 
     public var isRunning: Bool { running }
 
+    /// Voice ID currently synthesizing or playing, if any.
+    public func activeVoice() async -> String? {
+        await daemon?.activeVoice
+    }
+
     /// Returns and clears the error that ended the run loop, if any.
     /// Intentional `stop()` does not produce a failure.
     public func consumeRunFailure() -> (any Error)? {

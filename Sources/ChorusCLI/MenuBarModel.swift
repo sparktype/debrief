@@ -13,6 +13,8 @@ final class MenuBarController {
 
     /// Serializes start/stop/mute/mode so concurrent menu clicks do not race.
     private var actionTask: Task<Void, Never>?
+    /// Polls active voice while the menu bar is up.
+    private var voicePollTask: Task<Void, Never>?
 
     init(home: URL, service: ResidentService) {
         self.home = home
@@ -21,24 +23,47 @@ final class MenuBarController {
             serviceRunning: false,
             muted: false,
             mode: .normal,
+            activeVoice: nil,
             lastError: nil
         )
+    }
+
+    /// Starts a short-interval poll so the status item can show the speaking voice.
+    func startVoicePolling() {
+        voicePollTask?.cancel()
+        voicePollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                await refresh()
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+        }
+    }
+
+    func stopVoicePolling() {
+        voicePollTask?.cancel()
+        voicePollTask = nil
     }
 
     func refresh() async {
         let snapshot = Diagnostics(home: home).status()
         let running = await service.isRunning
+        let voice = await service.activeVoice()
         var lastError = status.lastError
         if let failure = await service.consumeRunFailure() {
             lastError = Self.describe(failure)
         }
-        status = MenuBarStatus(
+        let next = MenuBarStatus(
             serviceRunning: running,
             muted: snapshot.muted,
             mode: snapshot.mode,
+            activeVoice: voice,
             lastError: lastError
         )
-        onStatusChange?()
+        // Avoid rebuilding the menu on every poll tick when nothing visible changed.
+        if next != status {
+            status = next
+            onStatusChange?()
+        }
     }
 
     func start() async {

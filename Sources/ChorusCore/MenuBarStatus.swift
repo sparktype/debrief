@@ -6,17 +6,21 @@ public struct MenuBarStatus: Equatable, Sendable {
     public var serviceRunning: Bool
     public var muted: Bool
     public var mode: ChorusMode
+    /// Currently speaking voice ID (`F1`…`M5`), or `nil` when idle.
+    public var activeVoice: String?
     public var lastError: String?
 
     public init(
         serviceRunning: Bool,
         muted: Bool,
         mode: ChorusMode,
+        activeVoice: String? = nil,
         lastError: String? = nil
     ) {
         self.serviceRunning = serviceRunning
         self.muted = muted
         self.mode = mode
+        self.activeVoice = activeVoice
         self.lastError = lastError
     }
 
@@ -24,6 +28,14 @@ public struct MenuBarStatus: Equatable, Sendable {
     public var summaryLine: String {
         let service = serviceRunning ? "서비스 실행 중" : "서비스 중지됨"
         let mute = muted ? "음소거" : "음성 사용"
+        if let activeVoice, !activeVoice.isEmpty {
+            return "\(service) · \(mute) · \(mode.rawValue) · \(activeVoice)"
+        }
         return "\(service) · \(mute) · \(mode.rawValue)"
+    }
+
+    /// Menu bar button title: voice while speaking, empty when idle.
+    public var statusItemTitle: String {
+        activeVoice ?? ""
     }
 }

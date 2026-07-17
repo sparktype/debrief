@@ -75,6 +75,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installStatusItemIfNeeded()
+        controller.startVoicePolling()
         Task { @MainActor in
             do {
                 try await service.start()
@@ -247,17 +248,27 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyStatusIcon() {
         guard let button = item?.button else { return }
         let status = controller.status
-        button.title = ""
-        button.imagePosition = .imageOnly
+        let speaking = status.activeVoice
+
+        // While speaking: show voice ID (F1/M3…). Idle: icon only.
+        if let speaking, !speaking.isEmpty {
+            button.title = speaking
+            button.imagePosition = .imageLeading
+            button.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        } else {
+            button.title = ""
+            button.imagePosition = .imageOnly
+        }
 
         if let custom = menuBarCustomImage() {
             button.image = custom
             button.alphaValue = (status.muted || !status.serviceRunning) ? 0.55 : 1.0
-        } else if let symbol = menuBarSymbol(named: status.muted ? "speaker.slash.fill" : "waveform") {
+        } else if let symbol = menuBarSymbol(
+            named: status.muted ? "speaker.slash.fill" : (speaking != nil ? "waveform" : "waveform")
+        ) {
             button.image = symbol
             button.alphaValue = 1.0
         } else {
-            // Last resort: keep a glyph so the item is not an empty gap.
             button.image = menuBarSymbol(named: "waveform")
             button.alphaValue = 1.0
         }
@@ -432,6 +443,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !isShuttingDown else { return }
         isShuttingDown = true
         item?.isVisible = false
+        controller.stopVoicePolling()
         Task { @MainActor in
             await controller.quit()
             Foundation.exit(0)
