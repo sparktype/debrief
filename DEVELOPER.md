@@ -80,7 +80,7 @@ All fields are mandatory. Validation rejects unknown fields, invalid voice ident
 
 `chorus install` performs staged executable installation, pinned model installation, hook and skill merge, LaunchAgent replacement, and a health-gated legacy service cutover. Owned-file digests prevent uninstall or repair from overwriting user modifications. Model activation uses a verified staging directory and atomic replacement. LaunchAgent `ProgramArguments` are `[installedBinary, "menubar"]`.
 
-The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit boots out `com.chorus.tts` first, then stops the service and terminates so KeepAlive does not relaunch.
+The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. It must not await `launchctl bootout` from inside the job — launchd waits for the process to exit and that deadlocks. `install --repair` re-enables and bootstraps the agent.
 
 ## Build and verification
 

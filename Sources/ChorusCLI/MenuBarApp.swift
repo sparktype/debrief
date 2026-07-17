@@ -255,9 +255,13 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func quitChorus() {
         guard !isShuttingDown else { return }
         isShuttingDown = true
+        // Hide status item immediately so the UI feels responsive.
+        item.isVisible = false
         Task { @MainActor in
             await controller.quit()
-            NSApp.terminate(nil)
+            // Hard exit: NSApp.terminate can stall under launchd agent unload,
+            // and we must not block on bootout (self-deadlock with launchd).
+            Foundation.exit(0)
         }
     }
 }

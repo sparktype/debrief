@@ -69,6 +69,11 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         )
         try recordRuntimeOwnership(paths: paths)
         let domain = "gui/\(userID)"
+        // Menu Quit disables the agent so KeepAlive does not relaunch; re-enable on install.
+        try await launchctl.run(
+            arguments: LaunchAgentControl.enableArguments(userID: userID),
+            allowFailure: true
+        )
         try await launchctl.run(
             arguments: ["bootout", "\(domain)/com.chorus.tts"],
             allowFailure: true

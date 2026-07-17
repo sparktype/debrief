@@ -92,12 +92,15 @@ final class MenuBarController {
         await service.stop(removePid: true)
     }
 
-    /// Menu Quit: unload LaunchAgent (prevent KeepAlive relaunch), then full service stop.
+    /// Menu Quit: disable LaunchAgent (so KeepAlive will not relaunch), then full stop.
+    /// Must **not** await `bootout` from inside this process — launchd waits for our exit.
     /// SIGTERM/system terminate should call `shutdownService()` only — not this.
     func quit(launchctl: any LaunchctlRunning = ProcessLaunchctlRunner()) async {
         await enqueue {
-            try? await LaunchAgentControl.bootout(launchctl: launchctl)
+            try? await LaunchAgentControl.disable(launchctl: launchctl)
             await self.service.stop(removePid: true)
+            // Best-effort unload after we are disabled; do not wait (avoids self-deadlock).
+            LaunchAgentControl.bootoutDetached()
         }
     }
 

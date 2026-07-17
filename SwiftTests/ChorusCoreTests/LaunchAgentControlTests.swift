@@ -5,18 +5,29 @@ import Testing
 
 @Suite("LaunchAgentControlTests")
 struct LaunchAgentControlTests {
-    @Test func bootoutArgumentsTargetGuiDomainAndLabel() {
-        let args = LaunchAgentControl.bootoutArguments(userID: 501)
-        #expect(args == ["bootout", "gui/501/com.chorus.tts"])
+    @Test func serviceTargetAndBootoutArguments() {
         #expect(LaunchAgentControl.label == "com.chorus.tts")
+        #expect(LaunchAgentControl.serviceTarget(userID: 501) == "gui/501/com.chorus.tts")
+        #expect(LaunchAgentControl.bootoutArguments(userID: 501) == ["bootout", "gui/501/com.chorus.tts"])
+        #expect(LaunchAgentControl.disableArguments(userID: 501) == ["disable", "gui/501/com.chorus.tts"])
+        #expect(LaunchAgentControl.enableArguments(userID: 501) == ["enable", "gui/501/com.chorus.tts"])
     }
 
-    @Test func bootoutInvokesLaunchctlWithAllowFailure() async throws {
+    @Test func disableInvokesLaunchctlWithAllowFailure() async throws {
         let runner = RecordingLaunchctl()
-        try await LaunchAgentControl.bootout(userID: 42, launchctl: runner)
+        try await LaunchAgentControl.disable(userID: 42, launchctl: runner)
         let calls = await runner.calls
         #expect(calls.count == 1)
-        #expect(calls[0].arguments == ["bootout", "gui/42/com.chorus.tts"])
+        #expect(calls[0].arguments == ["disable", "gui/42/com.chorus.tts"])
+        #expect(calls[0].allowFailure == true)
+    }
+
+    @Test func enableInvokesLaunchctlWithAllowFailure() async throws {
+        let runner = RecordingLaunchctl()
+        try await LaunchAgentControl.enable(userID: 42, launchctl: runner)
+        let calls = await runner.calls
+        #expect(calls.count == 1)
+        #expect(calls[0].arguments == ["enable", "gui/42/com.chorus.tts"])
         #expect(calls[0].allowFailure == true)
     }
 }

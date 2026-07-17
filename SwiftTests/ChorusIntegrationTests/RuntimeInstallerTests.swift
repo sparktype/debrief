@@ -32,7 +32,8 @@ struct RuntimeInstallerTests {
         #expect(mode.intValue == 0o755)
         let recorded = await events.values
         #expect(recorded == [
-            "model:true", "bootout", "bootstrap", "model:true", "bootout", "bootstrap",
+            "model:true", "enable", "bootout", "bootstrap",
+            "model:true", "enable", "bootout", "bootstrap",
         ])
         let plist = try PropertyListSerialization.propertyList(
             from: Data(contentsOf: ChorusPaths.forHome(home).launchAgentURL), format: nil
@@ -131,6 +132,10 @@ private struct FakeLaunchctlRunner: LaunchctlRunning {
             await events.append("bootout\(suffix)")
         } else if arguments.first == "bootstrap" {
             await events.append("bootstrap")
+        } else if arguments.first == "enable" {
+            await events.append("enable")
+        } else if arguments.first == "disable" {
+            await events.append("disable")
         }
     }
 }

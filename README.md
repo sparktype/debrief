@@ -17,7 +17,7 @@ swift build -c release
 
 `chorus install` copies the executable to `~/.local/share/chorus/bin/chorus`, downloads and verifies the pinned model on first installation, installs the LaunchAgent, and merges the five Chorus hooks and six skills for both supported hosts. Use `chorus install --repair` to restore missing or damaged owned files.
 
-After install, LaunchAgent (`com.chorus.tts`) runs `chorus menubar`. That process is an LSUIElement menu bar app that hosts the TTS service in-process. The menu controls mute, mode, service start/stop, and Quit (Quit unloads the LaunchAgent so KeepAlive does not relaunch). Re-enable later with `chorus install --repair`. CLI subcommands remain for hooks, install, status, doctor, speak, mute, and mode. `chorus daemon` is a headless debug path and is not the install LaunchAgent target.
+After install, LaunchAgent (`com.chorus.tts`) runs `chorus menubar`. That process is an LSUIElement menu bar app that hosts the TTS service in-process. The menu controls mute, mode, service start/stop, and Quit. Quit disables the LaunchAgent (so KeepAlive does not relaunch) and exits; it does not wait on `bootout` from inside the job (that deadlocks with launchd). Re-enable later with `chorus install --repair`. CLI subcommands remain for hooks, install, status, doctor, speak, mute, and mode. `chorus daemon` is a headless debug path and is not the install LaunchAgent target.
 
 Codex users should review the installed definitions in `/hooks` after installation.
 
