@@ -12,7 +12,7 @@ public enum CommandError: Error, Equatable, CustomStringConvertible {
 }
 
 /// Process entry modes. User-facing control is the menu bar; agents use `hook`.
-public enum ChorusCommand: Equatable {
+public enum ChorusCommand: Equatable, Sendable {
     case install(codex: Bool, claude: Bool, repair: Bool)
     case uninstall(codex: Bool, claude: Bool)
     case menubar

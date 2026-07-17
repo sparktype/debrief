@@ -3,7 +3,6 @@ import ChorusCore
 import Foundation
 
 /// Drives menu actions against `ResidentService` + config/diagnostics.
-/// AppKit UI lives in `MenuBarApp`; this type stays free of UI frameworks.
 @MainActor
 final class MenuBarController {
     private(set) var status: MenuBarStatus

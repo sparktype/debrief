@@ -6,19 +6,15 @@ import Foundation
 
 /// AppKit-only menubar host.
 ///
-/// **Launch order (critical):** create `NSApplication` + status item first, then start
-/// TTS in a background task. Awaiting model load before `app.run()` leaves no visible
-/// icon and conflicts with async Swift main for Finder-launched apps.
+/// Must run on the **real main OS thread** (`Thread.isMainThread`), not only
+/// Swift `@MainActor` — CLI async main often starts off the main thread, and
+/// AppKit status items created there never appear.
+@MainActor
 enum MenuBarApp {
-    /// Strong retain for process lifetime (`NSApplication.delegate` is weak).
-    @MainActor private static var retainedHost: MenuBarHost?
+    private static var retainedHost: MenuBarHost?
 
-    /// Shows the status item immediately, starts TTS in the background, then blocks on AppKit.
-    /// Must run on the main actor (`await MenuBarApp.runBlocking` from async main).
-    @MainActor
+    /// Call on MainActor (process main thread). Blocks in `NSApplication.run()`.
     static func runBlocking(home: URL) {
-        // Second Finder click while LaunchAgent already owns the resident: exit quietly.
-        // (Cannot attach to another process's NSStatusItem.)
         if ResidentService.isForeignHostRunning(home: home) {
             Foundation.exit(0)
         }
@@ -32,7 +28,7 @@ enum MenuBarApp {
             audioFactory: { AudioPlayer() }
         )
         let controller = MenuBarController(home: home, service: service)
-        let host = MenuBarHost(controller: controller)
+        let host = MenuBarHost(controller: controller, service: service)
         retainedHost = host
         app.delegate = host
 
@@ -40,13 +36,45 @@ enum MenuBarApp {
         signal(SIGINT, SIG_IGN)
         let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         let interruption = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-        termination.setEventHandler { host.requestShutdown() }
-        interruption.setEventHandler { host.requestShutdown() }
+        termination.setEventHandler {
+            Task { @MainActor in host.requestShutdown() }
+        }
+        interruption.setEventHandler {
+            Task { @MainActor in host.requestShutdown() }
+        }
         termination.resume()
         interruption.resume()
         host.retainSignalSources([termination, interruption])
 
-        // Start TTS after the status item exists (SF Symbol is already visible).
+        app.run()
+    }
+}
+
+@MainActor
+final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private let controller: MenuBarController
+    private let service: ResidentService
+    private var item: NSStatusItem?
+    private let menu = NSMenu()
+    private var signalSources: [any DispatchSourceProtocol] = []
+    private var isShuttingDown = false
+    private var didInstallStatusItem = false
+
+    init(controller: MenuBarController, service: ResidentService) {
+        self.controller = controller
+        self.service = service
+        super.init()
+        menu.autoenablesItems = false
+        menu.delegate = self
+        controller.onStatusChange = { [weak self] in
+            Task { @MainActor in
+                self?.rebuildMenu()
+            }
+        }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        installStatusItemIfNeeded()
         Task { @MainActor in
             do {
                 try await service.start()
@@ -57,48 +85,47 @@ enum MenuBarApp {
             }
             await controller.refresh()
         }
-
-        app.run()
     }
-}
 
-@MainActor
-final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let controller: MenuBarController
-    /// Fixed width so the item stays reserved even while the image loads.
-    private let item = NSStatusBar.system.statusItem(withLength: 22)
-    /// Stable menu instance — rebuild mutates items in place so open menus stay visible.
-    private let menu = NSMenu()
-    private var signalSources: [any DispatchSourceProtocol] = []
-    private var isShuttingDown = false
+    func applicationWillBecomeActive(_ notification: Notification) {
+        installStatusItemIfNeeded()
+        item?.isVisible = true
+        applyStatusIcon()
+    }
 
-    init(controller: MenuBarController) {
-        self.controller = controller
-        super.init()
-        menu.autoenablesItems = false
-        menu.delegate = self
-        item.menu = menu
-        controller.onStatusChange = { [weak self] in
-            self?.rebuildMenu()
+    private func installStatusItemIfNeeded() {
+        guard !didInstallStatusItem else {
+            item?.isVisible = true
+            return
         }
-        if let button = item.button {
-            button.imagePosition = .imageOnly
+        didInstallStatusItem = true
+
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.menu = menu
+        statusItem.isVisible = true
+
+        if let button = statusItem.button {
+            button.imagePosition = .imageLeading
             button.imageScaling = .scaleProportionallyDown
-            button.imageHugsTitle = false
+            button.imageHugsTitle = true
             button.toolTip = "Chorus"
-            // Guaranteed-visible template glyph first; custom silhouette replaces it if load works.
-            button.image = Self.menuBarSymbol(named: "waveform")
+            // Text title is always visible even if image/template fails.
+            button.title = "Chorus"
+            button.font = NSFont.menuBarFont(ofSize: 0)
+            button.image = menuBarSymbol(named: "waveform")
+        } else {
+            NSLog("Chorus: NSStatusItem.button is nil")
         }
-        item.isVisible = true
+
+        item = statusItem
         rebuildMenu()
         applyStatusIcon()
-    }
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Re-assert visibility once the app is fully in the GUI session.
-        item.isVisible = true
-        applyStatusIcon()
-        Task { await controller.refresh() }
+        NSLog(
+            "Chorus: status item installed visible=%d button=%d mainThread=%d",
+            statusItem.isVisible ? 1 : 0,
+            statusItem.button != nil ? 1 : 0,
+            Thread.isMainThread ? 1 : 0
+        )
     }
 
     func retainSignalSources(_ sources: [any DispatchSourceProtocol]) {
@@ -124,9 +151,10 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return .terminateLater
     }
 
-    /// Refresh status when the menu opens so header/icon track service death and config.
     func menuWillOpen(_ menu: NSMenu) {
-        Task { await controller.refresh() }
+        Task { @MainActor in
+            await controller.refresh()
+        }
     }
 
     private func rebuildMenu() {
@@ -217,29 +245,29 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyStatusIcon()
     }
 
-    /// Prefers custom silhouette template; always falls back to SF Symbol.
     private func applyStatusIcon() {
+        guard let button = item?.button else { return }
         let status = controller.status
-        if let custom = Self.menuBarCustomImage() {
-            item.button?.image = custom
-            item.button?.alphaValue = (status.muted || !status.serviceRunning) ? 0.45 : 1.0
+        button.title = "Chorus"
+
+        if let custom = menuBarCustomImage() {
+            button.image = custom
+            button.imagePosition = .imageLeading
+            button.alphaValue = (status.muted || !status.serviceRunning) ? 0.55 : 1.0
+        } else if let symbol = menuBarSymbol(named: status.muted ? "speaker.slash.fill" : "waveform") {
+            button.image = symbol
+            button.imagePosition = .imageLeading
+            button.alphaValue = 1.0
         } else {
-            let symbolName: String
-            if status.muted {
-                symbolName = "speaker.slash.fill"
-            } else if status.serviceRunning {
-                symbolName = "speaker.wave.2.fill"
-            } else {
-                symbolName = "waveform"
-            }
-            item.button?.image = Self.menuBarSymbol(named: symbolName)
-            item.button?.alphaValue = 1.0
+            button.image = nil
+            button.imagePosition = .imageOnly
+            button.alphaValue = 1.0
         }
-        item.button?.appearsDisabled = false
-        item.isVisible = true
+        button.appearsDisabled = false
+        item?.isVisible = true
     }
 
-    private static func menuBarCustomImage() -> NSImage? {
+    private func menuBarCustomImage() -> NSImage? {
         for url in menuBarIconCandidateURLs() {
             guard FileManager.default.fileExists(atPath: url.path),
                   let source = NSImage(contentsOf: url),
@@ -249,7 +277,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return nil
     }
 
-    private static func menuBarIconCandidateURLs() -> [URL] {
+    private func menuBarIconCandidateURLs() -> [URL] {
         let resources = resourcesDirectory()
         return [
             resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName)@2x.png"),
@@ -258,7 +286,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ]
     }
 
-    private static func resourcesDirectory() -> URL {
+    private func resourcesDirectory() -> URL {
         let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let fromExecutable = executable
             .deletingLastPathComponent()
@@ -274,7 +302,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return fromExecutable
     }
 
-    private static func preparedMenuBarImage(_ source: NSImage) -> NSImage? {
+    private func preparedMenuBarImage(_ source: NSImage) -> NSImage? {
         let side: CGFloat = 18
         let pixel = Int(side * 2)
         guard let bitmap = NSBitmapImageRep(
@@ -303,8 +331,6 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSGraphicsContext.restoreGraphicsState()
 
         convertToTemplateSilhouette(bitmap)
-
-        // If conversion wiped everything, reject so SF Symbol is used.
         if silhouetteCoverage(bitmap) < 0.02 {
             return nil
         }
@@ -315,7 +341,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return image
     }
 
-    private static func silhouetteCoverage(_ bitmap: NSBitmapImageRep) -> Double {
+    private func silhouetteCoverage(_ bitmap: NSBitmapImageRep) -> Double {
         guard let data = bitmap.bitmapData else { return 0 }
         let width = bitmap.pixelsWide
         let height = bitmap.pixelsHigh
@@ -334,7 +360,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return Double(solid) / Double(width * height)
     }
 
-    private static func convertToTemplateSilhouette(_ bitmap: NSBitmapImageRep) {
+    private func convertToTemplateSilhouette(_ bitmap: NSBitmapImageRep) {
         guard let data = bitmap.bitmapData else { return }
         let width = bitmap.pixelsWide
         let height = bitmap.pixelsHigh
@@ -351,7 +377,6 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let b = Int(p[2])
                 let a = Int(p[3])
                 let darkness = max(0, 255 - (r + g + b) / 3)
-                // Colorful icons: also treat saturation as signal (not just darkness).
                 let maxC = max(r, max(g, b))
                 let minC = min(r, min(g, b))
                 let saturation = maxC - minC
@@ -373,42 +398,42 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private static func menuBarSymbol(named name: String) -> NSImage? {
+    private func menuBarSymbol(named name: String) -> NSImage? {
         let candidates = [name, "waveform", "speaker.wave.2"]
-        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
         for candidate in candidates {
             guard let base = NSImage(systemSymbolName: candidate, accessibilityDescription: "Chorus")
             else { continue }
             let image = base.withSymbolConfiguration(configuration) ?? base
             image.isTemplate = true
-            image.size = NSSize(width: 18, height: 18)
+            image.size = NSSize(width: 16, height: 16)
             return image
         }
         return nil
     }
 
     @objc private func toggleMute() {
-        Task { await controller.toggleMute() }
+        Task { @MainActor in await controller.toggleMute() }
     }
 
     @objc private func selectMode(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let mode = ChorusMode(rawValue: raw) else { return }
-        Task { await controller.setMode(mode) }
+        Task { @MainActor in await controller.setMode(mode) }
     }
 
     @objc private func startService() {
-        Task { await controller.start() }
+        Task { @MainActor in await controller.start() }
     }
 
     @objc private func stopService() {
-        Task { await controller.stop() }
+        Task { @MainActor in await controller.stop() }
     }
 
     @objc private func quitChorus() {
         guard !isShuttingDown else { return }
         isShuttingDown = true
-        item.isVisible = false
+        item?.isVisible = false
         Task { @MainActor in
             await controller.quit()
             Foundation.exit(0)
