@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for agents working in this repository.
 
 ## 팀 정보
 
@@ -8,323 +8,101 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **오너**: 박상선 책임매니저  
 **리포**: github.com/sparktype/chorus
 
-TTS Supervisor(`./server.sh status`)가 실행 중이면 Supertonic이 자동으로 켜져 에이전트별 다성 TTS가 활성화됩니다.  
-에이전트 타입 → 목소리 매핑은 `voice-map.json`에서 편집하며, 코드 변경 없이 JSON만 수정하면 됩니다.
-
-**팀 구성 시 모델**: 반드시 `claude-sonnet-4-6`(Sonnet 4.6)만 사용합니다.  
-HMG 사내 AI에서 Opus 모델은 지원되지 않으며, Agent 파라미터 `model: "sonnet"`으로 지정합니다.
+**팀 구성 시 모델**: `claude-sonnet-4-6`(Sonnet 4.6)만 사용합니다.  
+HMG 사내 AI에서 Opus는 지원되지 않으며, Agent 파라미터 `model: "sonnet"`으로 지정합니다.
 
 ## 프로젝트 개요
 
-Claude Code의 응답을 자동으로 음성으로 읽어주는 hook 기반 시스템. 두 개의 주요 프로세스로 구성된다.
+Chorus는 Codex·Claude Code용 **로컬 TTS 전용** macOS Apple Silicon 서비스입니다.  
+단일 Swift 실행 파일 `chorus`가 모델 설치, 메뉴바 상주 daemon, hook/skill 배선, 합성을 담당합니다.
 
-- **hook_voice** (Python 패키지): `python -m hook_voice <subcommand>` — Claude Code hook에서 호출
-- **TTS Supervisor** (`tts_server/supervisor.py`): launchd가 단일 프로세스로 관리 — uvicorn(포트 7777)·TTS Player 루프를 포함
+**Python 런타임은 제거되었습니다.** `hook_voice`, `tts_server`, pytest, FastAPI, Whisper, LLM 요약을 재도입하지 마세요.
 
-## 명령어
+## 툴체인 (필수)
+
+**Xcode 27 beta**를 기준으로 빌드·테스트합니다. Command Line Tools만 있으면 Swift Testing 매크로가 실패합니다.
 
 ```bash
-# 테스트
-.venv/bin/pytest tests/ -v                        # hook_voice 테스트
-.venv/bin/pytest tts_server/test_server.py -v    # TTS 서버 테스트
-.venv/bin/pytest tests/ tts_server/test_server.py tts_server/test_supervisor.py -v  # 전체
-
-# TTS 서버 관리 (통합 스크립트)
-./server.sh start     # 수동 시작
-./server.sh stop      # 종료
-./server.sh restart   # 재시작
-./server.sh status    # 상태 확인 (TTS 서버·hook 등록 여부)
-./server.sh logs [N]  # 마지막 N줄 로그 (기본 50)
-./server.sh install   # Stop hook + launchd LaunchAgent 등록 (권장)
-./server.sh uninstall # 완전 제거
-
-# 초기 설치 (.venv 생성 + 모델 다운로드)
-./setup-tts.sh
-
-# 진단 및 테스트 CLI
-python -m hook_voice voice test          # 기본 음성 TTS 테스트
-python -m hook_voice voice test M2 "안녕하세요"  # 특정 목소리 테스트
-python -m hook_voice doctor              # TTS 시스템 전체 진단
-python -m hook_voice control skip        # 현재 재생 중 트랙 건너뜀
-python -m hook_voice control flush       # 재생 큐 비우기
-curl -s http://localhost:7777/interrupt -X POST  # TTS 즉시 중단
-curl -s http://localhost:7777/playback/status    # 재생 상태 확인
-curl -s http://localhost:7777/health             # 서버 헬스 (model_loaded, queue_depth 포함)
-
-# HUD 레이블
-python -m hook_voice hud-label           # HUD 레이블 JSON 출력 (LLM·네트워크 호출 없음)
-curl -s http://localhost:7777/chorus/hud # 서버에서 실시간 HUD 스냅샷 조회
-
-# 세션 다이제스트
-python -m hook_voice digest              # 마지막 10개 TTS 이벤트 요약
-python -m hook_voice digest --last 20    # 마지막 20개 이벤트 요약
-
-# 자동 학습·적응
-python -m hook_voice suggest-config   # 사용 패턴 분석 → 설정 권장안 출력
-python -m hook_voice privacy status   # 통계 파일 정보
-python -m hook_voice privacy clear    # 통계 데이터 전체 삭제
+export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+# 또는
+./scripts/with-xcode.sh swift test
+./scripts/with-xcode.sh swift build -c release
 ```
 
-## 아키텍처
+| 항목 | 값 |
+|------|-----|
+| App | `/Applications/Xcode-beta.app` |
+| Build (검증됨) | Xcode 27.0 / 27A5218g |
+| Swift | 6.4 |
+| 플랫폼 | macOS 14+, arm64 |
 
-### 실행 흐름
+`.envrc`가 `DEVELOPER_DIR`을 설정합니다. 시스템 전역 전환이 필요하면:
 
-```
-Claude 응답 완료
-  → Stop hook (hooks/stop.sh)
-    → python -m hook_voice hook
-      → [P2-B] bridge_enabled=true이면 bridge_thinking.wav 즉시 enqueue (침묵 제거)
-      → [P2-A] SpeechPolicy.decide(text) → mode(full/summary_only/earcon_only/skip), priority
-      → [P0] has_heavy_code(text) → 코드 비율 40%+ 이면 summarize_with_code_hint() (LLM 생략)
-      → extract_summary() (hook_voice/summarizer.py)  # HMG LLM API → 규칙 기반 폴백
-      → [P0] chunk_for_tts(summary) → 문장 단위 청크 분할 (TTS 잘림 방지)
-      → speak_hook_chunked() (hook_voice/player.py)
-          ├─ [P1-B] enqueue_with_priority(priority=NORMAL) — HIGH/NORMAL/LOW + 30초 TTL
-          └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
-
-서브에이전트 응답 완료
-  → SubagentStop hook (hooks/subagent-stop.sh)
-    → python -m hook_voice subagent-stop [agentType]
-      → resolve_voice(agentType) (hook_voice/voice_router.py)  # voice-map.json → voice ID
-      → resolve_voice_name(agentType) → "빌", "리누스" 등 인물 이름
-      → get_agent_label(agentType) → "리뷰어" / "플래너" / "빌더" 등
-      → resolve_instruct(agentType) → 역할별 TTS instruct 텍스트
-      → extract_one_liner() (hook_voice/summarizer.py)  # LLM 한 줄 요약 + 특수문자 제거
-      → [P1-A] earcon.enabled=true이면 earcon_switch.wav enqueue (에이전트 전환 청각 큐)
-      → f"{label} {voice_name}입니다. {one_liner}" → speak_agent() (hook_voice/player.py)
-          ├─ Supertonic MLX: localhost:7777/v1/tts → WAV 생성
-          └─ /tmp/tts-spool/<ts>_<rand>.wav 기록 → 즉시 반환
-
-TTS Player Loop (supervisor.py 내 asyncio Task)
-  → /tmp/tts-spool/ 폴링 → ts 오름차순 afplay 순차 재생
-
-세션 시작 / 프롬프트 입력
-  → SessionStart / UserPromptSubmit hook
-    → python -m hook_voice hook-suggest
-      → read_recent_transcripts() → recommend_skill() (hook_voice/skill_recommender.py)
-      → 스킬 추천 시 쿨다운 기록 (발화 없음 — 반복 안내 제거)
-
-Whisper STT 음성 입력 (stt.enabled=true 시)
-  → Hammerspoon Cmd+Shift+Space 또는 /listen slash 명령
-    → HTTP POST localhost:7777/stt/toggle
-      → SpeechListener.toggle() (hook_voice/speech_listener.py)
-          ├─ idle → recording: sounddevice.InputStream 열기 (16kHz mono)
-          └─ recording → idle: InputStream 닫기
-               → numpy concatenate → mlx_whisper.transcribe(language="ko")
-               → 텍스트 → pbcopy → osascript Cmd+V (클립보드 주입)
-
-LLM 어시스턴트 (assistantTts.enabled=true 시)
-  → Stop hook
-    → brief_assistant_response(text) (hook_voice/assist/briefing.py)
-        ├─ has_heavy_code() → summarize_with_code_hint() (LLM 없음)
-        ├─ LLM 브리핑: 결론·파일·검증·다음 단계 → 100~130자 경어체
-        └─ 타임아웃/실패 시 extract_summary() 폴백 → TTS 발화
-
-  → PostToolUse Bash (exit_code != 0)
-    → explain_command_failure(cmd, output, exit_code) (hook_voice/assist/briefing.py)
-        ├─ _extract_relevant_lines() → 마지막 30줄 추출
-        ├─ _redact_secrets() → 30자+ 토큰 [REDACTED] 치환
-        └─ LLM: 실패 원인·다음 단계 1~2문장 → TTS 발화
-
-  → PreToolUse Bash (고위험 커맨드 감지 시)
-    → explain_command_risk(cmd) (hook_voice/assist/briefing.py)
-        ├─ _classify_risk() → rm -rf·git reset --hard·sudo 등 패턴 매칭
-        ├─ 60초 커맨드 패밀리 쿨다운 내 재호출 → "" (발화 없음)
-        └─ LLM: 위험성 1문장 → TTS 발화
-
-  → UserPromptSubmit
-    → recommend_prompt_assist(prompt, context, stats) (hook_voice/assist/recommend.py)
-        ├─ LLM: focus/quiet/verbose 중 적합한 voiceMode 추천 + 이유
-        ├─ 300초 동일 value 쿨다운 내 재호출 → None (발화 없음)
-        └─ 추천 결과: TTS 발화만 — 설정 자동 변경 없음
+```bash
+sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 ```
 
-### 파일별 역할
+## 규범 문서
 
-| 파일 | 역할 |
-|------|------|
-| `hook_voice/__main__.py` | `python -m hook_voice <subcommand>` 진입점 |
-| `hook_voice/config.py` | `.voice.json` 로더 (`.voice-persona.json` 폴백), SttConfig·브리지·우선순위 설정 포함 |
-| `hook_voice/llm_client.py` | HMG Hub LLM 클라이언트 (httpx AsyncClient) |
-| `hook_voice/last_message.py` | 마지막 TTS 텍스트 파일 영속화 |
-| `hook_voice/summarizer.py` | LLM 요약 + 규칙 기반 폴백 + 코드 블록 축약 + TTS 청크 분할 |
-| `hook_voice/voice_router.py` | agentType → 카테고리 → voice ID·이름·instruct·meta_voice 변환 |
-| `hook_voice/skill_recommender.py` | transcript 분석 → LLM → 스킬 추천 판단 + 쿨다운 관리 (발화 없음) |
-| `hook_voice/player.py` | supertonic MLX spool enqueue — speak_hook_chunked / speak_agent / enqueue_earcon |
-| `hook_voice/hook_handlers.py` | 각 subcommand 구현 함수 (voice test / doctor / control 포함) |
-| `hook_voice/speech_listener.py` | Whisper STT — 마이크 녹음·mlx-whisper 전사·클립보드 주입 + VAD interrupt |
-| `hook_voice/speech/pipeline.py` | Speech Preparation Plugin Chain — 언어 감지·발음 정규화·SSML 추상화 |
-| `hook_voice/delivery/priority_spool.py` | HIGH/NORMAL/LOW 우선순위 큐 + 30초 TTL 만료 |
-| `hook_voice/event/policy.py` | SmartTTSRouter (SpeechPolicy) — 응답 타입 기반 발화 모드·우선순위 결정 |
-| `hook_voice/learning/stats_store.py` | TTS 사용 통계 JSONL 저장·조회·삭제 |
-| `hook_voice/learning/advisor.py` | 통계 분석 → 설정 권장안 생성 |
-| `hooks/listen.sh` | `/listen` slash 명령 — `/stt/toggle` curl 래퍼 |
-| `assets/earcon_switch.wav` | 에이전트 전환 청각 큐 (0.3초 880Hz 감쇠 톤) |
-| `assets/bridge_thinking.wav` | 브리지 WAV — Stop hook 후 침묵 제거용 (0.5초) |
-| `tts_server/server.py` | FastAPI 단일 서버 — TTS·STT·메트릭·DLQ·인터럽트·헬스 (포트 7777) |
-| `tts_server/supervisor.py` | uvicorn·TTS Player 통합 supervisor |
-| `hook_voice/hud/snapshot.py` | HUD 스냅샷 저장·로드·레이블 생성 (`~/.local/share/chorus/hud.json`) |
-| `hook_voice/assist/briefing.py` | LLM 응답 브리핑(Stop)·명령 실패 설명(PostToolUse)·위험 경고(PreToolUse) |
-| `hook_voice/assist/recommend.py` | 프롬프트 분석 → voiceMode 추천 (UserPromptSubmit), 300초 쿨다운 |
-| `.claude/skills/chorus-hud/SKILL.md` | `/chorus:hud` 스킬 — claude-hud `--extra-cmd` 연동 설정 안내 |
-| `.claude/skills/chorus-digest/SKILL.md` | `/chorus:digest` 스킬 — 세션 다이제스트 실행 안내 |
+1. `README.md` — 사용자 진입점
+2. `DEVELOPER.md` — 개발·빌드·범위
+3. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계
+4. `docs/superpowers/plans/2026-07-15-swift-single-binary-tts.md` — 구현 플랜
+5. `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` — 메뉴바 상주
 
-### TTS 서버 설계 포인트
+## 제품 경계
 
-- **supertonic-mlx**: ailuntx/supertonic-mlx 기반, 포트 7777에서 MLX Metal GPU로 실행 — `/v1/tts` 엔드포인트로 WAV 생성
-- MLX Metal GPU 스레드 친화성 유지를 위해 `ThreadPoolExecutor(max_workers=1)`로 모델 로드와 추론을 **동일한 단일 워커 스레드** 에서 처리
-- `afplay -r <speed>` 로 재생 속도 후처리
-- `lang_code=korean` 시 `_TECH_PHONETICS` 사전으로 영문 기술 용어 → 한국어 발음 치환
-- **파일 스풀 직렬화**: hook·서브에이전트 오디오는 `/tmp/tts-spool/`에 기록, TTS Player 데몬이 단일 소비자로 순차 재생 — 동시 발화 없음
-- **우선순위 큐**: `delivery/priority_spool.py` — HIGH(즉시 선점), NORMAL(최대 3개·30초 TTL), LOW(큐 비어야 삽입)
-- **재생 인터럽트**: `POST /interrupt` → afplay SIGTERM → 0.3초 → SIGKILL 2단계 중단
-- **SmartTTSRouter**: `event/policy.py` — 에러는 HIGH, 짧은 ack는 earcon only, 코드 비중 높으면 summary only
-- **TTS 잘림 방지**: `chunk_for_tts()`로 80자 단위 문장 분할, `speak_hook_chunked()`로 순차 enqueue
-- 서브에이전트 발화: `f"{role} {voice_name}입니다. {one_liner}"` 형식 (예: "리뷰어 빌입니다."), 에이전트 전환 시 earcon 0.3초 선행 재생
+**포함**
 
-### 설정 (`hook_voice/config.py` 기본값)
+- Supertonic 3 + ONNX Runtime (Swift 패키지)
+- 에이전트 speech envelope 검증 (`v`, `text`, `voice`, `speed`, `volume`)
+- Unix domain socket + 메뉴바 `ResidentService` (LaunchAgent `com.chorus.tts`)
+- `install` / `uninstall` / `menubar` / `hook`
+- Hooks: SessionStart, UserPromptSubmit, SubagentStart, Stop, SubagentStop
+- 메뉴바: mute · mode · start/stop · quit (사용자 CLI 없음)
 
-| 키 | 기본값 | 설명 |
-|----|--------|------|
-| `autoSpeak` | `true` | hook 모드 자동 재생 여부 |
-| `minChars` | `50` | 이 글자 수 이하면 TTS 건너뜀 |
-| `voice` | `Sohee` | MLX 스피커 또는 macOS voice |
-| `summaryModel` | `gemini-3.5-flash` | HMG Hub LLM 모델 |
-| `ttsSpeed` | `1.1` | afplay -r 배속 |
-| `ttsInstruct` | `"밝고 활기차게 말해주세요"` | speak_hook용 전역 instruct (서브에이전트는 voice-map.json의 역할별 instruct 사용) |
-| `speechRetouch` | `true` | LLM으로 마크다운 제거·IT 용어 한국어 발음 변환 후 TTS 전달 |
-| `usageTracking` | `true` | 사용 통계 수집 여부 (false이면 수집 없음) |
-| `bridgeEnabled` | `false` | Stop hook 직후 bridge_thinking.wav 재생 — 침묵 제거 opt-in |
-| `bridgeThresholdMs` | `500` | bridge 재생 최소 텍스트 길이 (글자 수) |
-| `resumeThreshold` | `0.0` | interrupt 후 재개 임계값 (0.0 = 항상 포기, 0.85 = 85% 이상 완료 시 재개) |
+**제외**
 
-**STT 설정** (`stt` 블록):
+- STT / Whisper / 마이크
+- Chorus 측 LLM 요약·브리핑·추천
+- Python / Node / FastAPI / Prometheus / DLQ
+- PreToolUse / PostToolUse
+- `~/.local/bin/chorus` 사용자 CLI 심볼릭 링크
 
-| 키 | 기본값 | 설명 |
-|----|--------|------|
-| `stt.enabled` | `false` | STT 기능 활성화 여부 |
-| `stt.model` | `mlx-community/whisper-small-mlx` | Whisper 모델 (244MB) |
-| `stt.language` | `ko` | 인식 언어 |
-| `stt.sampleRate` | `16000` | 마이크 샘플레이트 (Hz) |
-| `stt.announce` | `true` | 녹음 시작/완료 TTS 안내 여부 |
-| `stt.vadInterrupt` | `false` | VAD 발화 감지 시 TTS 자동 중단 (macOS opt-in) |
+## Claude / Codex hook 흐름
 
-**LLM 어시스턴트 설정** (`assistantTts` 블록):
-
-| 키 | 기본값 | 설명 |
-|----|--------|------|
-| `assistantTts.enabled` | `true` | LLM 어시스턴트 전체 활성화 여부 |
-| `assistantTts.briefingMode` | `"smart"` | Stop hook 브리핑 방식 (`"smart"` = 자동 판단) |
-| `assistantTts.llmTimeoutMs` | `2500` | LLM 호출 타임아웃 (ms) — 초과 시 폴백 |
-| `assistantTts.failureExplain` | `true` | PostToolUse Bash 실패 설명 활성화 |
-| `assistantTts.riskExplain` | `true` | PreToolUse Bash 위험 경고 활성화 |
-| `assistantTts.promptAdvice` | `true` | UserPromptSubmit voiceMode 추천 활성화 |
-
-LLM 어시스턴트는 opt-in이며 자동으로 설정을 변경하지 않는다. voiceMode 추천은 TTS 발화만 하며, 실제 변경은 사용자가 `python -m hook_voice mode set <mode>`로 직접 실행해야 한다.
-
-**voice-map.json 필드**:
-
-| 필드 | 기본값 | 설명 |
-|------|--------|------|
-| `meta_voice_id` | `"F1"` | 에이전트명 발화에 쓸 기본 목소리 ID |
-| `earcon.enabled` | `true` | 에이전트 전환 시 earcon 재생 여부 |
-| `earcon.agent_switch` | `"assets/earcon_switch.wav"` | 전환 효과음 경로 |
-
-프로젝트 루트의 `.voice.json`으로 개별 오버라이드 가능 (`.voice-persona.json` 폴백 지원).
-
-> **멘트 작성 규칙**: 모든 TTS 발화 텍스트(빌드·테스트 결과, 컨트롤 피드백 등)는 경어체(`-습니다/ㅂ니다`)를 사용합니다.
-
-### 환경변수
-
-| 변수 | 용도 |
-|------|------|
-| `HUB_BASE_URL` | HMG 사내 LLM API 베이스 URL |
-| `HUB_API_KEY` | HMG Hub API 키 |
-| `HUB_PROJECT_ID` | Hub 프로젝트 ID (X-Project-Id 헤더) |
-| `HF_HUB_OFFLINE` | `1` 고정 — 런타임 HuggingFace 다운로드 차단 |
-| `VOICE_PERSONA_DATA_DIR` | 영속화 데이터 경로 오버라이드 (기본: `~/.local/share/voice-persona`) |
-
-### Supertonic 목소리 (voice-map.json)
-
-| Voice ID | 이름 | 역할 | 인물 모티프 | Instruct |
-|----------|------|------|------------|---------|
-| F1 | 연아 | default | 김연아 | 차분하고 안정적으로 |
-| F2 | 마리 | tester | Marie Curie | 또렷하고 정확하게 |
-| F3 | 제인 | explorer | Jane Goodall | 명확하고 체계적으로 |
-| F4 | 셰릴 | ops | Sheryl Sandberg | 선명하고 자신감 있게 |
-| F5 | 리사 | specialist | Lisa Su | 공감하며 친절하게 |
-| M1 | 스티브 | planner | Steve Jobs | 활기차고 자신감 있게 |
-| M2 | 빌 | (미사용) | Bill Gates | 신중하게, 차분한 톤으로 |
-| M3 | 일론 | reviewer·optimizer | Elon Musk | 자신감 있고 단호하게 |
-| M4 | 리누스 | builder | Linus Torvalds | 친근하고 부드럽게 |
-| M5 | 팀 | guardian | Tim Berners-Lee | 따뜻하게, 차분히 설명하듯 |
-
-역할·이름·instruct는 `voice-map.json`에서 코드 변경 없이 수정 가능.  
-speak_hook(메인 응답)은 F1(연아) 목소리를 사용하며, 위 목소리는 서브에이전트 전용.
-
-## Claude Code 연동 (`.claude/settings.json`)
-
-```json
-{
-  "hooks": {
-    "Stop": [{
-      "matcher": "",
-      "hooks": [{"type": "command", "command": "<프로젝트>/hooks/stop.sh", "timeout": 15}]
-    }]
-  }
-}
+```text
+Claude lifecycle JSON (stdin)
+  → /Applications/Chorus.app/Contents/MacOS/chorus hook --source claude
+      → SessionStart / UserPromptSubmit / SubagentStart
+          추가 context: chorus:speak envelope 규약 + 역할 보이스
+      → Stop / SubagentStop
+          last_assistant_message 에서 envelope 추출 → UDS enqueue
+  → 메뉴바 상주 프로세스가 합성·재생
 ```
 
-`./server.sh install` 이 이 설정을 자동 등록.
+에이전트는 최종 응답 끝에 정확히 한 줄의
 
-## 테스트 전략
+```text
+<!-- chorus:speak {"v":1,"text":"한두 문장 요약","voice":"F1","speed":0.93,"volume":0.85} -->
+```
 
-- `pytest` + `pytest-asyncio` (`asyncio_mode = auto`)로 async 함수 테스트
-- `httpx.AsyncMock` / `unittest.mock.AsyncMock`으로 LLM·TTS HTTP 호출 mock
-- 분류 함수(`classify_pre_tool_bash`, `classify_post_tool_bash`)는 순수 함수 — mock 불필요
-- 파일 I/O 테스트: `tmp_path` fixture (pytest 내장) 활용
+를 붙입니다. Chorus는 요약하지 않습니다. `voice`는 역할 배정과 일치해야 합니다 (메인 기본 F1).
 
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+설치:
 
-This project is indexed by GitNexus as **chorus** (2389 symbols, 4000 relationships, 105 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+```bash
+./scripts/with-xcode.sh swift build -c release
+.build/release/chorus install --claude   # 또는 플래그 없이 양 호스트
+```
 
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+Hook command는 HostInstaller가 **앱 절대 경로**로 merge합니다. PATH의 `chorus`에 의존하지 않습니다.
 
-## Always Do
+전송 실패·보이스 불일치는 `~/Library/Caches/Chorus/last-error.json`에 기록되며 메뉴바 오류 줄에 표시됩니다. 에이전트 완료(stdout `{}`)는 막지 않습니다.
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
-- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+## 구현 규칙
 
-## Never Do
-
-- NEVER edit a function, class, or method without first running `impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit changes without running `detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/chorus/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/chorus/clusters` | All functional areas |
-| `gitnexus://repo/chorus/processes` | All execution flows |
-| `gitnexus://repo/chorus/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+1. 동작 변경 전 실패 테스트 먼저 (TDD).
+2. Python·shell 런타임 래퍼를 다시 넣지 않습니다.
+3. 사용자 노출 문자열은 경어체를 유지합니다.
+4. 완료 주장은 `./scripts/with-xcode.sh swift test`와 release 빌드 성공 이후에만.
