@@ -37,7 +37,7 @@ struct RuntimeInstallerTests {
         let plist = try PropertyListSerialization.propertyList(
             from: Data(contentsOf: ChorusPaths.forHome(home).launchAgentURL), format: nil
         ) as? [String: Any]
-        #expect(plist?["ProgramArguments"] as? [String] == [installed.path, "daemon"])
+        #expect(plist?["ProgramArguments"] as? [String] == [installed.path, "menubar"])
     }
 
     @Test func uninstallBootsOutBeforeRemovingExecutable() async throws {

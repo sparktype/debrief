@@ -64,7 +64,7 @@ public enum EmbeddedTemplates {
         try PropertyListSerialization.data(
             fromPropertyList: [
                 "Label": "com.chorus.tts",
-                "ProgramArguments": [executable.path, "daemon"],
+                "ProgramArguments": [executable.path, "menubar"],
                 "RunAtLoad": true,
                 "KeepAlive": true,
             ],

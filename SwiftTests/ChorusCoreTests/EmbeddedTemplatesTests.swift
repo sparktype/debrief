@@ -35,7 +35,7 @@ struct EmbeddedTemplatesTests {
         )
 
         #expect(value["Label"] as? String == "com.chorus.tts")
-        #expect(value["ProgramArguments"] as? [String] == [executable.path, "daemon"])
+        #expect(value["ProgramArguments"] as? [String] == [executable.path, "menubar"])
         #expect(value["RunAtLoad"] as? Bool == true)
         #expect(value["KeepAlive"] as? Bool == true)
         #expect(!data.contains(Data("/bin/sh".utf8)))

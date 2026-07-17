@@ -89,6 +89,9 @@ do {
         if let error = await service.consumeRunFailure() {
             throw error
         }
+    case .menubar:
+        // Task 4 implements MenuBar UI; parse + LaunchAgent template land in Task 3.
+        throw CommandError.usage("menubar UI is not implemented yet")
     case let .speak(text, voice, speed, volume):
         try await DirectSpeechCommand.submit(
             text: text,

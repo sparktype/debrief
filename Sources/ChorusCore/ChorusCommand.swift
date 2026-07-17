@@ -1,20 +1,21 @@
+// CLI 서브커맨드 파싱 (Core — 테스트 가능)
 import Foundation
-import ChorusCore
 
-enum CommandError: Error, Equatable, CustomStringConvertible {
+public enum CommandError: Error, Equatable, CustomStringConvertible {
     case usage(String)
 
-    var description: String {
+    public var description: String {
         switch self {
         case let .usage(message): message
         }
     }
 }
 
-enum ChorusCommand: Equatable {
+public enum ChorusCommand: Equatable {
     case install(codex: Bool, claude: Bool, repair: Bool)
     case uninstall(codex: Bool, claude: Bool)
     case daemon
+    case menubar
     case hook(source: String)
     case speak(text: String, voice: String, speed: Double, volume: Double)
     case status
@@ -23,13 +24,14 @@ enum ChorusCommand: Equatable {
     case doctor
     case help
 
-    static let usageText = """
+    public static let usageText = """
     chorus \(ChorusVersion.current)
 
     Usage:
       chorus install [--codex] [--claude] [--repair]
       chorus uninstall [--codex] [--claude]
       chorus daemon
+      chorus menubar
       chorus hook --source <codex|claude>
       chorus speak --text <text> --voice <id> --speed <value> --volume <value>
       chorus status
@@ -38,7 +40,7 @@ enum ChorusCommand: Equatable {
       chorus doctor
     """
 
-    static func parse(_ arguments: [String]) throws -> ChorusCommand {
+    public static func parse(_ arguments: [String]) throws -> ChorusCommand {
         guard let name = arguments.first else { return .help }
         let tail = Array(arguments.dropFirst())
 
@@ -59,6 +61,9 @@ enum ChorusCommand: Equatable {
         case "daemon":
             try requireEmpty(tail, command: name)
             return .daemon
+        case "menubar":
+            try requireEmpty(tail, command: name)
+            return .menubar
         case "hook":
             let source = try requiredValue("--source", in: tail)
             guard ["codex", "claude"].contains(source) else {
