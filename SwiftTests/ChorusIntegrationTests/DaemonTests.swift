@@ -70,6 +70,36 @@ struct DaemonTests {
         #expect(await source.closeCount == 1)
     }
 
+    @Test func recoverableAcceptErrorsDoNotTerminateRunLoop() async throws {
+        let good = request(.stop, "after-bad", volume: 0.8)
+        let source = SequenceSource(results: [
+            .failure(UnixSocketError.invalidFrame),
+            .failure(UnixSocketError.payloadTooLarge),
+            .success(good),
+            .failure(UnixSocketError.disconnected),
+        ])
+        let backend = RecordingBackend(failingText: nil)
+        let daemon = ChorusDaemon(
+            source: source,
+            queue: SpeechQueue(capacity: 8, duplicateWindow: .zero),
+            backend: backend,
+            audio: RecordingAudio(blockingMarker: nil),
+            configuration: { .default }
+        )
+        let run = Task { try await daemon.run() }
+        await backend.waitUntilCount(1)
+        do {
+            try await run.value
+            Issue.record("expected disconnected after recoverable frames")
+        } catch {
+            #expect(error as? UnixSocketError == .disconnected)
+        }
+        #expect(await backend.texts == ["after-bad"])
+        #expect(ChorusDaemon.isRecoverableAcceptError(UnixSocketError.invalidFrame))
+        #expect(ChorusDaemon.isRecoverableAcceptError(UnixSocketError.payloadTooLarge))
+        #expect(!ChorusDaemon.isRecoverableAcceptError(UnixSocketError.disconnected))
+    }
+
     private func request(_ event: HookEventName, _ text: String, volume: Double) -> SpeechRequest {
         SpeechRequest(
             envelope: SpeechEnvelope(v: 1, text: text, voice: "F1", speed: 0.93, volume: volume),
@@ -149,6 +179,23 @@ private actor WaitingSource: SpeechRequestSource {
     func waitUntilAccepting() async {
         while !accepting { await Task.yield() }
     }
+}
+
+/// Yields a fixed sequence of accept outcomes for daemon resilience tests.
+private actor SequenceSource: SpeechRequestSource {
+    private var results: [Result<SpeechRequest, Error>]
+
+    init(results: [Result<SpeechRequest, Error>]) {
+        self.results = results
+    }
+
+    func accept() async throws -> SpeechRequest {
+        guard !results.isEmpty else { throw UnixSocketError.disconnected }
+        let next = results.removeFirst()
+        return try next.get()
+    }
+
+    func close() async {}
 }
 
 private enum TestFailure: Error { case expected }

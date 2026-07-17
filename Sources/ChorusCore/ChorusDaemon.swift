@@ -76,10 +76,25 @@ public actor ChorusDaemon {
                 break
             } catch {
                 if shuttingDown { break }
+                // Bad/partial client frames must not tear down the resident accept loop.
+                if Self.isRecoverableAcceptError(error) {
+                    continue
+                }
                 throw error
             }
         }
         if !shuttingDown { await shutdown() }
+    }
+
+    /// Frame-level client errors that leave the listen socket healthy.
+    static func isRecoverableAcceptError(_ error: any Error) -> Bool {
+        guard let socketError = error as? UnixSocketError else { return false }
+        switch socketError {
+        case .invalidFrame, .payloadTooLarge, .rejected:
+            return true
+        case .disconnected, .pathTooLong, .unsafeExistingPath, .systemCall:
+            return false
+        }
     }
 
     @discardableResult

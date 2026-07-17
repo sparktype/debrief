@@ -162,11 +162,31 @@ public actor ResidentService {
     private func recordRunFailure(_ error: any Error) {
         guard !intentionalStop else { return }
         runFailure = error
+        let message: String
+        if let socket = error as? UnixSocketError {
+            switch socket {
+            case .disconnected:
+                message = "TTS 수신 루프가 종료되었습니다"
+            case .systemCall(let name, let code):
+                message = "소켓 \(name) 오류 (\(code))"
+            default:
+                message = "TTS 서비스 오류: \(socket)"
+            }
+        } else {
+            message = "TTS 서비스 오류: \(error.localizedDescription)"
+        }
+        try? Diagnostics(home: home).recordError(
+            component: "daemon",
+            code: "run_failed",
+            message: message
+        )
     }
 
     private func clearStateIfOwned() {
         guard running else { return }
         let paths = ChorusPaths.forHome(home)
+        // Close listen before release so clients fail fast and deinit unlinks the node.
+        server?.requestClose()
         runTask = nil
         daemon = nil
         server = nil
@@ -175,8 +195,20 @@ public actor ResidentService {
            (try? String(contentsOf: paths.pidURL, encoding: .utf8)) == ownedPID {
             try? FileManager.default.removeItem(at: paths.pidURL)
         }
+        // Residual sock without a live accept loop confuses hooks (connect OK, no ACK).
+        if removePidOnClear {
+            try? Self.removeOwnedSocketIfPresent(at: paths.socketURL)
+        }
         ownedPID = nil
         running = false
         removePidOnClear = true
+    }
+
+    /// Unlinks a residual UDS path owned by this user after the accept loop ends.
+    private static func removeOwnedSocketIfPresent(at url: URL) throws {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return }
+        guard (info.st_mode & S_IFMT) == S_IFSOCK, info.st_uid == geteuid() else { return }
+        _ = Darwin.unlink(url.path)
     }
 }
