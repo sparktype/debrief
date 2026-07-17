@@ -1,10 +1,10 @@
 {
-  "description": "Claude Code hook definitions for the installed Chorus binary.",
+  "description": "Claude Code hook definitions for the installed Chorus.app binary. Prefer `chorus install --claude` so HostInstaller merges the absolute app path; this file documents the production command.",
   "hooks": {
-    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "chorus hook --source claude", "timeout": 2}]}],
-    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "chorus hook --source claude", "timeout": 2}]}],
-    "SubagentStart": [{"matcher": "", "hooks": [{"type": "command", "command": "chorus hook --source claude", "timeout": 2}]}],
-    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "chorus hook --source claude", "timeout": 2}]}],
-    "SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "chorus hook --source claude", "timeout": 2}]}]
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source claude", "timeout": 2}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source claude", "timeout": 2}]}],
+    "SubagentStart": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source claude", "timeout": 2}]}],
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source claude", "timeout": 2}]}],
+    "SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source claude", "timeout": 2}]}]
   }
 }

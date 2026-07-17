@@ -30,7 +30,11 @@ struct RepositoryCutoverTests {
                 for group in try #require(groups as? [[String: Any]]) {
                     for hook in try #require(group["hooks"] as? [[String: Any]]) {
                         let command = try #require(hook["command"] as? String)
-                        #expect(command.contains("chorus hook --source"))
+                        // Production path is the app binary (quoted absolute path); bare PATH `chorus` is gone.
+                        #expect(command.contains("hook --source"))
+                        #expect(command.contains("Chorus.app/Contents/MacOS/chorus"))
+                        #expect(!command.contains("python"))
+                        #expect(!command.contains("hook_voice"))
                     }
                 }
             }
