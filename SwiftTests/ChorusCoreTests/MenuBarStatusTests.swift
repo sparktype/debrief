@@ -36,9 +36,9 @@ struct MenuBarStatusTests {
         #expect(c.lastError == "boom")
     }
 
-    @Test func statusItemTitleShowsActiveVoiceOnlyWhileSpeaking() {
+    @Test func isSpeakingReflectsActiveVoiceForBadgeIcon() {
         let idle = MenuBarStatus(serviceRunning: true, muted: false, mode: .normal)
-        #expect(idle.statusItemTitle == "")
+        #expect(!idle.isSpeaking)
         #expect(!idle.summaryLine.contains("F1"))
 
         let speaking = MenuBarStatus(
@@ -47,7 +47,8 @@ struct MenuBarStatusTests {
             mode: .normal,
             activeVoice: "M3"
         )
-        #expect(speaking.statusItemTitle == "M3")
+        #expect(speaking.isSpeaking)
+        #expect(speaking.activeVoice == "M3")
         #expect(speaking.summaryLine.contains("M3"))
     }
 }

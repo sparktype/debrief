@@ -34,8 +34,9 @@ public struct MenuBarStatus: Equatable, Sendable {
         return "\(service) · \(mute) · \(mode.rawValue)"
     }
 
-    /// Menu bar button title: voice while speaking, empty when idle.
-    public var statusItemTitle: String {
-        activeVoice ?? ""
+    /// Whether the status item should show a speaking-voice badge icon.
+    public var isSpeaking: Bool {
+        if let activeVoice, !activeVoice.isEmpty { return true }
+        return false
     }
 }

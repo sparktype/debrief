@@ -59,6 +59,8 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var signalSources: [any DispatchSourceProtocol] = []
     private var isShuttingDown = false
     private var didInstallStatusItem = false
+    /// Template badge images keyed by voice ID (`F1`, `M3`, …).
+    private var voiceBadgeCache: [String: NSImage] = [:]
 
     init(controller: MenuBarController, service: ResidentService) {
         self.controller = controller
@@ -248,24 +250,17 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyStatusIcon() {
         guard let button = item?.button else { return }
         let status = controller.status
-        let speaking = status.activeVoice
+        button.title = ""
+        button.imagePosition = .imageOnly
 
-        // While speaking: show voice ID (F1/M3…). Idle: icon only.
-        if let speaking, !speaking.isEmpty {
-            button.title = speaking
-            button.imagePosition = .imageLeading
-            button.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
-        } else {
-            button.title = ""
-            button.imagePosition = .imageOnly
-        }
-
-        if let custom = menuBarCustomImage() {
+        if let voice = status.activeVoice, !voice.isEmpty {
+            // Speaking: monochrome badge icon for the active voice (F1 / M1 / …).
+            button.image = voiceBadgeImage(for: voice)
+            button.alphaValue = 1.0
+        } else if let custom = menuBarCustomImage() {
             button.image = custom
             button.alphaValue = (status.muted || !status.serviceRunning) ? 0.55 : 1.0
-        } else if let symbol = menuBarSymbol(
-            named: status.muted ? "speaker.slash.fill" : (speaking != nil ? "waveform" : "waveform")
-        ) {
+        } else if let symbol = menuBarSymbol(named: status.muted ? "speaker.slash.fill" : "waveform") {
             button.image = symbol
             button.alphaValue = 1.0
         } else {
@@ -274,6 +269,66 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         button.appearsDisabled = false
         item?.isVisible = true
+    }
+
+    /// Draws `F1` / `M3`-style voice codes as a template badge (icon image, not button title).
+    private func voiceBadgeImage(for voice: String) -> NSImage {
+        if let cached = voiceBadgeCache[voice] {
+            return cached
+        }
+
+        let size = NSSize(width: 28, height: 16)
+        let scale = 2
+        let image = NSImage(size: size)
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(size.width) * scale,
+            pixelsHigh: Int(size.height) * scale,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return image
+        }
+        bitmap.size = size
+
+        NSGraphicsContext.saveGraphicsState()
+        if let context = NSGraphicsContext(bitmapImageRep: bitmap) {
+            NSGraphicsContext.current = context
+            context.imageInterpolation = .high
+            let bounds = NSRect(origin: .zero, size: size)
+            NSColor.clear.setFill()
+            bounds.fill()
+
+            let inset = bounds.insetBy(dx: 0.5, dy: 0.5)
+            let path = NSBezierPath(roundedRect: inset, xRadius: 3.5, yRadius: 3.5)
+            NSColor.black.setStroke()
+            path.lineWidth = 1.25
+            path.stroke()
+
+            let label = voice as NSString
+            let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .bold)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: NSColor.black,
+            ]
+            let textSize = label.size(withAttributes: attributes)
+            let textOrigin = NSPoint(
+                x: (size.width - textSize.width) / 2,
+                y: (size.height - textSize.height) / 2 - 0.5
+            )
+            label.draw(at: textOrigin, withAttributes: attributes)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        image.addRepresentation(bitmap)
+        image.isTemplate = true
+        voiceBadgeCache[voice] = image
+        return image
     }
 
     private func menuBarCustomImage() -> NSImage? {
