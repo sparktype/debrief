@@ -66,6 +66,39 @@ struct ResidentServiceTests {
         await service.stop()
         await waiter.value
         #expect(await service.isRunning == false)
+        #expect(await service.consumeRunFailure() == nil)
+    }
+
+    @Test func waitUntilStoppedUnblocksOnRunFailureAndSurfacesError() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        nonisolated(unsafe) var heldServer: UnixSocketServer?
+        let service = ResidentService(
+            home: home,
+            modelDirectoryProvider: { _ in home },
+            backendFactory: { _ in RecordingBackend() },
+            audioFactory: { RecordingAudio() },
+            socketFactory: { url in
+                let server = try UnixSocketServer(socketURL: url)
+                heldServer = server
+                return server
+            }
+        )
+        try await service.start()
+        #expect(await service.isRunning)
+
+        let waiter = Task { await service.waitUntilStopped() }
+        try await Task.sleep(for: .milliseconds(50))
+        // Close the accept source without intentional stop — run loop dies with error.
+        heldServer?.requestClose()
+        await waiter.value
+        #expect(await service.isRunning == false)
+
+        let failure = await service.consumeRunFailure()
+        #expect(failure != nil)
+        #expect(failure as? UnixSocketError == .disconnected)
+        #expect(await service.consumeRunFailure() == nil)
     }
 
     private func temporaryHome() -> URL {

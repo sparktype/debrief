@@ -21,6 +21,8 @@ public actor ResidentService {
     private var runTask: Task<Void, Error>?
     private var ownedPID: String?
     private var running = false
+    private var intentionalStop = false
+    private var runFailure: (any Error)?
 
     public init(
         home: URL,
@@ -43,6 +45,13 @@ public actor ResidentService {
     }
 
     public var isRunning: Bool { running }
+
+    /// Returns and clears the error that ended the run loop, if any.
+    /// Intentional `stop()` does not produce a failure.
+    public func consumeRunFailure() -> (any Error)? {
+        defer { runFailure = nil }
+        return runFailure
+    }
 
     public func start() async throws {
         guard !running else { throw ResidentServiceError.alreadyRunning }
@@ -93,11 +102,13 @@ public actor ResidentService {
         self.daemon = daemon
         self.ownedPID = pid
         self.running = true
+        self.intentionalStop = false
+        self.runFailure = nil
         self.runTask = Task { [weak self] in
             do {
                 try await daemon.run()
             } catch {
-                // fall through to clear state
+                await self?.recordRunFailure(error)
             }
             await self?.clearStateIfOwned()
         }
@@ -105,6 +116,7 @@ public actor ResidentService {
 
     public func stop() async {
         guard running else { return }
+        intentionalStop = true
         await daemon?.shutdown()
         runTask?.cancel()
         _ = try? await runTask?.value
@@ -115,6 +127,11 @@ public actor ResidentService {
         while running {
             try? await Task.sleep(for: .milliseconds(200))
         }
+    }
+
+    private func recordRunFailure(_ error: any Error) {
+        guard !intentionalStop else { return }
+        runFailure = error
     }
 
     private func clearStateIfOwned() {

@@ -86,6 +86,9 @@ do {
             interruption.cancel()
         }
         await service.waitUntilStopped()
+        if let error = await service.consumeRunFailure() {
+            throw error
+        }
     case let .speak(text, voice, speed, volume):
         try await DirectSpeechCommand.submit(
             text: text,
