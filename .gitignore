@@ -19,5 +19,13 @@ dist/
 .superpowers/
 .worktrees/
 
+# Local agent / IDE state (not product). Keep tracked .agents/plugins.
+.agents/skills/
+.codex/
+.swiftpm/
+.omx/
+xcuserdata/
+*.xcuserstate
+
 # gitnexus 로컬 인덱스
 .gitnexus/
