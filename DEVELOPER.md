@@ -50,9 +50,9 @@ Login / chorus install
         │
         ▼
 LaunchAgent (com.chorus.tts)
-        │ ProgramArguments: [<bin>/chorus, "menubar"]
+        │ ProgramArguments: [Chorus.app/Contents/MacOS/chorus, "menubar"]
         ▼
-chorus (LSUIElement menu bar)
+Chorus.app (LSUIElement menu bar; also launched from Applications)
         ├── Menu: status · mute · mode · start · stop · quit
         └── ResidentService (in-process)
               ├── pid file
@@ -78,7 +78,7 @@ All fields are mandatory. Validation rejects unknown fields, invalid voice ident
 
 ## Runtime lifecycle
 
-`chorus install` performs staged executable installation, pinned model installation, hook and skill merge, LaunchAgent replacement, and a health-gated legacy service cutover. Owned-file digests prevent uninstall or repair from overwriting user modifications. Model activation uses a verified staging directory and atomic replacement. LaunchAgent `ProgramArguments` are `[installedBinary, "menubar"]`.
+`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), a `~/.local/bin/chorus` symlink, pinned model installation, hook and skill merge, LaunchAgent replacement, and a health-gated legacy service cutover. Owned-file digests prevent uninstall or repair from overwriting user modifications. Model activation uses a verified staging directory and atomic replacement. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments, which maps to the `menubar` command.
 
 The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. It must not await `launchctl bootout` from inside the job — launchd waits for the process to exit and that deadlocks. `install --repair` re-enables and bootstraps the agent.
 

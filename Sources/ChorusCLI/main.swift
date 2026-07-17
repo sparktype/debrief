@@ -21,9 +21,10 @@ do {
     case let .install(codex, claude, repair):
         let paths = ChorusPaths.forHome(home)
         let hosts = selectedHosts(codex: codex, claude: claude)
-        let runtime = RuntimeInstaller(
+        let sourceExecutable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        var runtime = RuntimeInstaller(
             home: home,
-            sourceExecutable: URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath(),
+            sourceExecutable: sourceExecutable,
             modelInstaller: ModelInstaller(
                 modelsDirectory: paths.modelsDirectory,
                 manifest: .supertonic3,
@@ -31,8 +32,11 @@ do {
             ),
             launchctl: ProcessLaunchctlRunner()
         )
+        runtime.applicationIconPNG = loadApplicationIconPNG(startingAt: sourceExecutable)
         let result = try await runtime.install(hosts: hosts, repair: repair)
         print("installed: \(hosts.map(\.rawValue).sorted().joined(separator: ","))")
+        print("app: \(paths.applicationBundleURL.path)")
+        print("cli: \(paths.cliSymlinkURL.path)")
         if result.codexReviewRequired {
             print("Codex에서 /hooks를 열어 Chorus hook을 검토하고 신뢰하세요.")
         }
@@ -129,6 +133,21 @@ private func selectedHosts(codex: Bool, claude: Bool) -> Set<HostSource> {
     if codex { hosts.insert(.codex) }
     if claude { hosts.insert(.claude) }
     return hosts
+}
+
+/// Walks parents of the running binary for `icon.png` (repo root or package).
+private func loadApplicationIconPNG(startingAt executable: URL) -> Data? {
+    var directory = executable.deletingLastPathComponent()
+    for _ in 0..<8 {
+        let candidate = directory.appending(path: "icon.png")
+        if let data = try? Data(contentsOf: candidate), !data.isEmpty {
+            return data
+        }
+        let parent = directory.deletingLastPathComponent()
+        if parent.path == directory.path { break }
+        directory = parent
+    }
+    return nil
 }
 
 private func printPreservedFiles(_ paths: [String]) {

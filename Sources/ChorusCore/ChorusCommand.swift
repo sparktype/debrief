@@ -41,7 +41,9 @@ public enum ChorusCommand: Equatable {
     """
 
     public static func parse(_ arguments: [String]) throws -> ChorusCommand {
-        guard let name = arguments.first else { return .help }
+        // Finder double-click and bare `chorus` with no args launch the menu bar.
+        // Use `chorus help` / `-h` for usage text.
+        guard let name = arguments.first else { return .menubar }
         let tail = Array(arguments.dropFirst())
 
         switch name {

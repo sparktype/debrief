@@ -4,6 +4,15 @@ import Testing
 
 @Suite("CommandsParseTests")
 struct CommandsParseTests {
+    @Test func emptyArgumentsLaunchMenubar() throws {
+        #expect(try ChorusCommand.parse([]) == .menubar)
+    }
+
+    @Test func helpStillAvailable() throws {
+        #expect(try ChorusCommand.parse(["help"]) == .help)
+        #expect(try ChorusCommand.parse(["-h"]) == .help)
+    }
+
     @Test func parsesMenubar() throws {
         #expect(try ChorusCommand.parse(["menubar"]) == .menubar)
     }

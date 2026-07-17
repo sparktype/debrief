@@ -55,12 +55,19 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         self.healthCheck = healthCheck
     }
 
+    /// Optional PNG used for `Chorus.app` Finder icon (`sips` + `iconutil`).
+    public var applicationIconPNG: Data?
+
     @discardableResult
     public func install(hosts: Set<HostSource>, repair: Bool) async throws -> HostInstallResult {
         let paths = ChorusPaths.forHome(home)
-        try installExecutable(from: sourceExecutable, to: paths.executableURL)
+        try installApplicationBundle(paths: paths)
+        try AppBundleInstaller.installCLISymlink(
+            from: paths.executableURL,
+            to: paths.cliSymlinkURL
+        )
         _ = try await modelInstaller.install(repair: repair)
-        let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
+        let hostResult = try HostInstaller(home: home, executable: paths.cliSymlinkURL)
             .install(hosts: hosts)
         try AtomicInstallerFile.write(
             try EmbeddedTemplates.launchAgent(executable: paths.executableURL),
@@ -90,16 +97,28 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
     public func uninstall(hosts: Set<HostSource>) async throws -> HostInstallResult {
         let paths = ChorusPaths.forHome(home)
         var manifest = try InstallManifest.load(from: paths.installManifestURL)
-        let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
+        let hostResult = try HostInstaller(home: home, executable: paths.cliSymlinkURL)
             .uninstall(hosts: hosts)
         var preserved = hostResult.preservedModifiedFiles
         try await launchctl.run(
             arguments: ["bootout", "gui/\(userID)/com.chorus.tts"],
             allowFailure: true
         )
-        for url in [paths.launchAgentURL, paths.executableURL] {
+        let removable = [
+            paths.launchAgentURL,
+            paths.executableURL,
+            paths.cliSymlinkURL,
+            AppBundleInstaller.infoPlistURL(appBundle: paths.applicationBundleURL),
+            AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL),
+        ]
+        for url in removable {
             guard let owned = manifest.runtimeFiles.first(where: { $0.path == url.path }),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+               attrs[.type] as? FileAttributeType == .typeSymbolicLink {
+                try FileManager.default.removeItem(at: url)
+                continue
+            }
             let digest = InstallerDigest.data(try Data(contentsOf: url))
             if digest == owned.sha256 {
                 try FileManager.default.removeItem(at: url)
@@ -107,14 +126,37 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
                 preserved.append(url.path)
             }
         }
+        // Drop empty app bundle shells after owned files are removed.
+        try? removeEmptyAppBundle(paths.applicationBundleURL)
         manifest.runtimeFiles.removeAll { owned in
-            owned.path == paths.launchAgentURL.path || owned.path == paths.executableURL.path
+            removable.contains { $0.path == owned.path }
+                || owned.path.hasPrefix(paths.applicationBundleURL.path + "/")
         }
         try manifest.save(to: paths.installManifestURL)
         return HostInstallResult(
             codexReviewRequired: false,
             preservedModifiedFiles: preserved.sorted()
         )
+    }
+
+    private func installApplicationBundle(paths: ChorusPaths) throws {
+        try AppBundleInstaller.install(
+            sourceExecutable: sourceExecutable,
+            appBundle: paths.applicationBundleURL,
+            version: ChorusVersion.current,
+            iconPNG: applicationIconPNG,
+            installExecutable: installExecutable(from:to:)
+        )
+    }
+
+    private func removeEmptyAppBundle(_ appBundle: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: appBundle.path) else { return }
+        // Remove whole app if MacOS binary is gone.
+        let executable = AppBundleInstaller.executableURL(appBundle: appBundle)
+        if !fileManager.fileExists(atPath: executable.path) {
+            try? fileManager.removeItem(at: appBundle)
+        }
     }
 
     private func installExecutable(from source: URL, to destination: URL) throws {
@@ -147,14 +189,39 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
 
     private func recordRuntimeOwnership(paths: ChorusPaths) throws {
         var manifest = try InstallManifest.load(from: paths.installManifestURL)
-        let urls = [paths.executableURL, paths.launchAgentURL]
-        manifest.runtimeFiles.removeAll { owned in urls.contains { $0.path == owned.path } }
-        manifest.runtimeFiles.append(contentsOf: try urls.map { url in
-            OwnedRuntimeFile(
-                path: url.path,
-                sha256: InstallerDigest.data(try Data(contentsOf: url))
+        var urls = [
+            paths.executableURL,
+            paths.launchAgentURL,
+            AppBundleInstaller.infoPlistURL(appBundle: paths.applicationBundleURL),
+        ]
+        let icon = AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL)
+        if FileManager.default.fileExists(atPath: icon.path) {
+            urls.append(icon)
+        }
+        // Symlink: store path with digest of the target executable for ownership.
+        if FileManager.default.fileExists(atPath: paths.cliSymlinkURL.path) {
+            urls.append(paths.cliSymlinkURL)
+        }
+        manifest.runtimeFiles.removeAll { owned in
+            urls.contains { $0.path == owned.path }
+                || owned.path.hasPrefix(paths.applicationBundleURL.path + "/")
+        }
+        for url in urls {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+               attrs[.type] as? FileAttributeType == .typeSymbolicLink {
+                // Symlink itself has no stable content digest; pin target digest.
+                let target = paths.executableURL
+                let digest = InstallerDigest.data(try Data(contentsOf: target))
+                manifest.runtimeFiles.append(OwnedRuntimeFile(path: url.path, sha256: digest))
+                continue
+            }
+            manifest.runtimeFiles.append(
+                OwnedRuntimeFile(
+                    path: url.path,
+                    sha256: InstallerDigest.data(try Data(contentsOf: url))
+                )
             )
-        })
+        }
         try manifest.save(to: paths.installManifestURL)
     }
 

@@ -73,6 +73,31 @@ public enum EmbeddedTemplates {
         )
     }
 
+    /// Finder / LaunchServices metadata for `Chorus.app`.
+    public static func appInfoPlist(version: String) throws -> Data {
+        try PropertyListSerialization.data(
+            fromPropertyList: [
+                "CFBundleDevelopmentRegion": "en",
+                "CFBundleDisplayName": "Chorus",
+                "CFBundleExecutable": AppBundleInstaller.executableName,
+                "CFBundleIconFile": AppBundleInstaller.iconFileName,
+                "CFBundleIdentifier": AppBundleInstaller.bundleIdentifier,
+                "CFBundleInfoDictionaryVersion": "6.0",
+                "CFBundleName": "Chorus",
+                "CFBundlePackageType": "APPL",
+                "CFBundleShortVersionString": version,
+                "CFBundleVersion": version,
+                "LSMinimumSystemVersion": "14.0",
+                // Menu bar agent: no Dock tile; Applications icon still launches the app.
+                "LSUIElement": true,
+                "NSHighResolutionCapable": true,
+                "NSPrincipalClass": "NSApplication",
+            ] as [String: Any],
+            format: .xml,
+            options: 0
+        )
+    }
+
     private static func skill(name: String, description: String, body: String) -> String {
         """
         ---

@@ -24,19 +24,23 @@ struct RuntimeInstallerTests {
         try await installer.install(hosts: [], repair: true)
         try await installer.install(hosts: [], repair: true)
 
-        let installed = ChorusPaths.forHome(home).executableURL
+        let paths = ChorusPaths.forHome(home)
+        let installed = paths.executableURL
+        #expect(installed.path.hasSuffix("/Applications/Chorus.app/Contents/MacOS/chorus"))
         #expect(try Data(contentsOf: installed) == Data("binary".utf8))
         let mode = try #require(
             FileManager.default.attributesOfItem(atPath: installed.path)[.posixPermissions] as? NSNumber
         )
         #expect(mode.intValue == 0o755)
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: paths.cliSymlinkURL.path) == installed.path)
+        #expect(FileManager.default.fileExists(atPath: paths.applicationBundleURL.path))
         let recorded = await events.values
         #expect(recorded == [
             "model:true", "enable", "bootout", "bootstrap",
             "model:true", "enable", "bootout", "bootstrap",
         ])
         let plist = try PropertyListSerialization.propertyList(
-            from: Data(contentsOf: ChorusPaths.forHome(home).launchAgentURL), format: nil
+            from: Data(contentsOf: paths.launchAgentURL), format: nil
         ) as? [String: Any]
         #expect(plist?["ProgramArguments"] as? [String] == [installed.path, "menubar"])
     }
