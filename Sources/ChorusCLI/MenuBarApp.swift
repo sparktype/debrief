@@ -203,12 +203,12 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyStatusIcon()
     }
 
-    /// Prefers the installed app `MenuBarIcon` PNG, then SF Symbol fallback.
+    /// Prefers the installed app `MenuBarIcon` as a monochrome template silhouette.
     private func applyStatusIcon() {
         let status = controller.status
         if let custom = Self.menuBarCustomImage() {
             item.button?.image = custom
-            // Opacity encodes state; avoid appearsDisabled (can vanish on some bar styles).
+            // Template images follow menu-bar tint; alpha dims muted/stopped.
             item.button?.alphaValue = (status.muted || !status.serviceRunning) ? 0.45 : 1.0
             item.button?.appearsDisabled = false
             return
@@ -265,8 +265,8 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return fromExecutable
     }
 
-    /// Scales into an 18pt menu-bar image. Near-white backgrounds become transparent
-    /// so light macOS menu bars do not hide a pale icon.
+    /// Scales into an 18pt **template** silhouette (black + alpha).
+    /// macOS tints the alpha mask to match light/dark menu bars.
     private static func preparedMenuBarImage(_ source: NSImage) -> NSImage? {
         let side: CGFloat = 18
         let pixel = Int(side * 2) // draw at 2x for Retina
@@ -295,41 +295,48 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         NSGraphicsContext.restoreGraphicsState()
 
-        punchNearWhiteToTransparent(bitmap)
+        convertToTemplateSilhouette(bitmap)
 
         let image = NSImage(size: NSSize(width: side, height: side))
         image.addRepresentation(bitmap)
-        image.isTemplate = false
+        image.isTemplate = true
         return image
     }
 
-    /// Makes near-white / very light pixels transparent (common app-icon backgrounds).
-    private static func punchNearWhiteToTransparent(_ bitmap: NSBitmapImageRep) {
+    /// Turns a full-color icon into a monochrome alpha mask for `isTemplate` rendering.
+    /// Near-white backgrounds drop out; darker/saturated pixels become solid silhouette.
+    private static func convertToTemplateSilhouette(_ bitmap: NSBitmapImageRep) {
         guard let data = bitmap.bitmapData else { return }
         let width = bitmap.pixelsWide
         let height = bitmap.pixelsHigh
         let spp = bitmap.samplesPerPixel
         let rowBytes = bitmap.bytesPerRow
-        guard spp >= 3 else { return }
+        guard spp >= 4 else { return }
 
         for y in 0..<height {
             let row = data.advanced(by: y * rowBytes)
             for x in 0..<width {
                 let p = row.advanced(by: x * spp)
-                let r = p[0]
-                let g = p[1]
-                let b = p[2]
-                // Soft-key light backgrounds typical of exported app icons.
-                if r > 230, g > 230, b > 230 {
-                    if spp >= 4 {
-                        p[3] = 0
-                    }
-                } else if r > 200, g > 200, b > 200, spp >= 4 {
-                    let avg = Int(r) + Int(g) + Int(b)
-                    // Partial fade for near-white fringes.
-                    let t = UInt8(max(0, min(255, (765 - avg) * 2)))
-                    p[3] = min(p[3], t)
+                let r = Int(p[0])
+                let g = Int(p[1])
+                let b = Int(p[2])
+                let a = Int(p[3])
+                // Distance from pure white × existing alpha → mask coverage.
+                let darkness = max(0, 255 - (r + g + b) / 3)
+                let coverage = min(255, (darkness * a) / 255)
+                // Soft threshold so pale fringes do not fill the bar with a square.
+                let alpha: UInt8
+                if coverage < 18 {
+                    alpha = 0
+                } else if coverage > 200 {
+                    alpha = 255
+                } else {
+                    alpha = UInt8(coverage)
                 }
+                p[0] = 0
+                p[1] = 0
+                p[2] = 0
+                p[3] = alpha
             }
         }
     }
