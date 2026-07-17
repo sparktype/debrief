@@ -58,8 +58,8 @@ enum MenuBarApp {
 @MainActor
 final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let controller: MenuBarController
-    /// Square length keeps a consistent monochrome glyph footprint in the menu bar.
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    /// Fixed width so the item stays reserved even while the image loads.
+    private let item = NSStatusBar.system.statusItem(withLength: 22)
     /// Stable menu instance — rebuild mutates items in place so open menus stay visible.
     private let menu = NSMenu()
     private var signalSources: [any DispatchSourceProtocol] = []
@@ -77,9 +77,13 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = item.button {
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
+            button.imageHugsTitle = false
             button.toolTip = "Chorus"
         }
+        item.isVisible = true
         rebuildMenu()
+        // Apply icon again after the status item is attached to the system bar.
+        applyStatusIcon()
     }
 
     func retainSignalSources(_ sources: [any DispatchSourceProtocol]) {
@@ -199,13 +203,14 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyStatusIcon()
     }
 
-    /// Prefers the installed app `MenuBarIcon` PNG (template), then SF Symbol fallback.
+    /// Prefers the installed app `MenuBarIcon` PNG, then SF Symbol fallback.
     private func applyStatusIcon() {
         let status = controller.status
         if let custom = Self.menuBarCustomImage() {
             item.button?.image = custom
-            // Dim when muted or service stopped so one image still conveys state.
-            item.button?.appearsDisabled = status.muted || !status.serviceRunning
+            // Opacity encodes state; avoid appearsDisabled (can vanish on some bar styles).
+            item.button?.alphaValue = (status.muted || !status.serviceRunning) ? 0.45 : 1.0
+            item.button?.appearsDisabled = false
             return
         }
 
@@ -218,59 +223,115 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             symbolName = "speaker.wave.2"
         }
         item.button?.image = Self.menuBarSymbol(named: symbolName)
+        item.button?.alphaValue = 1.0
         item.button?.appearsDisabled = false
     }
 
-    /// Loads `Contents/Resources/MenuBarIcon.png` (+ @2x) next to the running binary.
+    /// Loads `Contents/Resources/MenuBarIcon.png` (or AppIcon) next to the running binary.
     private static func menuBarCustomImage() -> NSImage? {
-        let resources = resourcesDirectory()
-        let oneX = resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName).png")
-        let twoX = resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName)@2x.png")
-        let icns = resources.appending(path: "\(AppBundleInstaller.iconFileName).icns")
-
-        // Prefer Retina @2x asset when present; otherwise 1x PNG; finally AppIcon.icns.
-        let sourceURL: URL?
-        if FileManager.default.fileExists(atPath: twoX.path) {
-            sourceURL = twoX
-        } else if FileManager.default.fileExists(atPath: oneX.path) {
-            sourceURL = oneX
-        } else if FileManager.default.fileExists(atPath: icns.path) {
-            sourceURL = icns
-        } else {
-            sourceURL = nil
+        for url in menuBarIconCandidateURLs() {
+            guard FileManager.default.fileExists(atPath: url.path),
+                  let source = NSImage(contentsOf: url) else { continue }
+            if let prepared = preparedMenuBarImage(source) {
+                return prepared
+            }
         }
-        guard let sourceURL, let source = NSImage(contentsOf: sourceURL) else { return nil }
-        return preparedMenuBarImage(source)
+        return nil
+    }
+
+    private static func menuBarIconCandidateURLs() -> [URL] {
+        let resources = resourcesDirectory()
+        return [
+            resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName)@2x.png"),
+            resources.appending(path: "\(AppBundleInstaller.menuBarIconFileName).png"),
+            resources.appending(path: "\(AppBundleInstaller.iconFileName).icns"),
+        ]
     }
 
     private static func resourcesDirectory() -> URL {
-        // Prefer Bundle.main when launched as Chorus.app.
+        // Prefer path relative to the running binary (reliable under launchd).
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        let fromExecutable = executable
+            .deletingLastPathComponent() // MacOS
+            .deletingLastPathComponent() // Contents
+            .appending(path: "Resources", directoryHint: .isDirectory)
+        if FileManager.default.fileExists(atPath: fromExecutable.path) {
+            return fromExecutable
+        }
         if let resourceURL = Bundle.main.resourceURL,
            FileManager.default.fileExists(atPath: resourceURL.path) {
             return resourceURL
         }
-        // Bare path: …/Chorus.app/Contents/MacOS/chorus → …/Contents/Resources
-        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        return executable
-            .deletingLastPathComponent() // MacOS
-            .deletingLastPathComponent() // Contents
-            .appending(path: "Resources", directoryHint: .isDirectory)
+        return fromExecutable
     }
 
-    private static func preparedMenuBarImage(_ source: NSImage) -> NSImage {
+    /// Scales into an 18pt menu-bar image. Near-white backgrounds become transparent
+    /// so light macOS menu bars do not hide a pale icon.
+    private static func preparedMenuBarImage(_ source: NSImage) -> NSImage? {
         let side: CGFloat = 18
+        let pixel = Int(side * 2) // draw at 2x for Retina
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixel,
+            pixelsHigh: pixel,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+
+        bitmap.size = NSSize(width: side, height: side)
+        NSGraphicsContext.saveGraphicsState()
+        if let context = NSGraphicsContext(bitmapImageRep: bitmap) {
+            NSGraphicsContext.current = context
+            context.imageInterpolation = .high
+            let rect = NSRect(x: 0, y: 0, width: side, height: side)
+            NSColor.clear.setFill()
+            rect.fill()
+            source.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1.0)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        punchNearWhiteToTransparent(bitmap)
+
         let image = NSImage(size: NSSize(width: side, height: side))
-        image.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        source.draw(
-            in: NSRect(x: 0, y: 0, width: side, height: side),
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1.0
-        )
-        image.unlockFocus()
+        image.addRepresentation(bitmap)
         image.isTemplate = false
         return image
+    }
+
+    /// Makes near-white / very light pixels transparent (common app-icon backgrounds).
+    private static func punchNearWhiteToTransparent(_ bitmap: NSBitmapImageRep) {
+        guard let data = bitmap.bitmapData else { return }
+        let width = bitmap.pixelsWide
+        let height = bitmap.pixelsHigh
+        let spp = bitmap.samplesPerPixel
+        let rowBytes = bitmap.bytesPerRow
+        guard spp >= 3 else { return }
+
+        for y in 0..<height {
+            let row = data.advanced(by: y * rowBytes)
+            for x in 0..<width {
+                let p = row.advanced(by: x * spp)
+                let r = p[0]
+                let g = p[1]
+                let b = p[2]
+                // Soft-key light backgrounds typical of exported app icons.
+                if r > 230, g > 230, b > 230 {
+                    if spp >= 4 {
+                        p[3] = 0
+                    }
+                } else if r > 200, g > 200, b > 200, spp >= 4 {
+                    let avg = Int(r) + Int(g) + Int(b)
+                    // Partial fade for near-white fringes.
+                    let t = UInt8(max(0, min(255, (765 - avg) * 2)))
+                    p[3] = min(p[3], t)
+                }
+            }
+        }
     }
 
     /// Builds a monochrome template glyph sized for `NSStatusItem`.
