@@ -61,9 +61,7 @@ Chorus.app (LSUIElement menu bar; also launched from Applications)
               ├── SupertonicEngine
               └── AudioPlayer
 
-Codex / Claude ──► chorus hook ──► socket ──► ResidentService
-CLI              ──► chorus speak|status|mute|mode|…
-Debug            ──► chorus daemon (headless ResidentService; not install path)
+Codex / Claude ──► Chorus.app …/chorus hook ──► socket ──► ResidentService
 ```
 
 ## Speech envelope
@@ -78,7 +76,7 @@ All fields are mandatory. Validation rejects unknown fields, invalid voice ident
 
 ## Runtime lifecycle
 
-`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), a `~/.local/bin/chorus` symlink, pinned model installation, hook and skill merge, LaunchAgent replacement, and a health-gated legacy service cutover. Owned-file digests prevent uninstall or repair from overwriting user modifications. Model activation uses a verified staging directory and atomic replacement. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments, which maps to the `menubar` command.
+`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), pinned model, host hooks, a single setup skill, LaunchAgent replacement, and a health-gated legacy cutover. There is no user CLI and no `~/.local/bin/chorus` symlink; hooks invoke the app executable directly. Owned-file digests prevent uninstall or repair from overwriting user modifications. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments (menu bar).
 
 The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. It must not await `launchctl bootout` from inside the job — launchd waits for the process to exit and that deadlocks. `install --repair` re-enables and bootstraps the agent.
 

@@ -4,23 +4,26 @@ import Testing
 
 @Suite("EmbeddedTemplatesTests")
 struct EmbeddedTemplatesTests {
-    @Test func templatesContainOnlyFiveHooksAndSixTTSSkills() throws {
-        let executable = URL(fileURLWithPath: "/Users/test/.local/bin/chorus")
+    @Test func templatesContainFiveHooksAndSetupSkillOnly() throws {
+        let executable = URL(fileURLWithPath: "/Applications/Chorus.app/Contents/MacOS/chorus")
 
         #expect(Set(EmbeddedTemplates.hookEvents) == Set(HookEventName.allCases))
-        #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set([
-            "setup", "status", "mode", "mute", "speak", "doctor",
-        ]))
+        #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set(["setup"]))
+        #expect(EmbeddedTemplates.skillNames == ["setup"])
 
         for source in HostSource.allCases {
             let entry = EmbeddedTemplates.hookEntry(executable: executable, source: source)
             #expect(entry.hooks.count == 1)
             #expect(entry.hooks[0].type == "command")
-            #expect(entry.hooks[0].command == "'/Users/test/.local/bin/chorus' hook --source \(source.rawValue)")
+            #expect(
+                entry.hooks[0].command
+                    == "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source \(source.rawValue)"
+            )
             #expect(entry.hooks[0].timeout == 2)
         }
 
         let combined = EmbeddedTemplates.skills(executable: executable).values.joined(separator: "\n")
+        #expect(combined.localizedCaseInsensitiveContains("menu bar"))
         #expect(!combined.localizedCaseInsensitiveContains("listen"))
         #expect(!combined.localizedCaseInsensitiveContains("digest"))
         #expect(!combined.localizedCaseInsensitiveContains("python"))
@@ -28,7 +31,7 @@ struct EmbeddedTemplatesTests {
     }
 
     @Test func launchAgentRunsOnlyTheInstalledBinary() throws {
-        let executable = URL(fileURLWithPath: "/Users/test/.local/bin/chorus")
+        let executable = URL(fileURLWithPath: "/Applications/Chorus.app/Contents/MacOS/chorus")
         let data = try EmbeddedTemplates.launchAgent(executable: executable)
         let value = try #require(
             PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]

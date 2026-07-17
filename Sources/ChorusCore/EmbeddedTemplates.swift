@@ -12,7 +12,8 @@ public struct EmbeddedHookEntry: Codable, Equatable, Sendable {
 
 public enum EmbeddedTemplates {
     public static let hookEvents = HookEventName.allCases
-    public static let skillNames = ["setup", "status", "mode", "mute", "speak", "doctor"]
+    /// User control is the menu bar; only setup remains for install/repair guidance.
+    public static let skillNames = ["setup"]
 
     public static func hookEntry(executable: URL, source: HostSource) -> EmbeddedHookEntry {
         EmbeddedHookEntry(hooks: [
@@ -29,33 +30,12 @@ public enum EmbeddedTemplates {
         return [
             "setup": skill(
                 name: "chorus-setup",
-                description: "Install or repair local Chorus TTS and host integration.",
-                body: "Run `\(command) install --repair`. For Codex, remind the user to review the exact hook definitions in `/hooks`."
-            ),
-            "status": skill(
-                name: "chorus-status",
-                description: "Show the current local Chorus TTS state.",
-                body: "Run `\(command) status` and report the current resident process, model, hook, mute, and mode state."
-            ),
-            "mode": skill(
-                name: "chorus-mode",
-                description: "Change the Chorus TTS speaking mode.",
-                body: "Run `\(command) mode <normal|focus|quiet|verbose|night>`. The mode may suppress speech or lower volume but never replaces agent-selected voice or speed."
-            ),
-            "mute": skill(
-                name: "chorus-mute",
-                description: "Mute, unmute, or toggle Chorus TTS.",
-                body: "Run `\(command) mute <on|off|toggle>` and report the resulting local mute state."
-            ),
-            "speak": skill(
-                name: "chorus-speak",
-                description: "Speak explicit text through local Chorus TTS.",
-                body: "Run `\(command) speak --text <text> --voice <F1-F5|M1-M5> --speed <0.7-2.0> --volume <0-1>`. Text, voice, speed, and volume are all required and selected by the agent."
-            ),
-            "doctor": skill(
-                name: "chorus-doctor",
-                description: "Diagnose local Chorus TTS installation failures.",
-                body: "Run `\(command) doctor`. Report each current-state check and its exact recovery command. Do not play audio unless explicitly requested."
+                description: "Install or repair local Chorus TTS (Chorus.app) and host hooks.",
+                body: """
+                Run `\(command) install --repair` from a Chorus build if the app is missing or broken. \
+                Mute, mode, start/stop, and quit are controlled only from the Chorus menu bar — there is no user CLI. \
+                For Codex, remind the user to review hook definitions in `/hooks`.
+                """
             ),
         ]
     }

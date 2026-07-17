@@ -76,24 +76,6 @@ public enum AppBundleInstaller {
         }
     }
 
-    /// Creates or replaces a symlink at `link` pointing at `target`.
-    public static func installCLISymlink(from target: URL, to link: URL) throws {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: link.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        if fileManager.fileExists(atPath: link.path) {
-            let existing = try? fileManager.destinationOfSymbolicLink(atPath: link.path)
-            if existing == target.path {
-                return
-            }
-            // Replace regular file or wrong symlink.
-            try fileManager.removeItem(at: link)
-        }
-        try fileManager.createSymbolicLink(atPath: link.path, withDestinationPath: target.path)
-    }
-
     private static func installIcon(png: Data, destination: URL) throws {
         let fileManager = FileManager.default
         let staging = fileManager.temporaryDirectory

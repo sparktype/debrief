@@ -48,16 +48,13 @@ struct HostInstallerTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let installer = HostInstaller(home: home, executable: ChorusPaths.forHome(home).executableURL)
         try installer.install(hosts: Set(HostSource.allCases))
-        let modified = home.appending(path: ".agents/skills/chorus-mode/SKILL.md")
+        let modified = home.appending(path: ".agents/skills/chorus-setup/SKILL.md")
         try Data("user edit".utf8).write(to: modified)
 
         let result = try installer.uninstall(hosts: Set(HostSource.allCases))
 
         #expect(FileManager.default.fileExists(atPath: modified.path))
         #expect(result.preservedModifiedFiles == [modified.path])
-        #expect(!FileManager.default.fileExists(
-            atPath: home.appending(path: ".agents/skills/chorus-setup/SKILL.md").path
-        ))
         for settings in [home.appending(path: ".codex/hooks.json"), home.appending(path: ".claude/settings.json")] {
             let hooks = try #require(try json(at: settings)["hooks"] as? [String: Any])
             for event in HookEventName.allCases {

@@ -32,8 +32,8 @@ struct RuntimeInstallerTests {
             FileManager.default.attributesOfItem(atPath: installed.path)[.posixPermissions] as? NSNumber
         )
         #expect(mode.intValue == 0o755)
-        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: paths.cliSymlinkURL.path) == installed.path)
         #expect(FileManager.default.fileExists(atPath: paths.applicationBundleURL.path))
+        #expect(!FileManager.default.fileExists(atPath: paths.legacyCLISymlinkURL.path))
         let recorded = await events.values
         #expect(recorded == [
             "model:true", "enable", "bootout", "bootstrap",

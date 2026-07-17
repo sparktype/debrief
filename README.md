@@ -1,25 +1,27 @@
 # Chorus
 
-Chorus is a local, TTS-only companion for Codex and Claude Code on Apple Silicon Macs. One Swift executable installs the pinned Supertonic 3 model, hosts the resident TTS service in a menu bar process, installs host hooks and skills, and speaks only text explicitly supplied by an agent.
+Chorus is a local, TTS-only companion for Codex and Claude Code on Apple Silicon Macs. It installs as **Chorus.app**, hosts TTS in a menu bar process, wires host hooks, and speaks only text supplied by an agent speech envelope.
 
 ## Requirements
 
 - Apple Silicon Mac
 - macOS 14 or newer
 - Codex or Claude Code
+- **Xcode 27 beta** for build (`/Applications/Xcode-beta.app`)
 
 ## Build and install
 
 ```sh
+export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 swift build -c release
 .build/release/chorus install
 ```
 
-`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs a CLI symlink at `~/.local/bin/chorus`, downloads and verifies the pinned model on first installation, installs the LaunchAgent, and merges the five Chorus hooks and six skills for both supported hosts. Double-click **Chorus** in Applications to open the menu bar. Use `chorus install --repair` to restore missing or damaged owned files.
+`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, and host hooks (plus a single setup skill). There is **no user CLI** — mute, mode, start/stop, and quit live on the menu bar only.
 
-After install, **Chorus.app** is available in Applications (menu bar only — no Dock tile). LaunchAgent (`com.chorus.tts`) also runs the app executable with `menubar` so TTS starts at login. Open the app from Finder or Spotlight to show the status item. The menu controls mute, mode, service start/stop, and Quit. Quit disables the LaunchAgent (so KeepAlive does not relaunch) and exits. Re-enable later with `chorus install --repair`. Hooks and CLI use `~/.local/bin/chorus` (symlink into the app). `chorus daemon` remains a headless debug path.
+Double-click **Chorus** in Applications (or use Spotlight) to open the menu bar. LaunchAgent also starts the app at login.
 
-Codex users should review the installed definitions in `/hooks` after installation.
+Use `chorus install --repair` from a build tree if the app is missing or broken. Codex users should review hook definitions in `/hooks` after installation.
 
 ## Agent speech contract
 
@@ -29,7 +31,7 @@ Agents provide a strict invisible envelope in their response:
 <!-- chorus:speak {"v":1,"text":"Build completed.","voice":"F1","speed":0.93,"volume":0.85} -->
 ```
 
-`v`, `text`, `voice`, `speed`, and `volume` are all required. Chorus does not generate or rewrite summaries. Codex or Claude Code selects the text and all voice controls.
+`v`, `text`, `voice`, `speed`, and `volume` are all required. Chorus does not generate or rewrite summaries.
 
 Default role mapping:
 
@@ -45,32 +47,25 @@ Default role mapping:
 | specialist | F5 | 0.88 |
 | default | F1 | 0.93 |
 
-The agent must also provide volume. The selected mode may suppress speech or cap its effective volume, but it does not replace the agent's voice or speed.
+## Menu bar
 
-## Commands and skills
+| Action | Purpose |
+| --- | --- |
+| Status header | Running / muted / mode |
+| Mute | Toggle mute |
+| Mode | `normal`, `focus`, `quiet`, `verbose`, `night` |
+| Start / Stop service | In-process TTS service |
+| Chorus 종료 | Quit (disables LaunchAgent so KeepAlive does not relaunch) |
 
-| Command | Skill | Purpose |
-| --- | --- | --- |
-| `chorus install [--repair]` | `/chorus:setup` | Install or repair the binary, model, resident service, hooks, and skills |
-| `chorus status` | `/chorus:status` | Show current installation and resident process state |
-| `chorus doctor` | `/chorus:doctor` | Diagnose failures with recovery commands |
-| `chorus mode [name]` | `/chorus:mode` | Show or set `normal`, `focus`, `quiet`, `verbose`, or `night` |
-| `chorus mute [on|off|toggle]` | `/chorus:mute` | Show or change mute state |
-| `chorus speak ...` | `/chorus:speak` | Speak explicit text with required controls |
-| `chorus menubar` | — | Menu bar resident (LaunchAgent default); mute/mode/start/stop |
-| `chorus daemon` | — | Headless resident for debug; not the install path |
-
-The installed hooks are exactly `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `Stop`, and `SubagentStop`.
+Hooks (`SessionStart`, `UserPromptSubmit`, `SubagentStart`, `Stop`, `SubagentStop`) call the app binary with `hook --source …` — not a CLI tool for users.
 
 ## Local state
 
 ```text
-~/.local/share/chorus/
-├── bin/chorus
-├── models/supertonic-3/
-├── config.json
-├── state/
-└── run/
+/Applications/Chorus.app/          (or ~/Applications)
+~/Library/Application Support/Chorus/
+~/Library/Caches/Chorus/
+~/Library/LaunchAgents/com.chorus.tts.plist
 ```
 
 See [ONBOARDING.md](ONBOARDING.md) for first use and [DEVELOPER.md](DEVELOPER.md) for implementation details.

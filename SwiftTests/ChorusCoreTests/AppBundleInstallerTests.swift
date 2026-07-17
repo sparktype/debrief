@@ -43,9 +43,5 @@ struct AppBundleInstallerTests {
         #expect(info?["CFBundleIdentifier"] as? String == "com.chorus.tts")
         #expect(info?["CFBundleExecutable"] as? String == "chorus")
         #expect(info?["LSUIElement"] as? Bool == true)
-
-        let link = root.appending(path: ".local/bin/chorus")
-        try AppBundleInstaller.installCLISymlink(from: executable, to: link)
-        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == executable.path)
     }
 }

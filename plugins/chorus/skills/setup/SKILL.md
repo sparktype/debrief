@@ -1,8 +1,10 @@
 ---
 name: chorus-setup
-description: Install or repair the local Swift Chorus TTS binary, models, hooks, and skills.
+description: Install or repair local Chorus TTS (Chorus.app) and host hooks.
 ---
 
-# Chorus Setup
+# chorus-setup
 
-Run `chorus install --repair`, then `chorus status`. Report model download or hook ownership failures exactly. In Codex, remind the user to review the installed definitions in `/hooks`.
+Run the Chorus build binary with `install --repair` if the app is missing or broken.
+Mute, mode, start/stop, and quit are controlled only from the Chorus menu bar — there is no user CLI.
+For Codex, remind the user to review hook definitions in `/hooks`.

@@ -62,12 +62,10 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
     public func install(hosts: Set<HostSource>, repair: Bool) async throws -> HostInstallResult {
         let paths = ChorusPaths.forHome(home)
         try installApplicationBundle(paths: paths)
-        try AppBundleInstaller.installCLISymlink(
-            from: paths.executableURL,
-            to: paths.cliSymlinkURL
-        )
+        try removeLegacyCLISymlink(at: paths.legacyCLISymlinkURL)
         _ = try await modelInstaller.install(repair: repair)
-        let hostResult = try HostInstaller(home: home, executable: paths.cliSymlinkURL)
+        // Hooks invoke the app binary directly — no CLI wrapper path.
+        let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
             .install(hosts: hosts)
         try AtomicInstallerFile.write(
             try EmbeddedTemplates.launchAgent(executable: paths.executableURL),
@@ -97,28 +95,23 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
     public func uninstall(hosts: Set<HostSource>) async throws -> HostInstallResult {
         let paths = ChorusPaths.forHome(home)
         var manifest = try InstallManifest.load(from: paths.installManifestURL)
-        let hostResult = try HostInstaller(home: home, executable: paths.cliSymlinkURL)
+        let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
             .uninstall(hosts: hosts)
         var preserved = hostResult.preservedModifiedFiles
         try await launchctl.run(
             arguments: ["bootout", "gui/\(userID)/com.chorus.tts"],
             allowFailure: true
         )
+        try removeLegacyCLISymlink(at: paths.legacyCLISymlinkURL)
         let removable = [
             paths.launchAgentURL,
             paths.executableURL,
-            paths.cliSymlinkURL,
             AppBundleInstaller.infoPlistURL(appBundle: paths.applicationBundleURL),
             AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL),
         ]
         for url in removable {
             guard let owned = manifest.runtimeFiles.first(where: { $0.path == url.path }),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-               attrs[.type] as? FileAttributeType == .typeSymbolicLink {
-                try FileManager.default.removeItem(at: url)
-                continue
-            }
             let digest = InstallerDigest.data(try Data(contentsOf: url))
             if digest == owned.sha256 {
                 try FileManager.default.removeItem(at: url)
@@ -198,23 +191,12 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         if FileManager.default.fileExists(atPath: icon.path) {
             urls.append(icon)
         }
-        // Symlink: store path with digest of the target executable for ownership.
-        if FileManager.default.fileExists(atPath: paths.cliSymlinkURL.path) {
-            urls.append(paths.cliSymlinkURL)
-        }
         manifest.runtimeFiles.removeAll { owned in
             urls.contains { $0.path == owned.path }
                 || owned.path.hasPrefix(paths.applicationBundleURL.path + "/")
+                || owned.path == paths.legacyCLISymlinkURL.path
         }
         for url in urls {
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-               attrs[.type] as? FileAttributeType == .typeSymbolicLink {
-                // Symlink itself has no stable content digest; pin target digest.
-                let target = paths.executableURL
-                let digest = InstallerDigest.data(try Data(contentsOf: target))
-                manifest.runtimeFiles.append(OwnedRuntimeFile(path: url.path, sha256: digest))
-                continue
-            }
             manifest.runtimeFiles.append(
                 OwnedRuntimeFile(
                     path: url.path,
@@ -223,6 +205,13 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
             )
         }
         try manifest.save(to: paths.installManifestURL)
+    }
+
+    /// Removes the retired `~/.local/bin/chorus` symlink or bare binary from older installs.
+    private func removeLegacyCLISymlink(at url: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
     }
 
     private func migrateLegacyIfPresent(paths: ChorusPaths) async throws {

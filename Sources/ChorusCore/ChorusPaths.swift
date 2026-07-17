@@ -12,8 +12,8 @@ public struct ChorusPaths: Equatable, Sendable {
     public let applicationBundleURL: URL
     /// `Contents/MacOS/chorus` inside the app bundle.
     public let executableURL: URL
-    /// Convenience CLI symlink (`~/.local/bin/chorus` → app executable).
-    public let cliSymlinkURL: URL
+    /// Legacy path formerly used as a CLI symlink; cleaned up on install/uninstall.
+    public let legacyCLISymlinkURL: URL
     public let launchAgentURL: URL
     public let installManifestURL: URL
     public let lastErrorURL: URL
@@ -33,7 +33,7 @@ public struct ChorusPaths: Equatable, Sendable {
             pidURL: cache.appending(path: "daemon.pid"),
             applicationBundleURL: appBundle,
             executableURL: AppBundleInstaller.executableURL(appBundle: appBundle),
-            cliSymlinkURL: home.appending(path: ".local/bin/chorus"),
+            legacyCLISymlinkURL: home.appending(path: ".local/bin/chorus"),
             launchAgentURL: home.appending(path: "Library/LaunchAgents/com.chorus.tts.plist"),
             installManifestURL: data.appending(path: "install-manifest.json"),
             lastErrorURL: cache.appending(path: "last-error.json")

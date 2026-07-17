@@ -15,10 +15,10 @@ struct ConfigurationTests {
         #expect(paths.launchAgentURL.path == "/Users/example/Library/LaunchAgents/com.chorus.tts.plist")
         #expect(paths.pidURL.path == "/Users/example/Library/Caches/Chorus/daemon.pid")
         #expect(paths.lastErrorURL.path == "/Users/example/Library/Caches/Chorus/last-error.json")
-        #expect(paths.cliSymlinkURL.path == "/Users/example/.local/bin/chorus")
-        // /Applications is not writable in tests → falls back to ~/Applications.
-        #expect(paths.applicationBundleURL.path.hasSuffix("/Applications/Chorus.app"))
-        #expect(paths.executableURL.path.hasSuffix("/Applications/Chorus.app/Contents/MacOS/chorus"))
+        #expect(paths.legacyCLISymlinkURL.path == "/Users/example/.local/bin/chorus")
+        // Fake homes always use home/Applications (not real /Applications).
+        #expect(paths.applicationBundleURL.path == "/Users/example/Applications/Chorus.app")
+        #expect(paths.executableURL.path == "/Users/example/Applications/Chorus.app/Contents/MacOS/chorus")
     }
 
     @Test func missingAndCorruptFilesRecoverToDefaults() throws {

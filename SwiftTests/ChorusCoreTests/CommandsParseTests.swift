@@ -13,12 +13,17 @@ struct CommandsParseTests {
         #expect(try ChorusCommand.parse(["-h"]) == .help)
     }
 
-    @Test func parsesMenubar() throws {
+    @Test func parsesMenubarAndHook() throws {
         #expect(try ChorusCommand.parse(["menubar"]) == .menubar)
+        #expect(try ChorusCommand.parse(["hook", "--source", "claude"]) == .hook(source: "claude"))
     }
 
-    @Test func parsesDaemon() throws {
-        #expect(try ChorusCommand.parse(["daemon"]) == .daemon)
+    @Test func rejectsRemovedCLICommands() {
+        for name in ["daemon", "speak", "status", "mute", "mode", "doctor"] {
+            #expect(throws: CommandError.self) {
+                try ChorusCommand.parse([name])
+            }
+        }
     }
 
     @Test func menubarRejectsExtraArguments() {

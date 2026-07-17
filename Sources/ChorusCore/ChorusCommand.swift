@@ -1,4 +1,4 @@
-// CLI 서브커맨드 파싱 (Core — 테스트 가능)
+// 앱·훅·설치 진입 파싱 (사용자 CLI 표면 없음)
 import Foundation
 
 public enum CommandError: Error, Equatable, CustomStringConvertible {
@@ -11,38 +11,30 @@ public enum CommandError: Error, Equatable, CustomStringConvertible {
     }
 }
 
+/// Process entry modes. User-facing control is the menu bar; agents use `hook`.
 public enum ChorusCommand: Equatable {
     case install(codex: Bool, claude: Bool, repair: Bool)
     case uninstall(codex: Bool, claude: Bool)
-    case daemon
     case menubar
     case hook(source: String)
-    case speak(text: String, voice: String, speed: Double, volume: Double)
-    case status
-    case mute(String?)
-    case mode(String?)
-    case doctor
     case help
 
     public static let usageText = """
-    chorus \(ChorusVersion.current)
+    Chorus \(ChorusVersion.current)
 
-    Usage:
+    Install / repair (from a build tree):
       chorus install [--codex] [--claude] [--repair]
       chorus uninstall [--codex] [--claude]
-      chorus daemon
-      chorus menubar
-      chorus hook --source <codex|claude>
-      chorus speak --text <text> --voice <id> --speed <value> --volume <value>
-      chorus status
-      chorus mute [on|off|toggle]
-      chorus mode [normal|focus|quiet|verbose|night]
-      chorus doctor
+
+    Runtime (Chorus.app / LaunchAgent):
+      (no args) | menubar     menu bar resident
+      hook --source <codex|claude>
+
+    Mute, mode, start/stop, and quit are controlled from the menu bar only.
     """
 
     public static func parse(_ arguments: [String]) throws -> ChorusCommand {
-        // Finder double-click and bare `chorus` with no args launch the menu bar.
-        // Use `chorus help` / `-h` for usage text.
+        // Finder double-click and bare launch open the menu bar.
         guard let name = arguments.first else { return .menubar }
         let tail = Array(arguments.dropFirst())
 
@@ -60,9 +52,6 @@ public enum ChorusCommand: Equatable {
         case "uninstall":
             try requireOnly(tail, flags: ["--codex", "--claude"])
             return .uninstall(codex: tail.contains("--codex"), claude: tail.contains("--claude"))
-        case "daemon":
-            try requireEmpty(tail, command: name)
-            return .daemon
         case "menubar":
             try requireEmpty(tail, command: name)
             return .menubar
@@ -73,33 +62,10 @@ public enum ChorusCommand: Equatable {
             }
             try requireFlagPairs(tail, flags: ["--source"])
             return .hook(source: source)
-        case "speak":
-            let text = try requiredValue("--text", in: tail)
-            let voice = try requiredValue("--voice", in: tail)
-            let speedRaw = try requiredValue("--speed", in: tail)
-            let volumeRaw = try requiredValue("--volume", in: tail)
-            guard let speed = Double(speedRaw), let volume = Double(volumeRaw) else {
-                throw CommandError.usage("--speed and --volume must be numbers")
-            }
-            try requireFlagPairs(tail, flags: ["--text", "--voice", "--speed", "--volume"])
-            return .speak(text: text, voice: voice, speed: speed, volume: volume)
-        case "status":
-            try requireEmpty(tail, command: name)
-            return .status
-        case "mute":
-            guard tail.count <= 1, tail.first.map({ ["on", "off", "toggle"].contains($0) }) ?? true else {
-                throw CommandError.usage("mute accepts on, off, or toggle")
-            }
-            return .mute(tail.first)
-        case "mode":
-            let modes = ["normal", "focus", "quiet", "verbose", "night"]
-            guard tail.count <= 1, tail.first.map({ modes.contains($0) }) ?? true else {
-                throw CommandError.usage("mode accepts normal, focus, quiet, verbose, or night")
-            }
-            return .mode(tail.first)
-        case "doctor":
-            try requireEmpty(tail, command: name)
-            return .doctor
+        case "daemon", "speak", "status", "mute", "mode", "doctor":
+            throw CommandError.usage(
+                "removed CLI command '\(name)'; use the Chorus menu bar for mute/mode/status"
+            )
         default:
             throw CommandError.usage("unknown command: \(name)")
         }
