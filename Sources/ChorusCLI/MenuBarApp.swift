@@ -58,7 +58,8 @@ enum MenuBarApp {
 @MainActor
 final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let controller: MenuBarController
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    /// Square length keeps a consistent monochrome glyph footprint in the menu bar.
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     /// Stable menu instance — rebuild mutates items in place so open menus stay visible.
     private let menu = NSMenu()
     private var signalSources: [any DispatchSourceProtocol] = []
@@ -74,10 +75,8 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.rebuildMenu()
         }
         if let button = item.button {
-            button.image = NSImage(
-                systemSymbolName: "waveform",
-                accessibilityDescription: "Chorus"
-            )
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
             button.toolTip = "Chorus"
         }
         rebuildMenu()
@@ -185,11 +184,42 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // No Quit — full off via uninstall / launchctl (KeepAlive).
 
-        let symbol = controller.status.serviceRunning ? "waveform" : "waveform.slash"
-        item.button?.image = NSImage(
-            systemSymbolName: symbol,
-            accessibilityDescription: "Chorus"
-        )
+        applyStatusIcon()
+    }
+
+    /// Menu-bar SF Symbols must be template images at a fixed point size.
+    /// Unconfigured symbols often render oversized, multicolored, or clipped.
+    private func applyStatusIcon() {
+        let status = controller.status
+        let symbolName: String
+        if status.muted {
+            symbolName = "speaker.slash.fill"
+        } else if status.serviceRunning {
+            symbolName = "speaker.wave.2.fill"
+        } else {
+            symbolName = "speaker.wave.2"
+        }
+
+        item.button?.image = Self.menuBarSymbol(named: symbolName)
+        // Keep full opacity — `appearsDisabled` looks washed-out/broken in the menu bar.
+        item.button?.appearsDisabled = false
+    }
+
+    /// Builds a monochrome template glyph sized for `NSStatusItem`.
+    private static func menuBarSymbol(named name: String) -> NSImage? {
+        let candidates = [name, "speaker.wave.2", "waveform"]
+        let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        for candidate in candidates {
+            guard let base = NSImage(systemSymbolName: candidate, accessibilityDescription: "Chorus")
+            else { continue }
+            let image = base.withSymbolConfiguration(configuration) ?? base
+            image.isTemplate = true
+            // Explicit pixel size helps bare executables (no asset catalog) scale cleanly.
+            let side: CGFloat = 18
+            image.size = NSSize(width: side, height: side)
+            return image
+        }
+        return nil
     }
 
     @objc private func toggleMute() {
