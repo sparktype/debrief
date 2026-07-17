@@ -182,7 +182,19 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             startItem.isEnabled = true
             menu.addItem(startItem)
         }
-        // No Quit — full off via uninstall / launchctl (KeepAlive).
+
+        menu.addItem(.separator())
+
+        // Quit boots out LaunchAgent first so KeepAlive does not immediately relaunch.
+        let quitItem = NSMenuItem(
+            title: "Chorus 종료",
+            action: #selector(quitChorus),
+            keyEquivalent: "q"
+        )
+        quitItem.keyEquivalentModifierMask = [.command]
+        quitItem.target = self
+        quitItem.isEnabled = true
+        menu.addItem(quitItem)
 
         applyStatusIcon()
     }
@@ -238,5 +250,14 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func stopService() {
         Task { await controller.stop() }
+    }
+
+    @objc private func quitChorus() {
+        guard !isShuttingDown else { return }
+        isShuttingDown = true
+        Task { @MainActor in
+            await controller.quit()
+            NSApp.terminate(nil)
+        }
     }
 }

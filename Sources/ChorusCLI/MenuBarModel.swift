@@ -92,6 +92,15 @@ final class MenuBarController {
         await service.stop(removePid: true)
     }
 
+    /// Menu Quit: unload LaunchAgent (prevent KeepAlive relaunch), then full service stop.
+    /// SIGTERM/system terminate should call `shutdownService()` only — not this.
+    func quit(launchctl: any LaunchctlRunning = ProcessLaunchctlRunner()) async {
+        await enqueue {
+            try? await LaunchAgentControl.bootout(launchctl: launchctl)
+            await self.service.stop(removePid: true)
+        }
+    }
+
     /// Records a launch-time or external error before the first refresh.
     func noteError(_ message: String) {
         status.lastError = message
