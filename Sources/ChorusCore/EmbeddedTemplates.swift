@@ -70,6 +70,8 @@ public enum EmbeddedTemplates {
                 "LSMinimumSystemVersion": "14.0",
                 // Menu bar agent: no Dock tile; Applications icon still launches the app.
                 "LSUIElement": true,
+                // Prefer a single running instance when the user re-clicks the app icon.
+                "LSMultipleInstancesProhibited": true,
                 "NSHighResolutionCapable": true,
                 "NSPrincipalClass": "NSApplication",
             ] as [String: Any],

@@ -8,6 +8,23 @@ public enum ResidentServiceError: Error, Equatable, Sendable {
     case notRunning
 }
 
+extension ResidentService {
+    /// True when another live process already owns the resident pid file.
+    public static func isForeignHostRunning(
+        home: URL,
+        processExists: @Sendable (Int32) -> Bool = { kill($0, 0) == 0 }
+    ) -> Bool {
+        let paths = ChorusPaths.forHome(home)
+        guard let existing = try? String(contentsOf: paths.pidURL, encoding: .utf8),
+              let pid = Int32(existing.trimmingCharacters(in: .whitespacesAndNewlines)),
+              pid > 0,
+              pid != getpid() else {
+            return false
+        }
+        return processExists(pid)
+    }
+}
+
 public actor ResidentService {
     private let home: URL
     private let modelDirectoryProvider: @Sendable (ChorusPaths) throws -> URL

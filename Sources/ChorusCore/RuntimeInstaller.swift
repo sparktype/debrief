@@ -87,7 +87,8 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
             arguments: ["bootstrap", domain, paths.launchAgentURL.path],
             allowFailure: false
         )
-        try await migrateLegacyIfPresent(paths: paths)
+        // Legacy migration must not fail a successful app install/bootstrap.
+        try? await migrateLegacyIfPresent(paths: paths)
         return hostResult
     }
 

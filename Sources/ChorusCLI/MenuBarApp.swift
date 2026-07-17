@@ -5,38 +5,33 @@ import Darwin
 import Foundation
 
 /// AppKit-only menubar host.
-/// Uses `NSStatusItem` + `NSMenu` (not SwiftUI `MenuBarExtra`/`App`) so CLI `main`
-/// and the menubar path do not fight over dual entry points.
+///
+/// **Launch order (critical):** create `NSApplication` + status item first, then start
+/// TTS in a background task. Awaiting model load before `app.run()` leaves no visible
+/// icon and conflicts with async Swift main for Finder-launched apps.
 enum MenuBarApp {
     /// Strong retain for process lifetime (`NSApplication.delegate` is weak).
     @MainActor private static var retainedHost: MenuBarHost?
 
+    /// Shows the status item immediately, starts TTS in the background, then blocks on AppKit.
+    /// Must run on the main actor (`await MenuBarApp.runBlocking` from async main).
     @MainActor
-    static func run(home: URL) async {
+    static func runBlocking(home: URL) {
+        // Second Finder click while LaunchAgent already owns the resident: exit quietly.
+        // (Cannot attach to another process's NSStatusItem.)
+        if ResidentService.isForeignHostRunning(home: home) {
+            Foundation.exit(0)
+        }
+
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+
         let service = ResidentService(
             home: home,
             backendFactory: { try SupertonicEngine(modelDirectory: $0) },
             audioFactory: { AudioPlayer() }
         )
-
         let controller = MenuBarController(home: home, service: service)
-
-        // Auto-start ResidentService on launch (LaunchAgent path).
-        // If another healthy resident already owns pid+socket, exit without UI
-        // so a second `chorus menubar` does not install another NSStatusItem.
-        do {
-            try await service.start()
-        } catch let error as ResidentServiceError where error == .alreadyRunning {
-            Foundation.exit(0)
-        } catch {
-            // modelUnavailable etc. — keep menu so user can Start retry.
-            controller.noteError(error)
-        }
-        await controller.refresh()
-
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
-
         let host = MenuBarHost(controller: controller)
         retainedHost = host
         app.delegate = host
@@ -50,6 +45,18 @@ enum MenuBarApp {
         termination.resume()
         interruption.resume()
         host.retainSignalSources([termination, interruption])
+
+        // Start TTS after the status item exists (SF Symbol is already visible).
+        Task { @MainActor in
+            do {
+                try await service.start()
+            } catch let error as ResidentServiceError where error == .alreadyRunning {
+                Foundation.exit(0)
+            } catch {
+                controller.noteError(error)
+            }
+            await controller.refresh()
+        }
 
         app.run()
     }
@@ -79,11 +86,19 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.imageScaling = .scaleProportionallyDown
             button.imageHugsTitle = false
             button.toolTip = "Chorus"
+            // Guaranteed-visible template glyph first; custom silhouette replaces it if load works.
+            button.image = Self.menuBarSymbol(named: "waveform")
         }
         item.isVisible = true
         rebuildMenu()
-        // Apply icon again after the status item is attached to the system bar.
         applyStatusIcon()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Re-assert visibility once the app is fully in the GUI session.
+        item.isVisible = true
+        applyStatusIcon()
+        Task { await controller.refresh() }
     }
 
     func retainSignalSources(_ sources: [any DispatchSourceProtocol]) {
@@ -189,7 +204,6 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        // Quit boots out LaunchAgent first so KeepAlive does not immediately relaunch.
         let quitItem = NSMenuItem(
             title: "Chorus 종료",
             action: #selector(quitChorus),
@@ -203,38 +217,34 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyStatusIcon()
     }
 
-    /// Prefers the installed app `MenuBarIcon` as a monochrome template silhouette.
+    /// Prefers custom silhouette template; always falls back to SF Symbol.
     private func applyStatusIcon() {
         let status = controller.status
         if let custom = Self.menuBarCustomImage() {
             item.button?.image = custom
-            // Template images follow menu-bar tint; alpha dims muted/stopped.
             item.button?.alphaValue = (status.muted || !status.serviceRunning) ? 0.45 : 1.0
-            item.button?.appearsDisabled = false
-            return
-        }
-
-        let symbolName: String
-        if status.muted {
-            symbolName = "speaker.slash.fill"
-        } else if status.serviceRunning {
-            symbolName = "speaker.wave.2.fill"
         } else {
-            symbolName = "speaker.wave.2"
+            let symbolName: String
+            if status.muted {
+                symbolName = "speaker.slash.fill"
+            } else if status.serviceRunning {
+                symbolName = "speaker.wave.2.fill"
+            } else {
+                symbolName = "waveform"
+            }
+            item.button?.image = Self.menuBarSymbol(named: symbolName)
+            item.button?.alphaValue = 1.0
         }
-        item.button?.image = Self.menuBarSymbol(named: symbolName)
-        item.button?.alphaValue = 1.0
         item.button?.appearsDisabled = false
+        item.isVisible = true
     }
 
-    /// Loads `Contents/Resources/MenuBarIcon.png` (or AppIcon) next to the running binary.
     private static func menuBarCustomImage() -> NSImage? {
         for url in menuBarIconCandidateURLs() {
             guard FileManager.default.fileExists(atPath: url.path),
-                  let source = NSImage(contentsOf: url) else { continue }
-            if let prepared = preparedMenuBarImage(source) {
-                return prepared
-            }
+                  let source = NSImage(contentsOf: url),
+                  let prepared = preparedMenuBarImage(source) else { continue }
+            return prepared
         }
         return nil
     }
@@ -249,11 +259,10 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private static func resourcesDirectory() -> URL {
-        // Prefer path relative to the running binary (reliable under launchd).
         let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let fromExecutable = executable
-            .deletingLastPathComponent() // MacOS
-            .deletingLastPathComponent() // Contents
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appending(path: "Resources", directoryHint: .isDirectory)
         if FileManager.default.fileExists(atPath: fromExecutable.path) {
             return fromExecutable
@@ -265,11 +274,9 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return fromExecutable
     }
 
-    /// Scales into an 18pt **template** silhouette (black + alpha).
-    /// macOS tints the alpha mask to match light/dark menu bars.
     private static func preparedMenuBarImage(_ source: NSImage) -> NSImage? {
         let side: CGFloat = 18
-        let pixel = Int(side * 2) // draw at 2x for Retina
+        let pixel = Int(side * 2)
         guard let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: pixel,
@@ -297,14 +304,36 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         convertToTemplateSilhouette(bitmap)
 
+        // If conversion wiped everything, reject so SF Symbol is used.
+        if silhouetteCoverage(bitmap) < 0.02 {
+            return nil
+        }
+
         let image = NSImage(size: NSSize(width: side, height: side))
         image.addRepresentation(bitmap)
         image.isTemplate = true
         return image
     }
 
-    /// Turns a full-color icon into a monochrome alpha mask for `isTemplate` rendering.
-    /// Near-white backgrounds drop out; darker/saturated pixels become solid silhouette.
+    private static func silhouetteCoverage(_ bitmap: NSBitmapImageRep) -> Double {
+        guard let data = bitmap.bitmapData else { return 0 }
+        let width = bitmap.pixelsWide
+        let height = bitmap.pixelsHigh
+        let spp = bitmap.samplesPerPixel
+        let rowBytes = bitmap.bytesPerRow
+        guard spp >= 4, width > 0, height > 0 else { return 0 }
+        var solid = 0
+        for y in 0..<height {
+            let row = data.advanced(by: y * rowBytes)
+            for x in 0..<width {
+                if row.advanced(by: x * spp)[3] > 32 {
+                    solid += 1
+                }
+            }
+        }
+        return Double(solid) / Double(width * height)
+    }
+
     private static func convertToTemplateSilhouette(_ bitmap: NSBitmapImageRep) {
         guard let data = bitmap.bitmapData else { return }
         let width = bitmap.pixelsWide
@@ -321,14 +350,17 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let g = Int(p[1])
                 let b = Int(p[2])
                 let a = Int(p[3])
-                // Distance from pure white × existing alpha → mask coverage.
                 let darkness = max(0, 255 - (r + g + b) / 3)
-                let coverage = min(255, (darkness * a) / 255)
-                // Soft threshold so pale fringes do not fill the bar with a square.
+                // Colorful icons: also treat saturation as signal (not just darkness).
+                let maxC = max(r, max(g, b))
+                let minC = min(r, min(g, b))
+                let saturation = maxC - minC
+                let strength = max(darkness, saturation)
+                let coverage = min(255, (strength * a) / 255)
                 let alpha: UInt8
-                if coverage < 18 {
+                if coverage < 12 {
                     alpha = 0
-                } else if coverage > 200 {
+                } else if coverage > 160 {
                     alpha = 255
                 } else {
                     alpha = UInt8(coverage)
@@ -341,17 +373,15 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Builds a monochrome template glyph sized for `NSStatusItem`.
     private static func menuBarSymbol(named name: String) -> NSImage? {
-        let candidates = [name, "speaker.wave.2", "waveform"]
+        let candidates = [name, "waveform", "speaker.wave.2"]
         let configuration = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
         for candidate in candidates {
             guard let base = NSImage(systemSymbolName: candidate, accessibilityDescription: "Chorus")
             else { continue }
             let image = base.withSymbolConfiguration(configuration) ?? base
             image.isTemplate = true
-            let side: CGFloat = 18
-            image.size = NSSize(width: side, height: side)
+            image.size = NSSize(width: 18, height: 18)
             return image
         }
         return nil
@@ -378,12 +408,9 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func quitChorus() {
         guard !isShuttingDown else { return }
         isShuttingDown = true
-        // Hide status item immediately so the UI feels responsive.
         item.isVisible = false
         Task { @MainActor in
             await controller.quit()
-            // Hard exit: NSApp.terminate can stall under launchd agent unload,
-            // and we must not block on bootout (self-deadlock with launchd).
             Foundation.exit(0)
         }
     }

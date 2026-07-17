@@ -64,7 +64,10 @@ do {
         let output = await HookCommandRunner.run(input: input, source: source, home: home)
         FileHandle.standardOutput.write(output)
     case .menubar:
-        await MenuBarApp.run(home: home)
+        // Blocks on AppKit run loop. Status item is created before any TTS await.
+        await MainActor.run {
+            MenuBarApp.runBlocking(home: home)
+        }
     }
 } catch {
     try? Diagnostics(home: home).recordError(
