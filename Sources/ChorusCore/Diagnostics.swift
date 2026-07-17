@@ -130,6 +130,23 @@ public struct Diagnostics: Sendable {
         try AtomicInstallerFile.write(try encoder.encode(value), to: paths.lastErrorURL, permissions: 0o600)
     }
 
+    /// Reads the most recent bounded error, if any.
+    public func currentError() -> CurrentError? {
+        guard let data = try? Data(contentsOf: paths.lastErrorURL),
+              let value = try? JSONDecoder().decode(CurrentError.self, from: data)
+        else {
+            return nil
+        }
+        return value
+    }
+
+    /// Removes a prior error after a successful recovery (service start / hook delivery).
+    public func clearCurrentError() throws {
+        let url = paths.lastErrorURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
+
     public static func liveProcessExists(_ pid: Int32) -> Bool {
         kill(pid, 0) == 0 || errno == EPERM
     }

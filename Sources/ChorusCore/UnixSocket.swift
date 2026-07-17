@@ -291,6 +291,17 @@ public enum HookCommandRunner {
             return Data("{}".utf8)
         }
         let client = UnixSocketClient(socketURL: ChorusPaths.forHome(home).socketURL)
-        return await HookEngine(sink: client).handle(event, source: source).stdout
+        let result = await HookEngine(sink: client).handle(event, source: source)
+        let diagnostics = Diagnostics(home: home)
+        if result.submitted {
+            try? diagnostics.clearCurrentError()
+        } else if let deliveryError = result.deliveryError {
+            try? diagnostics.recordError(
+                component: "hook",
+                code: result.submitted ? "ok" : "delivery_failed",
+                message: "\(source.rawValue) \(event.name.rawValue): \(deliveryError)"
+            )
+        }
+        return result.stdout
     }
 }

@@ -85,6 +85,10 @@ struct DiagnosticsTests {
         #expect(value.component == "daemon")
         #expect(value.message == "socket unavailable retry")
         #expect(value.message.count <= CurrentError.maximumMessageLength)
+        #expect(diagnostics.currentError()?.code == "socket")
+        try diagnostics.clearCurrentError()
+        #expect(diagnostics.currentError() == nil)
+        #expect(!FileManager.default.fileExists(atPath: ChorusPaths.forHome(home).lastErrorURL.path))
     }
 
     private func installModelMarker(paths: ChorusPaths, corrupt: Bool = false) throws {

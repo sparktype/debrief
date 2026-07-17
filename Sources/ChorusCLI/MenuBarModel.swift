@@ -45,12 +45,16 @@ final class MenuBarController {
     }
 
     func refresh() async {
-        let snapshot = Diagnostics(home: home).status()
+        let diagnostics = Diagnostics(home: home)
+        let snapshot = diagnostics.status()
         let running = await service.isRunning
         let voice = await service.activeVoice()
-        var lastError = status.lastError
+        var lastError: String?
         if let failure = await service.consumeRunFailure() {
             lastError = Self.describe(failure)
+        } else if let persisted = diagnostics.currentError()?.message, !persisted.isEmpty {
+            // Surface hook delivery / daemon failures recorded outside the UI process.
+            lastError = persisted
         }
         let next = MenuBarStatus(
             serviceRunning: running,
@@ -70,6 +74,7 @@ final class MenuBarController {
         await enqueue {
             do {
                 try await self.service.start()
+                try? Diagnostics(home: self.home).clearCurrentError()
                 self.status.lastError = nil
             } catch {
                 self.status.lastError = Self.describe(error)

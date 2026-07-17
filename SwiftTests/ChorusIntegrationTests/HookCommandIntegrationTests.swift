@@ -27,6 +27,21 @@ struct HookCommandIntegrationTests {
         )
 
         #expect(String(decoding: output, as: UTF8.self) == "{}")
+        let error = Diagnostics(home: home).currentError()
+        #expect(error?.component == "hook")
+        #expect(error?.code == "delivery_failed")
+        #expect(error?.message.contains("TTS 전송 실패") == true)
+    }
+
+    @Test func voiceMismatchRecordsDiagnosticWithoutBlocking() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let payload = Data("""
+        {"hook_event_name":"Stop","session_id":"s","last_assistant_message":"x\\n<!-- chorus:speak {\\"v\\":1,\\"text\\":\\"t\\",\\"voice\\":\\"M2\\",\\"speed\\":1,\\"volume\\":0.8} -->"}
+        """.utf8)
+        let output = await HookCommandRunner.run(input: payload, source: .claude, home: home)
+        #expect(String(decoding: output, as: UTF8.self) == "{}")
+        #expect(Diagnostics(home: home).currentError()?.message.contains("보이스 불일치") == true)
     }
 
     private func temporaryHome() -> URL {
