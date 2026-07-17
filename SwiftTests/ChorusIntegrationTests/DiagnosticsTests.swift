@@ -54,6 +54,24 @@ struct DiagnosticsTests {
         #expect(findings.contains { $0.code == "model.invalid_marker" && !$0.ok })
     }
 
+    @Test func doctorSocketMissingWhileProcessRunningSuggestsStartNotRepair() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = ChorusPaths.forHome(home)
+        try FileManager.default.createDirectory(at: paths.pidURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("123".utf8).write(to: paths.pidURL)
+        // No socket — intentional menu Stop while host still alive.
+        try installModelMarker(paths: paths)
+
+        let findings = Diagnostics(home: home, processExists: { $0 == 123 }).doctor()
+        #expect(findings.contains { $0.code == "daemon.running" && $0.ok })
+        let socket = findings.first { $0.code == "socket.missing" }
+        #expect(socket != nil)
+        #expect(socket?.ok == false)
+        #expect(socket?.recovery?.contains("Start service") == true)
+        #expect(socket?.recovery?.contains("install --repair") != true)
+    }
+
     @Test func lastErrorAtomicallyReplacesAndBoundsNonContentMessage() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }

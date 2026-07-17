@@ -30,6 +30,39 @@ struct ResidentServiceTests {
         #expect(!FileManager.default.fileExists(atPath: paths.pidURL.path))
     }
 
+    @Test func stopKeepingPidLeavesHostPidClearsSocket() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let paths = ChorusPaths.forHome(home)
+        try FileManager.default.createDirectory(at: paths.modelsDirectory, withIntermediateDirectories: true)
+
+        let service = ResidentService(
+            home: home,
+            modelDirectoryProvider: { _ in home },
+            backendFactory: { _ in RecordingBackend() },
+            audioFactory: { RecordingAudio() }
+        )
+
+        try await service.start()
+        #expect(await service.isRunning)
+        #expect(FileManager.default.fileExists(atPath: paths.pidURL.path))
+        #expect(FileManager.default.fileExists(atPath: paths.socketURL.path))
+
+        // Menu Stop: host process continues — keep pid, drop socket.
+        await service.stop(removePid: false)
+        #expect(await service.isRunning == false)
+        #expect(FileManager.default.fileExists(atPath: paths.pidURL.path))
+        #expect(!FileManager.default.fileExists(atPath: paths.socketURL.path))
+
+        // Restart still works in the same process.
+        try await service.start()
+        #expect(await service.isRunning)
+        #expect(FileManager.default.fileExists(atPath: paths.socketURL.path))
+        await service.stop()
+        #expect(!FileManager.default.fileExists(atPath: paths.pidURL.path))
+    }
+
     @Test func doubleStartThrowsAlreadyRunning() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }

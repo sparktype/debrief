@@ -22,9 +22,14 @@ enum MenuBarApp {
         let controller = MenuBarController(home: home, service: service)
 
         // Auto-start ResidentService on launch (LaunchAgent path).
+        // If another healthy resident already owns pid+socket, exit without UI
+        // so a second `chorus menubar` does not install another NSStatusItem.
         do {
             try await service.start()
+        } catch let error as ResidentServiceError where error == .alreadyRunning {
+            Foundation.exit(0)
         } catch {
+            // modelUnavailable etc. — keep menu so user can Start retry.
             controller.noteError(error)
         }
         await controller.refresh()

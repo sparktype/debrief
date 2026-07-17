@@ -93,10 +93,19 @@ public struct Diagnostics: Sendable {
                 recovery: "repair the host JSON, then run chorus install --\(host.rawValue) --repair"
             ))
         }
+        let socketRecovery: String?
+        if snapshot.socketPresent {
+            socketRecovery = nil
+        } else if snapshot.process == .running {
+            // Host alive (e.g. menu Stop) — restart service, not full install repair.
+            socketRecovery = "Start service from menu, or run chorus menubar"
+        } else {
+            socketRecovery = "chorus install --repair"
+        }
         findings.append(.init(
             code: snapshot.socketPresent ? "socket.present" : "socket.missing",
             ok: snapshot.socketPresent,
-            recovery: snapshot.socketPresent ? nil : "chorus install --repair"
+            recovery: socketRecovery
         ))
         findings.append(.init(
             code: snapshot.launchAgentInstalled ? "launch_agent.installed" : "launch_agent.missing",

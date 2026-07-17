@@ -22,6 +22,8 @@ public actor ResidentService {
     private var ownedPID: String?
     private var running = false
     private var intentionalStop = false
+    /// When clearing state, remove the host pid file (full teardown) or keep it (menu Stop).
+    private var removePidOnClear = true
     private var runFailure: (any Error)?
 
     public init(
@@ -103,6 +105,7 @@ public actor ResidentService {
         self.ownedPID = pid
         self.running = true
         self.intentionalStop = false
+        self.removePidOnClear = true
         self.runFailure = nil
         self.runTask = Task { [weak self] in
             do {
@@ -114,9 +117,14 @@ public actor ResidentService {
         }
     }
 
-    public func stop() async {
+    /// Stops the in-process daemon and closes the socket.
+    /// - Parameter removePid: When `true` (default), removes the host pid file (full teardown /
+    ///   headless daemon exit). When `false`, leaves the pid so Diagnostics still sees a live host
+    ///   (menu bar Stop — process continues).
+    public func stop(removePid: Bool = true) async {
         guard running else { return }
         intentionalStop = true
+        removePidOnClear = removePid
         await daemon?.shutdown()
         runTask?.cancel()
         _ = try? await runTask?.value
@@ -140,11 +148,13 @@ public actor ResidentService {
         runTask = nil
         daemon = nil
         server = nil
-        if let ownedPID,
+        if removePidOnClear,
+           let ownedPID,
            (try? String(contentsOf: paths.pidURL, encoding: .utf8)) == ownedPID {
             try? FileManager.default.removeItem(at: paths.pidURL)
         }
         ownedPID = nil
         running = false
+        removePidOnClear = true
     }
 }

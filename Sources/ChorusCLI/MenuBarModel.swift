@@ -56,7 +56,8 @@ final class MenuBarController {
 
     func stop() async {
         await enqueue {
-            await self.service.stop()
+            // Keep host pid: menubar process stays alive; only TTS service stops.
+            await self.service.stop(removePid: false)
             self.status.lastError = nil
             await self.refresh()
         }
@@ -86,9 +87,9 @@ final class MenuBarController {
         }
     }
 
-    /// Stops the in-process service without releasing the retained handle.
+    /// Full teardown on process exit — removes pid so Diagnostics sees host gone.
     func shutdownService() async {
-        await service.stop()
+        await service.stop(removePid: true)
     }
 
     /// Records a launch-time or external error before the first refresh.
