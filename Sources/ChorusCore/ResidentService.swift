@@ -59,12 +59,12 @@ public actor ResidentService {
         guard !running else { throw ResidentServiceError.alreadyRunning }
         let paths = ChorusPaths.forHome(home)
 
+        // Foreign live host pid alone is alreadyRunning (socket may be gone after menu Stop).
         if let existing = try? String(contentsOf: paths.pidURL, encoding: .utf8),
            let pid = Int32(existing.trimmingCharacters(in: .whitespacesAndNewlines)),
            pid > 0,
            pid != getpid(),
-           processExists(pid),
-           FileManager.default.fileExists(atPath: paths.socketURL.path) {
+           processExists(pid) {
             throw ResidentServiceError.alreadyRunning
         }
 

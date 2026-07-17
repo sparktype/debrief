@@ -80,6 +80,31 @@ struct ResidentServiceTests {
         await service.stop()
     }
 
+    @Test func foreignLivePidWithoutSocketThrowsAlreadyRunning() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let paths = ChorusPaths.forHome(home)
+        try FileManager.default.createDirectory(
+            at: paths.pidURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        // Simulate another host after menu Stop: live pid, no socket.
+        try "4242".write(to: paths.pidURL, atomically: true, encoding: .utf8)
+        #expect(!FileManager.default.fileExists(atPath: paths.socketURL.path))
+
+        let service = ResidentService(
+            home: home,
+            modelDirectoryProvider: { _ in home },
+            backendFactory: { _ in RecordingBackend() },
+            audioFactory: { RecordingAudio() },
+            processExists: { $0 == 4242 }
+        )
+        await #expect(throws: ResidentServiceError.alreadyRunning) {
+            try await service.start()
+        }
+    }
+
     @Test func waitUntilStoppedUnblocksAfterStop() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
