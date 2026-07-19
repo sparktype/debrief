@@ -58,6 +58,23 @@ struct McpServerTests {
         let res = await McpJSONRPC.handle(request: req, speak: { _ in .init(isError: false, message: "") })
         #expect(res == nil)
     }
+
+    @Test func parseErrorResponseUsesCode32700AndNullId() {
+        let res = McpJSONRPC.parseErrorResponse()
+        #expect(res["jsonrpc"] as? String == "2.0")
+        #expect(res["id"] is NSNull)
+        let error = res["error"] as? [String: Any]
+        #expect(error?["code"] as? Int == -32700)
+        #expect(error?["message"] as? String == "Parse error")
+    }
+
+    @Test func contentLengthRejectsNegativeAndAbsurdLarge() {
+        #expect(McpFraming.validatedContentLength(0) == 0)
+        #expect(McpFraming.validatedContentLength(42) == 42)
+        #expect(McpFraming.validatedContentLength(McpFraming.maxContentLength) == McpFraming.maxContentLength)
+        #expect(McpFraming.validatedContentLength(-1) == nil)
+        #expect(McpFraming.validatedContentLength(McpFraming.maxContentLength + 1) == nil)
+    }
 }
 
 /// Captures speak text without non-Sendable dictionary transfer.

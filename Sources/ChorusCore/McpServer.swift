@@ -102,6 +102,11 @@ public enum McpJSONRPC {
         return response
     }
 
+    /// JSON-RPC parse error (−32700) with `id: null`.
+    public static func parseErrorResponse() -> [String: Any] {
+        errorResponse(id: nil, code: -32700, message: "Parse error")
+    }
+
     private static func errorResponse(id: Any?, code: Int, message: String) -> [String: Any] {
         var response: [String: Any] = [
             "jsonrpc": "2.0",
@@ -116,6 +121,17 @@ public enum McpJSONRPC {
             response["id"] = NSNull()
         }
         return response
+    }
+}
+
+/// Content-Length framing limits (shared with FrameReader).
+public enum McpFraming {
+    public static let maxContentLength = 1_000_000
+
+    /// Accept non-negative lengths up to `maxContentLength`; reject otherwise.
+    public static func validatedContentLength(_ length: Int) -> Int? {
+        guard length >= 0, length <= maxContentLength else { return nil }
+        return length
     }
 }
 
@@ -167,6 +183,7 @@ public struct McpServer: Sendable {
                 let object = try? JSONSerialization.jsonObject(with: body),
                 let request = object as? [String: Any]
             else {
+                writeFrame(McpJSONRPC.parseErrorResponse())
                 continue
             }
             if let response = await McpJSONRPC.handle(request: request, speak: speak) {
@@ -244,7 +261,8 @@ private final class FrameReader: @unchecked Sendable {
             let name = trimmed[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
             guard name == "content-length" else { continue }
             let value = trimmed[trimmed.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            return Int(value)
+            guard let raw = Int(value) else { return nil }
+            return McpFraming.validatedContentLength(raw)
         }
         return nil
     }
