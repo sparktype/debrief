@@ -172,6 +172,89 @@ struct HostInstallerTests {
         #expect(!FileManager.default.fileExists(atPath: settings.path + ".chorus-backup"))
     }
 
+    @Test func installRemovesRetiredOwnedStopHooks() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let executable = URL(fileURLWithPath: "/tmp/chorus-retired-hooks")
+        let codex = home.appending(path: ".codex/hooks.json")
+        let entry = try jsonObject(EmbeddedTemplates.hookEntry(executable: executable, source: .codex))
+        let digest = try InstallerDigest.json(entry)
+        try writeJSON([
+            "hooks": [
+                "Stop": [entry],
+                "SubagentStop": [entry],
+            ],
+        ], to: codex)
+        try InstallManifest(hooks: [
+            OwnedHook(host: .codex, event: .stop, sha256: digest),
+            OwnedHook(host: .codex, event: .subagentStop, sha256: digest),
+        ]).save(to: ChorusPaths.forHome(home).installManifestURL)
+
+        _ = try HostInstaller(home: home, executable: executable).install(hosts: [.codex])
+
+        let hooks = try #require(try json(at: codex)["hooks"] as? [String: Any])
+        #expect(hooks["Stop"] == nil)
+        #expect(hooks["SubagentStop"] == nil)
+        #expect(Set(hooks.keys) == Set(EmbeddedTemplates.hookEvents.map(\.rawValue)))
+        for event in EmbeddedTemplates.hookEvents {
+            #expect((hooks[event.rawValue] as? [Any])?.count == 1)
+        }
+    }
+
+    @Test func installPreservesForeignJsonMcpChorus() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let codex = home.appending(path: ".codex/hooks.json")
+        try writeJSON([
+            "mcpServers": [
+                "chorus": [
+                    "command": "/usr/local/bin/other-chorus",
+                    "args": ["serve"],
+                ],
+            ],
+        ], to: codex)
+
+        let result = try HostInstaller(
+            home: home,
+            executable: URL(fileURLWithPath: "/tmp/chorus-bin")
+        ).install(hosts: [.codex])
+
+        let mcpServers = try #require(try json(at: codex)["mcpServers"] as? [String: Any])
+        let chorus = try #require(mcpServers["chorus"] as? [String: Any])
+        #expect(chorus["command"] as? String == "/usr/local/bin/other-chorus")
+        #expect(chorus["args"] as? [String] == ["serve"])
+        #expect(result.preservedModifiedFiles.contains(HostInstaller.mcpOwnershipPath(for: .codex)))
+    }
+
+    @Test func installDoesNotClobberUnmanagedGrokChorusTable() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let grokConfig = home.appending(path: ".grok/config.toml")
+        try FileManager.default.createDirectory(
+            at: grokConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        [mcp_servers.chorus]
+        command = "/usr/local/bin/foreign"
+        enabled = false
+        """.utf8).write(to: grokConfig)
+
+        let result = try HostInstaller(
+            home: home,
+            executable: URL(fileURLWithPath: "/tmp/chorus-bin")
+        ).install(hosts: [.grok])
+
+        let toml = try String(contentsOf: grokConfig, encoding: .utf8)
+        #expect(toml.contains("command = \"/usr/local/bin/foreign\""))
+        #expect(toml.contains("enabled = false"))
+        #expect(!toml.contains("# BEGIN chorus-mcp"))
+        #expect(result.preservedModifiedFiles.contains(grokConfig.path))
+        #expect(FileManager.default.fileExists(
+            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
+        ))
+    }
+
     private func assertInstalledHooks(_ root: [String: Any], unrelatedEvent: String) {
         let hooks = root["hooks"] as? [String: Any]
         #expect(hooks?[unrelatedEvent] != nil)
@@ -184,6 +267,10 @@ struct HostInstallerTests {
 
     private func json(at url: URL) throws -> [String: Any] {
         try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    }
+
+    private func jsonObject<T: Encodable>(_ value: T) throws -> Any {
+        try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
     }
 
     private func writeJSON(_ value: [String: Any], to url: URL) throws {

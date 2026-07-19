@@ -72,6 +72,22 @@ struct DiagnosticsTests {
         #expect(socket?.recovery?.contains("install --repair") != true)
     }
 
+    @Test func doctorUsesHostAwareCodeForUnreadableGrokToml() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let grok = home.appending(path: ".grok/config.toml")
+        try FileManager.default.createDirectory(at: grok.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Non-UTF-8 so settingsReadableToml fails without looking like JSON.
+        try Data([0xFF, 0xFE, 0xFD]).write(to: grok)
+
+        let findings = Diagnostics(home: home, processExists: { _ in false }).doctor()
+        #expect(findings.contains { $0.code == "host.grok.invalid_toml" && !$0.ok })
+        #expect(!findings.contains { $0.code == "host.grok.invalid_json" })
+        let grokFinding = try #require(findings.first { $0.code == "host.grok.invalid_toml" })
+        #expect(grokFinding.recovery?.localizedCaseInsensitiveContains("toml") == true)
+        #expect(grokFinding.recovery?.localizedCaseInsensitiveContains("json") != true)
+    }
+
     @Test func lastErrorAtomicallyReplacesAndBoundsNonContentMessage() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }

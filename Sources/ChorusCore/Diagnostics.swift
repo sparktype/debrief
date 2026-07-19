@@ -88,11 +88,7 @@ public struct Diagnostics: Sendable {
             findings.append(.init(code: "model.valid", ok: true, recovery: nil))
         }
         for host in HostSource.allCases where snapshot.hostSettingsReadable[host.rawValue] == false {
-            findings.append(.init(
-                code: "host.\(host.rawValue).invalid_json",
-                ok: false,
-                recovery: "repair the host JSON, then run chorus install --\(host.rawValue) --repair"
-            ))
+            findings.append(hostSettingsFinding(for: host))
         }
         let socketRecovery: String?
         if snapshot.socketPresent {
@@ -187,5 +183,23 @@ public struct Diagnostics: Sendable {
     private func settingsReadableToml(_ url: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: url.path) else { return true }
         return (try? String(contentsOf: url, encoding: .utf8)) != nil
+    }
+
+    /// Host-aware doctor code: JSON hosts use invalid_json; Grok uses invalid_toml.
+    private func hostSettingsFinding(for host: HostSource) -> DiagnosticFinding {
+        switch host {
+        case .grok:
+            return .init(
+                code: "host.grok.invalid_toml",
+                ok: false,
+                recovery: "repair ~/.grok/config.toml as UTF-8 TOML, then run chorus install --grok --repair"
+            )
+        case .codex, .claude:
+            return .init(
+                code: "host.\(host.rawValue).invalid_json",
+                ok: false,
+                recovery: "repair the host JSON, then run chorus install --\(host.rawValue) --repair"
+            )
+        }
     }
 }
