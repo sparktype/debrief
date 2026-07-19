@@ -1,4 +1,5 @@
 // MCP stdio JSON-RPC 서버 (speak 도구)
+import Darwin
 import Foundation
 
 /// Pure JSON-RPC method dispatch for MCP (testable without FileHandle).
@@ -135,6 +136,13 @@ public enum McpFraming {
     }
 }
 
+/// Stdio wire format. Grok (and some other hosts) use newline-delimited JSON;
+/// the MCP/LSP-style Content-Length framing is also accepted.
+public enum McpWireFormat: Sendable, Equatable {
+    case contentLength
+    case newlineDelimited
+}
+
 /// Host-spawned stdio MCP server; validates speak and submits via UDS.
 public struct McpServer: Sendable {
     private let home: URL
@@ -157,7 +165,7 @@ public struct McpServer: Sendable {
         self.diagnostics = Diagnostics(home: home)
     }
 
-    /// Run until stdin EOF. Uses MCP Content-Length framing.
+    /// Run until stdin EOF. Accepts Content-Length and newline-delimited JSON.
     public func run() async {
         let reader = FrameReader(handle: input)
         let sink = self.sink
@@ -177,31 +185,44 @@ public struct McpServer: Sendable {
             }
         }
 
+        var wireFormat: McpWireFormat = .contentLength
         while true {
-            guard let body = reader.readFrame() else { break }
+            guard let frame = reader.readFrame() else { break }
+            wireFormat = frame.format
             guard
-                let object = try? JSONSerialization.jsonObject(with: body),
+                let object = try? JSONSerialization.jsonObject(with: frame.body),
                 let request = object as? [String: Any]
             else {
-                writeFrame(McpJSONRPC.parseErrorResponse())
+                writeFrame(McpJSONRPC.parseErrorResponse(), format: wireFormat)
                 continue
             }
             if let response = await McpJSONRPC.handle(request: request, speak: speak) {
-                writeFrame(response)
+                writeFrame(response, format: wireFormat)
             }
         }
     }
 
-    private func writeFrame(_ object: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
-        let header = "Content-Length: \(data.count)\r\n\r\n"
-        output.write(Data(header.utf8))
-        output.write(data)
+    private func writeFrame(_ object: [String: Any], format: McpWireFormat) {
+        guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        switch format {
+        case .contentLength:
+            let header = "Content-Length: \(data.count)\r\n\r\n"
+            output.write(Data(header.utf8))
+            output.write(data)
+        case .newlineDelimited:
+            data.append(0x0A) // \n
+            output.write(data)
+        }
     }
 }
 
-/// Buffered Content-Length frame reader for MCP stdio.
+/// Buffered dual-format frame reader for MCP stdio.
 private final class FrameReader: @unchecked Sendable {
+    struct Frame {
+        let body: Data
+        let format: McpWireFormat
+    }
+
     private let handle: FileHandle
     private var buffer = Data()
 
@@ -209,27 +230,12 @@ private final class FrameReader: @unchecked Sendable {
         self.handle = handle
     }
 
-    /// Returns next JSON body, or nil on EOF.
-    func readFrame() -> Data? {
+    /// Returns next JSON body and detected wire format, or nil on EOF.
+    func readFrame() -> Frame? {
         while true {
-            if let headerEnd = indexOfHeaderTerminator(in: buffer) {
-                let headerData = buffer.subdata(in: 0..<headerEnd)
-                let bodyStart = headerEnd + 4 // \r\n\r\n
-                guard let length = contentLength(from: headerData) else {
-                    // Malformed headers — drop and stop.
-                    return nil
-                }
-                while buffer.count < bodyStart + length {
-                    guard let chunk = readChunk(), !chunk.isEmpty else {
-                        return nil
-                    }
-                    buffer.append(chunk)
-                }
-                let body = buffer.subdata(in: bodyStart..<(bodyStart + length))
-                buffer.removeSubrange(0..<(bodyStart + length))
-                return body
+            if let frame = tryExtractFrame() {
+                return frame
             }
-
             guard let chunk = readChunk(), !chunk.isEmpty else {
                 return nil
             }
@@ -237,10 +243,74 @@ private final class FrameReader: @unchecked Sendable {
         }
     }
 
+    private func tryExtractFrame() -> Frame? {
+        skipLeadingWhitespace()
+        guard let first = buffer.first else { return nil }
+
+        // NDJSON: hosts such as Grok send a single JSON object per line.
+        if first == UInt8(ascii: "{") || first == UInt8(ascii: "[") {
+            guard let nl = buffer.firstIndex(of: 0x0A) else { return nil }
+            let end = nl
+            // Allow optional trailing \r before \n
+            let bodyEnd: Data.Index
+            if end > buffer.startIndex, buffer[buffer.index(before: end)] == 0x0D {
+                bodyEnd = buffer.index(before: end)
+            } else {
+                bodyEnd = end
+            }
+            let body = buffer.subdata(in: buffer.startIndex..<bodyEnd)
+            buffer.removeSubrange(buffer.startIndex...end)
+            guard !body.isEmpty else { return nil }
+            return Frame(body: body, format: .newlineDelimited)
+        }
+
+        // Content-Length framing (LSP / classic MCP stdio).
+        guard let headerEnd = indexOfHeaderTerminator(in: buffer) else { return nil }
+        let headerData = buffer.subdata(in: 0..<headerEnd)
+        let bodyStart = headerEnd + 4 // \r\n\r\n
+        guard let length = contentLength(from: headerData) else {
+            // Malformed headers — drop and stop.
+            buffer.removeAll()
+            return nil
+        }
+        guard buffer.count >= bodyStart + length else { return nil }
+        let body = buffer.subdata(in: bodyStart..<(bodyStart + length))
+        buffer.removeSubrange(0..<(bodyStart + length))
+        return Frame(body: body, format: .contentLength)
+    }
+
+    private func skipLeadingWhitespace() {
+        var i = buffer.startIndex
+        while i < buffer.endIndex {
+            let b = buffer[i]
+            if b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D {
+                i = buffer.index(after: i)
+            } else {
+                break
+            }
+        }
+        if i > buffer.startIndex {
+            buffer.removeSubrange(buffer.startIndex..<i)
+        }
+    }
+
+    /// POSIX partial read — `FileHandle.read(upToCount:)` on macOS may block until
+    /// the full requested length or EOF, which breaks host MCP pipes that stay open
+    /// after each frame (Grok/Claude/Codex keep stdin open for the process lifetime).
     private func readChunk() -> Data? {
-        do {
-            return try handle.read(upToCount: 4096)
-        } catch {
+        var bytes = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let n = Darwin.read(handle.fileDescriptor, &bytes, bytes.count)
+            if n > 0 {
+                return Data(bytes.prefix(n))
+            }
+            if n == 0 {
+                return nil // EOF
+            }
+            // n < 0
+            if errno == EINTR {
+                continue
+            }
             return nil
         }
     }
