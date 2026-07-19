@@ -31,18 +31,13 @@ enum ChorusCLIMain {
         default:
             let result = NonMenubarRunner.run(command, home: home)
             if let error = result {
-                let detail = String(describing: error)
                 try? Diagnostics(home: home).recordError(
                     component: "app",
                     code: "command_failed",
-                    message: detail
+                    message: "command failed; open Chorus.app or reinstall"
                 )
-                FileHandle.standardError.write(Data("error: \(detail)\n".utf8))
+                FileHandle.standardError.write(Data("error: \(error)\n".utf8))
                 exit(1)
-            }
-            // Successful install/uninstall should not keep a stale menu-bar error.
-            if case .install = command {
-                try? Diagnostics(home: home).clearCurrentError()
             }
             exit(0)
         }
@@ -96,7 +91,7 @@ private enum NonMenubarRunner {
             )
             runtime.applicationIconPNG = loadApplicationIconPNG(startingAt: sourceExecutable)
             let result = try await runtime.install(hosts: hosts, repair: repair)
-            print("installed: \(hosts.map(\.rawValue).sorted().joined(separator: ","))")
+            print("installed: \(hosts.map { $0.rawValue }.sorted().joined(separator: ","))")
             print("app: \(paths.applicationBundleURL.path)")
             if result.codexReviewRequired {
                 print("Codex에서 /hooks를 열어 Chorus hook을 검토하고 신뢰하세요.")
@@ -116,19 +111,17 @@ private enum NonMenubarRunner {
                 launchctl: ProcessLaunchctlRunner()
             )
             let result = try await runtime.uninstall(hosts: hosts)
-            print("uninstalled: \(hosts.map(\.rawValue).sorted().joined(separator: ","))")
+            print("uninstalled: \(hosts.map { $0.rawValue }.sorted().joined(separator: ","))")
             printPreservedFiles(result.preservedModifiedFiles)
         case let .hook(sourceValue):
-            guard let source = HostSource(rawValue: sourceValue), source != .grok else {
+            guard let source = HostSource(rawValue: sourceValue) else {
                 throw CommandError.usage("--source must be codex or claude")
             }
             let input = FileHandle.standardInput.readDataToEndOfFile()
             let output = await HookCommandRunner.run(input: input, source: source, home: home)
             FileHandle.standardOutput.write(output)
         case .mcp:
-            let paths = ChorusPaths.forHome(home)
-            let sink = UnixSocketClient(socketURL: paths.socketURL)
-            await McpServer(home: home, sink: sink).run()
+            await McpServer(home: home).run()
         case .menubar:
             break
         }
