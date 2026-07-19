@@ -90,6 +90,27 @@ public enum AppBundleInstaller {
         // Seal Info.plist + Resources so System Settings / BTM can trust the app icon.
         // Skipped for non-Mach-O test fixtures; real installs always sign.
         try signAdHocIfMachO(appBundle: appBundle)
+
+        // Touch the bundle root so LaunchServices detects the change and re-reads Info.plist.
+        // Without this, the bundle root mtime stays stale and the icon cache never updates,
+        // causing the Background Items list to show the command-line tool icon instead of AppIcon.
+        try fileManager.setAttributes(
+            [.modificationDate: Date()],
+            ofItemAtPath: appBundle.path
+        )
+        notifyLaunchServices(appBundle: appBundle)
+    }
+
+    /// Notifies LaunchServices to re-read the bundle so icon and metadata caches update immediately.
+    static func notifyLaunchServices(appBundle: URL) {
+        // lsregister -f re-registers without a full database flush. Best-effort: never fatal.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister")
+        process.arguments = ["-f", appBundle.path]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
     }
 
     /// Ad-hoc signs the bundle with identifier `com.chorus.tts` and sealed resources.
