@@ -5,12 +5,12 @@
 Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executable. Its responsibilities are deliberately narrow:
 
 1. install and verify the pinned Supertonic 3 model;
-2. install the executable, LaunchAgent, five host hooks, and six TTS skills;
-3. accept strict agent-provided speech envelopes;
+2. install the executable, LaunchAgent, start-family host hooks, setup skill, and MCP registration (plus Grok speak skill);
+3. accept strict agent-provided MCP `speak` arguments;
 4. synthesize with the local ONNX Runtime backend and play audio;
 5. expose current-state `status` and `doctor` diagnostics.
 
-The coding agent owns summarization and selects text, voice, speed, and volume.
+The coding agent owns summarization and selects text, voice, speed, and volume via the MCP tool.
 
 ## Source layout
 
@@ -18,13 +18,15 @@ The coding agent owns summarization and selects text, voice, speed, and volume.
 Package.swift
 Sources/
 ├── ChorusCLI/                 command parsing and process entry point
-│   ├── main.swift             subcommand dispatch (menubar / daemon / CLI)
+│   ├── main.swift             subcommand dispatch (menubar / daemon / mcp / CLI)
 │   ├── MenuBarApp.swift       LSUIElement NSStatusItem + NSMenu host
 │   └── MenuBarModel.swift     menu actions against ResidentService
 └── ChorusCore/
     ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
     ├── ChorusDaemon.swift     speech accept loop over Unix socket
-    ├── SpeechEnvelope.swift   wire model and validation
+    ├── SpeechEnvelope.swift   internal wire model and validation
+    ├── McpServer.swift        stdio JSON-RPC MCP (tools only)
+    ├── McpSpeakTool.swift     speak arg parse + UDS submit
     ├── HookAdapters.swift     Codex and Claude event adaptation
     ├── ModePolicy.swift       suppression and effective-volume policy
     ├── SpeechQueue.swift      bounded serialized speech queue
@@ -34,13 +36,13 @@ Sources/
     ├── ModelInstaller.swift   pinned download, checksum, and atomic swap
     ├── RuntimeInstaller.swift executable and LaunchAgent lifecycle
     ├── EmbeddedTemplates.swift hooks, skills, LaunchAgent (args: menubar)
-    ├── HostInstaller.swift    safe hook and skill merge/uninstall
+    ├── HostInstaller.swift    safe hook/skill/MCP merge/uninstall (incl. Grok)
     ├── LegacyMigration.swift  one-time allowlisted configuration import
     └── Diagnostics.swift      bounded current-state diagnostics
 SwiftTests/
 ├── ChorusCoreTests/
 └── ChorusIntegrationTests/
-plugins/chorus/               marketplace metadata, five hooks, six skills
+plugins/chorus/               marketplace metadata, start-family hooks, setup skill
 ```
 
 ## Process model
@@ -61,22 +63,43 @@ Chorus.app (LSUIElement menu bar; also launched from Applications)
               ├── SupertonicEngine
               └── AudioPlayer
 
-Codex / Claude ──► Chorus.app …/chorus hook ──► socket ──► ResidentService
+Codex / Claude / Grok
+  │ spawn: …/chorus mcp   (stdio MCP; tool speak)
+  ▼
+chorus mcp ──► validate ──► Unix socket ──► ResidentService
+
+Codex / Claude (start hooks only)
+  │ SessionStart / UserPromptSubmit / SubagentStart
+  ▼
+…/chorus hook ──► inject MCP speak contract context
 ```
 
-## Speech envelope
+## Host install paths
 
-The only automatic speech request format is:
+| Host | Settings / MCP | Skills | Hooks |
+| --- | --- | --- | --- |
+| Codex | `~/.codex/hooks.json` → `mcpServers.chorus` | `~/.agents/skills` | start-family in same settings |
+| Claude | `~/.claude/settings.json` → `mcpServers.chorus` | `~/.claude/skills` | start-family in settings |
+| Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-speak` | none (skill + MCP carry contract) |
 
-```text
-<!-- chorus:speak {"v":1,"text":"...","voice":"F1","speed":0.93,"volume":0.85} -->
-```
+MCP registration always points at the app absolute path with `args: ["mcp"]`.
 
-All fields are mandatory. Validation rejects unknown fields, invalid voice identifiers, non-finite values, and values outside the supported speed and volume ranges. Hook payloads without a valid envelope are ignored.
+## Speech contract (MCP)
+
+Agents call tool `speak` on server `chorus` once per turn. Required arguments:
+
+| Field | Constraints |
+| --- | --- |
+| text | non-empty, ≤ 800 chars |
+| voice | F1…F5, M1…M5 |
+| speed | 0.7–2.0 finite |
+| volume | 0.0–1.0 finite |
+
+No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (no envelope fallback). Internal `SpeechEnvelope` validation still backs UDS frames after MCP parse.
 
 ## Runtime lifecycle
 
-`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), pinned model, host hooks, a single setup skill, LaunchAgent replacement, and a health-gated legacy cutover. There is no user CLI and no `~/.local/bin/chorus` symlink; hooks invoke the app executable directly. Owned-file digests prevent uninstall or repair from overwriting user modifications. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments (menu bar).
+`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), pinned model, host hooks (start-family), MCP registration, a single setup skill (and Grok speak skill), LaunchAgent replacement, and a health-gated legacy cutover. There is no user CLI and no `~/.local/bin/chorus` symlink; hooks and MCP invoke the app executable directly. Owned-file digests prevent uninstall or repair from overwriting user modifications. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments (menu bar).
 
 The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. It must not await `launchctl bootout` from inside the job — launchd waits for the process to exit and that deadlocks. `install --repair` re-enables and bootstraps the agent.
 

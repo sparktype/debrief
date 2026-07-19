@@ -13,8 +13,8 @@ HMG 사내 AI에서 Opus는 지원되지 않으며, Agent 파라미터 `model: "
 
 ## 프로젝트 개요
 
-Chorus는 Codex·Claude Code용 **로컬 TTS 전용** macOS Apple Silicon 서비스입니다.  
-단일 Swift 실행 파일 `chorus`가 모델 설치, 메뉴바 상주 daemon, hook/skill 배선, 합성을 담당합니다.
+Chorus는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon 서비스입니다.  
+단일 Swift 실행 파일 `chorus`가 모델 설치, 메뉴바 상주 daemon, MCP `speak` 등록, start-family hook/skill 배선, 합성을 담당합니다.
 
 **Python 런타임은 제거되었습니다.** `hook_voice`, `tts_server`, pytest, FastAPI, Whisper, LLM 요약을 재도입하지 마세요.
 
@@ -46,19 +46,21 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 
 1. `README.md` — 사용자 진입점
 2. `DEVELOPER.md` — 개발·빌드·범위
-3. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계
+3. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계 (envelope speech contract는 2026-07-19로 대체)
 4. `docs/superpowers/plans/2026-07-15-swift-single-binary-tts.md` — 구현 플랜
 5. `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` — 메뉴바 상주
+6. `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` — MCP speak + Grok (승인)
 
 ## 제품 경계
 
 **포함**
 
 - Supertonic 3 + ONNX Runtime (Swift 패키지)
-- 에이전트 speech envelope 검증 (`v`, `text`, `voice`, `speed`, `volume`)
+- MCP tool `speak` 검증 (`text`, `voice`, `speed`, `volume`) + `chorus mcp` stdio 서버
 - Unix domain socket + 메뉴바 `ResidentService` (LaunchAgent `com.chorus.tts`)
-- `install` / `uninstall` / `menubar` / `hook`
-- Hooks: SessionStart, UserPromptSubmit, SubagentStart, Stop, SubagentStop
+- `install` / `uninstall` / `menubar` / `hook` / `mcp`
+- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
+- Grok: `~/.grok/config.toml` MCP + `chorus-speak` skill
 - 메뉴바: mute · mode · start/stop · quit (사용자 CLI 없음)
 
 **제외**
@@ -66,39 +68,40 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 - STT / Whisper / 마이크
 - Chorus 측 LLM 요약·브리핑·추천
 - Python / Node / FastAPI / Prometheus / DLQ
+- HTML comment speech envelope / Stop·SubagentStop speech extraction
 - PreToolUse / PostToolUse
 - `~/.local/bin/chorus` 사용자 CLI 심볼릭 링크
 
-## Claude / Codex hook 흐름
+## Speech 흐름 (MCP)
 
 ```text
-Claude lifecycle JSON (stdin)
-  → /Applications/Chorus.app/Contents/MacOS/chorus hook --source claude
-      → SessionStart / UserPromptSubmit / SubagentStart
-          추가 context: chorus:speak envelope 규약 + 역할 보이스
-      → Stop / SubagentStop
-          last_assistant_message 에서 envelope 추출 → UDS enqueue
+호스트가 앱 절대 경로로 spawn
+  → /Applications/Chorus.app/Contents/MacOS/chorus mcp
+      → tools/call speak { text, voice, speed, volume }
+      → 검증 후 UDS enqueue
   → 메뉴바 상주 프로세스가 합성·재생
+
+Claude / Codex start hooks (선택적 context)
+  → …/chorus hook --source claude|codex
+      → SessionStart / UserPromptSubmit / SubagentStart
+          추가 context: MCP speak 규약 + 역할 보이스
+  → Stop / SubagentStop 은 설치하지 않음
 ```
 
-에이전트는 최종 응답 끝에 정확히 한 줄의
-
-```text
-<!-- chorus:speak {"v":1,"text":"한두 문장 요약","voice":"F1","speed":0.93,"volume":0.85} -->
-```
-
-를 붙입니다. Chorus는 요약하지 않습니다. `voice`는 역할 배정과 일치해야 합니다 (메인 기본 F1).
+에이전트는 턴 종료 시 채팅 본문이 아니라 MCP tool `speak`를 **한 번** 호출합니다.  
+Chorus는 요약하지 않습니다. `voice`는 역할 배정과 일치해야 합니다 (메인 기본 F1).  
+본문에 speech JSON·HTML 주석을 넣지 마세요. 도구를 생략하면 무음입니다.
 
 설치:
 
 ```bash
 ./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --claude   # 또는 플래그 없이 양 호스트
+.build/release/chorus install --claude   # 또는 --codex / --grok / 플래그 없이 전체
 ```
 
-Hook command는 HostInstaller가 **앱 절대 경로**로 merge합니다. PATH의 `chorus`에 의존하지 않습니다.
+Hook·MCP command는 HostInstaller가 **앱 절대 경로**로 merge합니다. PATH의 `chorus`에 의존하지 않습니다.
 
-전송 실패·보이스 불일치는 `~/Library/Caches/Chorus/last-error.json`에 기록되며 메뉴바 오류 줄에 표시됩니다. 에이전트 완료(stdout `{}`)는 막지 않습니다.
+전송 실패·인자 오류는 `~/Library/Caches/Chorus/last-error.json`에 기록되며 메뉴바 오류 줄에 표시됩니다. 에이전트 완료는 막지 않습니다.
 
 ## 구현 규칙
 

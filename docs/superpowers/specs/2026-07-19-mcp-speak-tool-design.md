@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-19
 
-**Status:** Draft (awaiting user approval)
+**Status:** Approved
 
 **Target:** macOS 14+ Apple Silicon
 

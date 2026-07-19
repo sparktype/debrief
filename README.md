@@ -1,12 +1,12 @@
 # Chorus
 
-Chorus is a local, TTS-only companion for Codex and Claude Code on Apple Silicon Macs. It installs as **Chorus.app**, hosts TTS in a menu bar process, wires host hooks, and speaks only text supplied by an agent speech envelope.
+Chorus is a local, TTS-only companion for Codex, Claude Code, and Grok on Apple Silicon Macs. It installs as **Chorus.app**, hosts TTS in a menu bar process, registers an MCP `speak` tool, wires start-family host hooks, and speaks only text supplied by the agent through MCP.
 
 ## Requirements
 
 - Apple Silicon Mac
 - macOS 14 or newer
-- Codex or Claude Code
+- Codex, Claude Code, and/or Grok
 - **Xcode 27 beta** for build (`/Applications/Xcode-beta.app`)
 
 ## Build and install
@@ -17,23 +17,26 @@ swift build -c release
 .build/release/chorus install
 ```
 
-`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, and host hooks (plus a single setup skill). There is **no user CLI** — mute, mode, start/stop, and quit live on the menu bar only.
+`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, start-family host hooks (plus a setup skill; Grok also gets a speak skill). There is **no user CLI** — mute, mode, start/stop, and quit live on the menu bar only.
 
 Double-click **Chorus** in Applications (or use Spotlight) to open the menu bar. LaunchAgent also starts the app at login.
 
-Use `chorus install --repair` from a build tree if the app is missing or broken. Codex users should review hook definitions in `/hooks` after installation.
+Use `chorus install --repair` from a build tree if the app is missing or broken. Limit hosts with `--codex`, `--claude`, and/or `--grok`. Codex users should review hook definitions in `/hooks` after installation.
 
 ## Agent speech contract
 
-Agents provide a strict invisible envelope in their response:
+Agents call the Chorus MCP tool `speak` (server `chorus`) once per turn:
 
-```text
-<!-- chorus:speak {"v":1,"text":"Build completed.","voice":"F1","speed":0.93,"volume":0.85} -->
-```
+| Field | Required | Notes |
+| --- | --- | --- |
+| text | yes | ≤ 800 chars spoken summary |
+| voice | yes | F1…F5, M1…M5 |
+| speed | yes | 0.7–2.0 |
+| volume | yes | 0.0–1.0 |
 
-`v`, `text`, `voice`, `speed`, and `volume` are all required. Chorus does not generate or rewrite summaries.
+Do not put speech JSON or HTML comments in the chat body. Install registers MCP for Codex, Claude Code, and Grok.
 
-Default role mapping:
+Default role mapping (for `voice` / baseline speed):
 
 | Role | Voice | Speed |
 | --- | --- | --- |
@@ -57,7 +60,7 @@ Default role mapping:
 | Start / Stop service | In-process TTS service |
 | Chorus 종료 | Quit (disables LaunchAgent so KeepAlive does not relaunch) |
 
-Hooks (`SessionStart`, `UserPromptSubmit`, `SubagentStart`, `Stop`, `SubagentStop`) call the app binary with `hook --source …` — not a CLI tool for users.
+Start-family hooks (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) inject the MCP speak contract. Hosts spawn `chorus mcp` for the `speak` tool — not a CLI tool for users.
 
 ## Local state
 
