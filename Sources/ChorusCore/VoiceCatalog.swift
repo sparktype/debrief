@@ -101,9 +101,12 @@ public enum VoiceCatalog {
     public static func context(for agentType: String?) -> String {
         let assignment = assignment(for: agentType)
         return """
-        Write a one or two sentences spoken summary of your final result. At the very end of the response, append exactly one invisible single-line HTML comment using this format:
-        <!-- chorus:speak {"v":1,"text":"<spoken summary>","voice":"\(assignment.voice)","speed":\(assignment.baselineSpeed),"volume":0.85} -->
-        All five JSON fields are required. Use voice \(assignment.voice) (\(assignment.name)); choose speed from 0.7 through 2.0 and volume from 0.0 through 1.0. Keep the text at 800 characters or fewer and do not add any other chorus:speak comment.
+        When you finish this turn, call the Chorus MCP tool `speak` once with a one- or two-sentence spoken summary. \
+        Required arguments: text, voice, speed, volume. \
+        Use voice \(assignment.voice) (\(assignment.name)); choose speed from 0.7 through 2.0 (baseline \(assignment.baselineSpeed)) \
+        and volume from 0.0 through 1.0 (typical 0.85). \
+        Keep text at 800 characters or fewer. \
+        Do not put HTML comments, JSON speech metadata, or legacy speech envelope markers in the assistant message body.
         """
     }
 }

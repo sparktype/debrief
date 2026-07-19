@@ -61,15 +61,17 @@ struct VoiceCatalogTests {
         }
     }
 
-    @Test func contextRequiresAllEnvelopeFields() {
+    @Test func contextMentionsSpeakToolNotHtmlEnvelope() {
         let text = VoiceCatalog.context(for: "planner")
-        #expect(text.contains("one or two sentences"))
-        #expect(text.contains("exactly one"))
-        #expect(text.contains("\"v\":1"))
-        #expect(text.contains("\"text\""))
-        #expect(text.contains("\"voice\":\"M1\""))
-        #expect(text.contains("\"speed\":1.1"))
-        #expect(text.contains("\"volume\""))
+        #expect(text.contains("speak"))
+        #expect(text.contains("M1"))
+        #expect(text.contains("스티브"))
+        #expect(text.contains("0.7"))
+        #expect(text.contains("2.0"))
+        #expect(text.contains("800"))
+        #expect(!text.contains("chorus:speak"))
+        #expect(!text.contains("<!--"))
         #expect(!text.localizedCaseInsensitiveContains("Chorus summarizes"))
     }
 }
+

@@ -21,6 +21,8 @@ public struct HookEngine: Sendable {
     }
 
     public func handle(_ event: HookEvent, source: HostSource) async -> HookResult {
+        // Keep sink retained for API stability; speech delivery moved to MCP speak tool.
+        _ = sink
         switch event.name {
         case .sessionStart, .userPromptSubmit, .subagentStart:
             // Prefer host-provided agent type (Claude --agent / SubagentStart) when present.
@@ -32,56 +34,7 @@ public struct HookEngine: Sendable {
         case .stop, .subagentStop:
             let success = (try? HookAdapter.successOutput(source: source, event: event))
                 ?? Data("{}".utf8)
-            guard let message = event.lastAssistantMessage,
-                  let envelope = SpeechEnvelopeParser.extract(from: message)
-            else {
-                return HookResult(stdout: success, submitted: false)
-            }
-
-            let assigned = VoiceCatalog.assignment(for: event.agentType).voice
-            guard envelope.voice == assigned else {
-                return HookResult(
-                    stdout: success,
-                    submitted: false,
-                    deliveryError: "보이스 불일치: envelope \(envelope.voice) ≠ 배정 \(assigned)"
-                )
-            }
-
-            let request = SpeechRequest(
-                envelope: envelope,
-                event: event.name,
-                agentType: event.agentType
-            )
-            do {
-                try await sink.submit(request)
-                return HookResult(stdout: success, submitted: true)
-            } catch {
-                return HookResult(
-                    stdout: success,
-                    submitted: false,
-                    deliveryError: "TTS 전송 실패: \(Self.shortError(error))"
-                )
-            }
+            return HookResult(stdout: success, submitted: false)
         }
-    }
-
-    private static func shortError(_ error: any Error) -> String {
-        if let socket = error as? UnixSocketError {
-            switch socket {
-            case .disconnected:
-                return "서비스 소켓 연결 불가"
-            case .rejected:
-                return "서비스가 요청을 거부함"
-            case .payloadTooLarge:
-                return "요청이 너무 큼"
-            case .invalidFrame:
-                return "소켓 프레임 오류"
-            case .pathTooLong, .unsafeExistingPath:
-                return "소켓 경로 오류"
-            case .systemCall(let name, let code):
-                return "\(name)(\(code))"
-            }
-        }
-        return String(describing: error)
     }
 }

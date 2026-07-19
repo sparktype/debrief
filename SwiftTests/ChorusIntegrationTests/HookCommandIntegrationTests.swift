@@ -4,20 +4,18 @@ import Testing
 
 @Suite("HookCommandIntegrationTests")
 struct HookCommandIntegrationTests {
-    @Test func validStopProducesOneSocketRequestAndSuccessJSON() async throws {
+    @Test func stopWithLegacyEnvelopeReturnsSuccessWithoutSocketTraffic() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
-        let server = try UnixSocketServer(socketURL: ChorusPaths.forHome(home).socketURL)
         let input = try fixture("codex-stop.json")
 
-        async let received = server.accept()
         let output = await HookCommandRunner.run(input: input, source: .codex, home: home)
 
         #expect(String(decoding: output, as: UTF8.self) == "{}")
-        #expect(try await received.envelope.text == "Codex 작업을 완료했습니다.")
+        #expect(Diagnostics(home: home).currentError() == nil)
     }
 
-    @Test func unavailableSocketStillReturnsHostSuccess() async throws {
+    @Test func unavailableSocketStillReturnsHostSuccessWithoutDiagnostic() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let output = await HookCommandRunner.run(
@@ -27,13 +25,10 @@ struct HookCommandIntegrationTests {
         )
 
         #expect(String(decoding: output, as: UTF8.self) == "{}")
-        let error = Diagnostics(home: home).currentError()
-        #expect(error?.component == "hook")
-        #expect(error?.code == "delivery_failed")
-        #expect(error?.message.contains("TTS 전송 실패") == true)
+        #expect(Diagnostics(home: home).currentError() == nil)
     }
 
-    @Test func voiceMismatchRecordsDiagnosticWithoutBlocking() async throws {
+    @Test func legacyEnvelopeOnStopIsIgnoredWithoutDiagnostic() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let payload = Data("""
@@ -41,7 +36,21 @@ struct HookCommandIntegrationTests {
         """.utf8)
         let output = await HookCommandRunner.run(input: payload, source: .claude, home: home)
         #expect(String(decoding: output, as: UTF8.self) == "{}")
-        #expect(Diagnostics(home: home).currentError()?.message.contains("보이스 불일치") == true)
+        #expect(Diagnostics(home: home).currentError() == nil)
+    }
+
+    @Test func sessionStartContextMentionsSpeakNotHtmlEnvelope() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let payload = Data("""
+        {"hook_event_name":"SessionStart","session_id":"s","agent_type":"planner"}
+        """.utf8)
+        let output = await HookCommandRunner.run(input: payload, source: .claude, home: home)
+        let text = String(decoding: output, as: UTF8.self)
+        #expect(text.contains("speak"))
+        #expect(text.contains("M1"))
+        #expect(!text.contains("chorus:speak"))
+        #expect(!text.contains("<!--"))
     }
 
     private func temporaryHome() -> URL {
