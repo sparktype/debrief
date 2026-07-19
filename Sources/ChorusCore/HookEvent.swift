@@ -3,6 +3,7 @@ import Foundation
 public enum HostSource: String, Codable, CaseIterable, Sendable {
     case codex
     case claude
+    case grok
 }
 
 public enum HookEventName: String, Codable, CaseIterable, Sendable {

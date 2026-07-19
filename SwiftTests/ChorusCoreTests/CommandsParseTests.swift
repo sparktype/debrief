@@ -31,4 +31,32 @@ struct CommandsParseTests {
             try ChorusCommand.parse(["menubar", "--extra"])
         }
     }
+
+    @Test func parsesMcp() throws {
+        #expect(try ChorusCommand.parse(["mcp"]) == .mcp)
+    }
+
+    @Test func mcpRejectsExtraArguments() {
+        #expect(throws: CommandError.self) {
+            try ChorusCommand.parse(["mcp", "--extra"])
+        }
+    }
+
+    @Test func parsesInstallGrokFlag() throws {
+        #expect(
+            try ChorusCommand.parse(["install", "--grok"])
+                == .install(codex: false, claude: false, grok: true, repair: false)
+        )
+        #expect(
+            try ChorusCommand.parse(["install", "--codex", "--claude", "--grok", "--repair"])
+                == .install(codex: true, claude: true, grok: true, repair: true)
+        )
+    }
+
+    @Test func parsesUninstallGrokFlag() throws {
+        #expect(
+            try ChorusCommand.parse(["uninstall", "--grok"])
+                == .uninstall(codex: false, claude: false, grok: true)
+        )
+    }
 }

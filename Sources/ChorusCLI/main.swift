@@ -75,9 +75,9 @@ private enum NonMenubarRunner {
         switch command {
         case .help:
             print(ChorusCommand.usageText)
-        case let .install(codex, claude, repair):
+        case let .install(codex, claude, grok, repair):
             let paths = ChorusPaths.forHome(home)
-            let hosts = selectedHosts(codex: codex, claude: claude)
+            let hosts = selectedHosts(codex: codex, claude: claude, grok: grok)
             let sourceExecutable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
             var runtime = RuntimeInstaller(
                 home: home,
@@ -97,9 +97,9 @@ private enum NonMenubarRunner {
                 print("Codex에서 /hooks를 열어 Chorus hook을 검토하고 신뢰하세요.")
             }
             printPreservedFiles(result.preservedModifiedFiles)
-        case let .uninstall(codex, claude):
+        case let .uninstall(codex, claude, grok):
             let paths = ChorusPaths.forHome(home)
-            let hosts = selectedHosts(codex: codex, claude: claude)
+            let hosts = selectedHosts(codex: codex, claude: claude, grok: grok)
             let runtime = RuntimeInstaller(
                 home: home,
                 sourceExecutable: paths.executableURL,
@@ -114,23 +114,27 @@ private enum NonMenubarRunner {
             print("uninstalled: \(hosts.map(\.rawValue).sorted().joined(separator: ","))")
             printPreservedFiles(result.preservedModifiedFiles)
         case let .hook(sourceValue):
-            guard let source = HostSource(rawValue: sourceValue) else {
+            guard let source = HostSource(rawValue: sourceValue), source != .grok else {
                 throw CommandError.usage("--source must be codex or claude")
             }
             let input = FileHandle.standardInput.readDataToEndOfFile()
             let output = await HookCommandRunner.run(input: input, source: source, home: home)
             FileHandle.standardOutput.write(output)
+        case .mcp:
+            // Task 3: MCP stdio server (speak tool)
+            throw CommandError.usage("mcp server not yet implemented")
         case .menubar:
             break
         }
     }
 }
 
-private func selectedHosts(codex: Bool, claude: Bool) -> Set<HostSource> {
-    if !codex, !claude { return Set(HostSource.allCases) }
+private func selectedHosts(codex: Bool, claude: Bool, grok: Bool) -> Set<HostSource> {
+    if !codex, !claude, !grok { return Set(HostSource.allCases) }
     var hosts = Set<HostSource>()
     if codex { hosts.insert(.codex) }
     if claude { hosts.insert(.claude) }
+    if grok { hosts.insert(.grok) }
     return hosts
 }
 

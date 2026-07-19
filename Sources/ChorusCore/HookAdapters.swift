@@ -29,7 +29,7 @@ public enum HookAdapter {
         switch source {
         case .codex:
             sessionKeys = ["session_id", "sessionId", "conversation_id", "conversationId"]
-        case .claude:
+        case .claude, .grok:
             sessionKeys = ["session_id", "sessionId"]
         }
         guard let sessionID = string(in: payload, keys: sessionKeys), !sessionID.isEmpty else {
@@ -52,7 +52,7 @@ public enum HookAdapter {
     ) throws -> Data {
         let output: [String: Any]
         switch source {
-        case .codex, .claude:
+        case .codex, .claude, .grok:
             output = [
                 "hookSpecificOutput": [
                     "hookEventName": event.name.rawValue,
@@ -65,7 +65,7 @@ public enum HookAdapter {
 
     public static func successOutput(source: HostSource, event: HookEvent) throws -> Data {
         switch (source, event.name) {
-        case (.codex, _), (.claude, _):
+        case (.codex, _), (.claude, _), (.grok, _):
             return Data("{}".utf8)
         }
     }

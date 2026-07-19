@@ -28,6 +28,9 @@ public struct HostInstaller: Sendable {
         var preserved: [String] = []
 
         for host in hosts.sorted(by: { $0.rawValue < $1.rawValue }) {
+            // Task 4: Grok TOML MCP install — skip until implemented.
+            if host == .grok { continue }
+
             let settingsURL = settingsURL(for: host)
             var root = try readSettings(at: settingsURL)
             let previousFiles = manifest.files.filter { $0.host == host }
@@ -90,6 +93,9 @@ public struct HostInstaller: Sendable {
         var preserved: [String] = []
 
         for host in hosts.sorted(by: { $0.rawValue < $1.rawValue }) {
+            // Task 4: Grok TOML MCP uninstall — skip until implemented.
+            if host == .grok { continue }
+
             let settingsURL = settingsURL(for: host)
             if FileManager.default.fileExists(atPath: settingsURL.path) {
                 var root = try readSettings(at: settingsURL)
@@ -126,6 +132,8 @@ public struct HostInstaller: Sendable {
         switch host {
         case .codex: home.appending(path: ".codex/hooks.json")
         case .claude: home.appending(path: ".claude/settings.json")
+        // Task 4: real Grok TOML path used by install; stub keeps switch exhaustive.
+        case .grok: home.appending(path: ".grok/config.toml")
         }
     }
 
@@ -133,6 +141,7 @@ public struct HostInstaller: Sendable {
         switch host {
         case .codex: home.appending(path: ".agents/skills", directoryHint: .isDirectory)
         case .claude: home.appending(path: ".claude/skills", directoryHint: .isDirectory)
+        case .grok: home.appending(path: ".grok/skills", directoryHint: .isDirectory)
         }
     }
 

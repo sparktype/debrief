@@ -60,6 +60,8 @@ public struct Diagnostics: Sendable {
             hostSettingsReadable: [
                 HostSource.codex.rawValue: settingsReadable(paths.home.appending(path: ".codex/hooks.json")),
                 HostSource.claude.rawValue: settingsReadable(paths.home.appending(path: ".claude/settings.json")),
+                // Task 4: TOML-aware check; missing file stays readable=true via settingsReadable.
+                HostSource.grok.rawValue: settingsReadable(paths.home.appending(path: ".grok/config.toml")),
             ],
             ownedHookCount: manifest.hooks.count,
             ownedSkillCount: manifest.files.count

@@ -33,7 +33,8 @@ struct HostInstallerTests {
         assertInstalledHooks(codexJSON, unrelatedEvent: "PreToolUse")
         assertInstalledHooks(claudeJSON, unrelatedEvent: "Notification")
 
-        for source in HostSource.allCases {
+        // Grok install is Task 4; only codex/claude skills are written today.
+        for source in [HostSource.codex, .claude] {
             let base = source == .codex ? home.appending(path: ".agents/skills") : home.appending(path: ".claude/skills")
             for name in EmbeddedTemplates.skillNames {
                 #expect(FileManager.default.fileExists(

@@ -11,23 +11,25 @@ public enum CommandError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// Process entry modes. User-facing control is the menu bar; agents use `hook`.
+/// Process entry modes. User-facing control is the menu bar; agents use `hook` / `mcp`.
 public enum ChorusCommand: Equatable, Sendable {
-    case install(codex: Bool, claude: Bool, repair: Bool)
-    case uninstall(codex: Bool, claude: Bool)
+    case install(codex: Bool, claude: Bool, grok: Bool, repair: Bool)
+    case uninstall(codex: Bool, claude: Bool, grok: Bool)
     case menubar
     case hook(source: String)
+    case mcp
     case help
 
     public static let usageText = """
     Chorus \(ChorusVersion.current)
 
     Install / repair (from a build tree):
-      chorus install [--codex] [--claude] [--repair]
-      chorus uninstall [--codex] [--claude]
+      chorus install [--codex] [--claude] [--grok] [--repair]
+      chorus uninstall [--codex] [--claude] [--grok]
 
     Runtime (Chorus.app / LaunchAgent):
       (no args) | menubar     menu bar resident
+      mcp                 MCP stdio server (speak tool)
       hook --source <codex|claude>
 
     Mute, mode, start/stop, and quit are controlled from the menu bar only.
@@ -43,18 +45,26 @@ public enum ChorusCommand: Equatable, Sendable {
             guard tail.isEmpty else { throw CommandError.usage("help accepts no arguments") }
             return .help
         case "install":
-            try requireOnly(tail, flags: ["--codex", "--claude", "--repair"])
+            try requireOnly(tail, flags: ["--codex", "--claude", "--grok", "--repair"])
             return .install(
                 codex: tail.contains("--codex"),
                 claude: tail.contains("--claude"),
+                grok: tail.contains("--grok"),
                 repair: tail.contains("--repair")
             )
         case "uninstall":
-            try requireOnly(tail, flags: ["--codex", "--claude"])
-            return .uninstall(codex: tail.contains("--codex"), claude: tail.contains("--claude"))
+            try requireOnly(tail, flags: ["--codex", "--claude", "--grok"])
+            return .uninstall(
+                codex: tail.contains("--codex"),
+                claude: tail.contains("--claude"),
+                grok: tail.contains("--grok")
+            )
         case "menubar":
             try requireEmpty(tail, command: name)
             return .menubar
+        case "mcp":
+            try requireEmpty(tail, command: name)
+            return .mcp
         case "hook":
             let source = try requiredValue("--source", in: tail)
             guard ["codex", "claude"].contains(source) else {
