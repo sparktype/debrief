@@ -72,7 +72,7 @@ public enum EmbeddedTemplates {
         return [
             "setup": skill(
                 name: "chorus-setup",
-                description: "Install or repair local Chorus TTS (Chorus.app) and host hooks.",
+                description: "Install or repair local Chorus TTS (Chorus.app), MCP speak registration, and host hooks.",
                 body: """
                 Run `\(command) install --repair` from a Chorus build if the app is missing or broken. \
                 Mute, mode, start/stop, and quit are controlled only from the Chorus menu bar — there is no user CLI. \

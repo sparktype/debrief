@@ -3,12 +3,11 @@ import Testing
 
 @Suite("RepositoryCutoverTests")
 struct RepositoryCutoverTests {
+    /// Speech is MCP-only; plugin hooks are start-family context injectors.
     private let expectedEvents = Set([
         "SessionStart",
         "UserPromptSubmit",
         "SubagentStart",
-        "Stop",
-        "SubagentStop",
     ])
 
     @Test func legacyRuntimeIsAbsent() {
