@@ -60,8 +60,7 @@ public struct Diagnostics: Sendable {
             hostSettingsReadable: [
                 HostSource.codex.rawValue: settingsReadable(paths.home.appending(path: ".codex/hooks.json")),
                 HostSource.claude.rawValue: settingsReadable(paths.home.appending(path: ".claude/settings.json")),
-                // Task 4: TOML-aware check; missing file stays readable=true via settingsReadable.
-                HostSource.grok.rawValue: settingsReadable(paths.home.appending(path: ".grok/config.toml")),
+                HostSource.grok.rawValue: settingsReadableToml(paths.home.appending(path: ".grok/config.toml")),
             ],
             ownedHookCount: manifest.hooks.count,
             ownedSkillCount: manifest.files.count
@@ -182,5 +181,11 @@ public struct Diagnostics: Sendable {
         guard let data = try? Data(contentsOf: url),
               (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else { return false }
         return true
+    }
+
+    /// Grok config is TOML: missing file is ok; UTF-8 readable is ok (no JSON parse).
+    private func settingsReadableToml(_ url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return true }
+        return (try? String(contentsOf: url, encoding: .utf8)) != nil
     }
 }

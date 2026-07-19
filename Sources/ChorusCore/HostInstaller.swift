@@ -11,6 +11,52 @@ public struct HostInstallResult: Equatable, Sendable {
     public let preservedModifiedFiles: [String]
 }
 
+/// Grok `config.toml` MCP ownership via marker-wrapped table body.
+enum GrokConfigToml {
+    static let begin = "# BEGIN chorus-mcp"
+    static let end = "# END chorus-mcp"
+
+    static func upsert(existing: String, fragment: String) -> String {
+        let block = "\(begin)\n\(fragment.trimmingCharacters(in: .newlines))\n\(end)\n"
+        if let range = existing.range(of: #"\#(begin)[\s\S]*?\#(end)\n?"#, options: .regularExpression) {
+            return existing.replacingCharacters(in: range, with: block)
+        }
+        var base = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !base.isEmpty { base += "\n\n" }
+        return base + block
+    }
+
+    static func removeOwned(_ existing: String) -> String {
+        existing.replacingOccurrences(
+            of: #"\#(begin)[\s\S]*?\#(end)\n?"#,
+            with: "",
+            options: .regularExpression
+        )
+    }
+
+    /// Inner fragment between ownership markers, if present.
+    static func ownedFragment(in existing: String) -> String? {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"\#(begin)\n([\s\S]*?)\n\#(end)"#,
+            options: []
+        ) else { return nil }
+        let ns = existing as NSString
+        guard let match = regex.firstMatch(in: existing, options: [], range: NSRange(location: 0, length: ns.length)),
+              match.numberOfRanges >= 2,
+              let range = Range(match.range(at: 1), in: existing)
+        else { return nil }
+        return String(existing[range])
+    }
+
+    static func hasMarkers(_ existing: String) -> Bool {
+        existing.contains(begin) && existing.contains(end)
+    }
+
+    static func hasChorusTable(_ existing: String) -> Bool {
+        existing.range(of: #"\[mcp_servers\.chorus\]"#, options: .regularExpression) != nil
+    }
+}
+
 public struct HostInstaller: Sendable {
     private let home: URL
     private let executable: URL
@@ -22,57 +68,38 @@ public struct HostInstaller: Sendable {
         self.manifestURL = manifestURL ?? ChorusPaths.forHome(home).installManifestURL
     }
 
+    /// Synthetic ownership path for JSON/TOML MCP registration digests.
+    static func mcpOwnershipPath(for host: HostSource) -> String {
+        "mcp:\(host.rawValue):chorus"
+    }
+
     @discardableResult
     public func install(hosts: Set<HostSource>) throws -> HostInstallResult {
         var manifest = try InstallManifest.load(from: manifestURL)
         var preserved: [String] = []
 
         for host in hosts.sorted(by: { $0.rawValue < $1.rawValue }) {
-            // Task 4: Grok TOML MCP install — skip until implemented.
-            if host == .grok { continue }
-
-            let settingsURL = settingsURL(for: host)
-            var root = try readSettings(at: settingsURL)
             let previousFiles = manifest.files.filter { $0.host == host }
+            let previousHooks = manifest.hooks.filter { $0.host == host }
             var ownedHooks: [OwnedHook] = []
-            var hooks = try hooksObject(from: root)
-
-            for event in EmbeddedTemplates.hookEvents {
-                let entry = EmbeddedTemplates.hookEntry(executable: executable, source: host)
-                let object = try jsonObject(entry)
-                let digest = try InstallerDigest.json(object)
-                var entries = try eventEntries(event, from: hooks)
-                if try !entries.contains(where: { try InstallerDigest.json($0) == digest }) {
-                    entries.append(object)
-                }
-                hooks[event.rawValue] = entries
-                ownedHooks.append(OwnedHook(host: host, event: event, sha256: digest))
-            }
-            root["hooks"] = hooks
-            try backupIfNeeded(settingsURL)
-            try writeSettings(root, to: settingsURL)
-
             var ownedFiles: [OwnedInstalledFile] = []
-            let templates = EmbeddedTemplates.skills(executable: executable)
-            for name in EmbeddedTemplates.skillNames {
-                guard let text = templates[name] else { continue }
-                let destination = skillsDirectory(for: host)
-                    .appending(path: "chorus-\(name)/SKILL.md")
-                let data = Data(text.utf8)
-                let digest = InstallerDigest.data(data)
-                if FileManager.default.fileExists(atPath: destination.path) {
-                    let current = InstallerDigest.data(try Data(contentsOf: destination))
-                    let previouslyOwned = previousFiles.contains { $0.path == destination.path && $0.sha256 == current }
-                    if current != digest, !previouslyOwned {
-                        preserved.append(destination.path)
-                        if let previous = previousFiles.first(where: { $0.path == destination.path }) {
-                            ownedFiles.append(previous)
-                        }
-                        continue
-                    }
-                }
-                try AtomicInstallerFile.write(data, to: destination, permissions: 0o600)
-                ownedFiles.append(OwnedInstalledFile(host: host, path: destination.path, sha256: digest))
+
+            switch host {
+            case .codex, .claude:
+                try installJSONHost(
+                    host,
+                    previousFiles: previousFiles,
+                    previousHooks: previousHooks,
+                    ownedHooks: &ownedHooks,
+                    ownedFiles: &ownedFiles,
+                    preserved: &preserved
+                )
+            case .grok:
+                try installGrokHost(
+                    previousFiles: previousFiles,
+                    ownedFiles: &ownedFiles,
+                    preserved: &preserved
+                )
             }
 
             manifest.hooks.removeAll { $0.host == host }
@@ -93,33 +120,11 @@ public struct HostInstaller: Sendable {
         var preserved: [String] = []
 
         for host in hosts.sorted(by: { $0.rawValue < $1.rawValue }) {
-            // Task 4: Grok TOML MCP uninstall — skip until implemented.
-            if host == .grok { continue }
-
-            let settingsURL = settingsURL(for: host)
-            if FileManager.default.fileExists(atPath: settingsURL.path) {
-                var root = try readSettings(at: settingsURL)
-                var hooks = try hooksObject(from: root)
-                for owned in manifest.hooks where owned.host == host {
-                    var entries = try eventEntries(owned.event, from: hooks)
-                    entries.removeAll { entry in
-                        (try? InstallerDigest.json(entry)) == owned.sha256
-                    }
-                    if entries.isEmpty { hooks.removeValue(forKey: owned.event.rawValue) }
-                    else { hooks[owned.event.rawValue] = entries }
-                }
-                root["hooks"] = hooks
-                try writeSettings(root, to: settingsURL)
-            }
-
-            for owned in manifest.files where owned.host == host {
-                guard FileManager.default.fileExists(atPath: owned.path) else { continue }
-                let current = InstallerDigest.data(try Data(contentsOf: URL(fileURLWithPath: owned.path)))
-                if current == owned.sha256 {
-                    try FileManager.default.removeItem(atPath: owned.path)
-                } else {
-                    preserved.append(owned.path)
-                }
+            switch host {
+            case .codex, .claude:
+                try uninstallJSONHost(host, manifest: manifest, preserved: &preserved)
+            case .grok:
+                try uninstallGrokHost(manifest: manifest, preserved: &preserved)
             }
             manifest.hooks.removeAll { $0.host == host }
             manifest.files.removeAll { $0.host == host }
@@ -128,11 +133,280 @@ public struct HostInstaller: Sendable {
         return HostInstallResult(codexReviewRequired: false, preservedModifiedFiles: preserved.sorted())
     }
 
+    // MARK: - JSON hosts (Codex / Claude)
+
+    private func installJSONHost(
+        _ host: HostSource,
+        previousFiles: [OwnedInstalledFile],
+        previousHooks: [OwnedHook],
+        ownedHooks: inout [OwnedHook],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        let settingsURL = settingsURL(for: host)
+        var root = try readSettings(at: settingsURL)
+        var hooks = try hooksObject(from: root)
+
+        // Drop previously owned Stop/SubagentStop (and any other retired events) on repair.
+        let activeEvents = Set(EmbeddedTemplates.hookEvents)
+        for owned in previousHooks where !activeEvents.contains(owned.event) {
+            var entries = try eventEntries(owned.event, from: hooks)
+            entries.removeAll { entry in
+                (try? InstallerDigest.json(entry)) == owned.sha256
+            }
+            if entries.isEmpty { hooks.removeValue(forKey: owned.event.rawValue) }
+            else { hooks[owned.event.rawValue] = entries }
+        }
+
+        for event in EmbeddedTemplates.hookEvents {
+            let entry = EmbeddedTemplates.hookEntry(executable: executable, source: host)
+            let object = try jsonObject(entry)
+            let digest = try InstallerDigest.json(object)
+            var entries = try eventEntries(event, from: hooks)
+            if try !entries.contains(where: { try InstallerDigest.json($0) == digest }) {
+                entries.append(object)
+            }
+            hooks[event.rawValue] = entries
+            ownedHooks.append(OwnedHook(host: host, event: event, sha256: digest))
+        }
+        root["hooks"] = hooks
+
+        try mergeJSONMcp(
+            into: &root,
+            host: host,
+            previousFiles: previousFiles,
+            ownedFiles: &ownedFiles,
+            preserved: &preserved
+        )
+
+        try backupIfNeeded(settingsURL)
+        try writeSettings(root, to: settingsURL)
+
+        try installSkills(
+            for: host,
+            previousFiles: previousFiles,
+            ownedFiles: &ownedFiles,
+            preserved: &preserved
+        )
+    }
+
+    private func mergeJSONMcp(
+        into root: inout [String: Any],
+        host: HostSource,
+        previousFiles: [OwnedInstalledFile],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        let mcpPath = Self.mcpOwnershipPath(for: host)
+        let registration = EmbeddedTemplates.mcpRegistration(executable: executable)
+        let digest = try InstallerDigest.json(registration)
+        var mcpServers = root["mcpServers"] as? [String: Any] ?? [:]
+
+        if let existing = mcpServers["chorus"] {
+            let current = try InstallerDigest.json(existing)
+            let previouslyOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
+            if current != digest, !previouslyOwned {
+                preserved.append(mcpPath)
+                if let previous = previousFiles.first(where: { $0.path == mcpPath }) {
+                    ownedFiles.append(previous)
+                }
+            } else {
+                mcpServers["chorus"] = registration
+                ownedFiles.append(OwnedInstalledFile(host: host, path: mcpPath, sha256: digest))
+            }
+        } else {
+            mcpServers["chorus"] = registration
+            ownedFiles.append(OwnedInstalledFile(host: host, path: mcpPath, sha256: digest))
+        }
+        root["mcpServers"] = mcpServers
+    }
+
+    private func uninstallJSONHost(
+        _ host: HostSource,
+        manifest: InstallManifest,
+        preserved: inout [String]
+    ) throws {
+        let settingsURL = settingsURL(for: host)
+        if FileManager.default.fileExists(atPath: settingsURL.path) {
+            var root = try readSettings(at: settingsURL)
+            var hooks = try hooksObject(from: root)
+            for owned in manifest.hooks where owned.host == host {
+                var entries = try eventEntries(owned.event, from: hooks)
+                entries.removeAll { entry in
+                    (try? InstallerDigest.json(entry)) == owned.sha256
+                }
+                if entries.isEmpty { hooks.removeValue(forKey: owned.event.rawValue) }
+                else { hooks[owned.event.rawValue] = entries }
+            }
+            root["hooks"] = hooks
+
+            let mcpPath = Self.mcpOwnershipPath(for: host)
+            if let owned = manifest.files.first(where: { $0.host == host && $0.path == mcpPath }),
+               var mcpServers = root["mcpServers"] as? [String: Any] {
+                if let existing = mcpServers["chorus"],
+                   (try? InstallerDigest.json(existing)) == owned.sha256 {
+                    mcpServers.removeValue(forKey: "chorus")
+                    root["mcpServers"] = mcpServers
+                } else if mcpServers["chorus"] != nil {
+                    preserved.append(mcpPath)
+                }
+            }
+
+            try writeSettings(root, to: settingsURL)
+        }
+
+        for owned in manifest.files where owned.host == host {
+            if owned.path.hasPrefix("mcp:") { continue }
+            try removeOwnedFile(owned, preserved: &preserved)
+        }
+    }
+
+    // MARK: - Grok (TOML MCP + speak skill)
+
+    private func installGrokHost(
+        previousFiles: [OwnedInstalledFile],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        let configURL = settingsURL(for: .grok)
+        let mcpPath = Self.mcpOwnershipPath(for: .grok)
+        let fragment = EmbeddedTemplates.grokMcpTomlFragment(executable: executable)
+            .trimmingCharacters(in: .newlines)
+        let digest = InstallerDigest.data(Data(fragment.utf8))
+        let existing = FileManager.default.fileExists(atPath: configURL.path)
+            ? (try String(contentsOf: configURL, encoding: .utf8))
+            : ""
+
+        var shouldWriteConfig = true
+        if let currentFragment = GrokConfigToml.ownedFragment(in: existing) {
+            let current = InstallerDigest.data(Data(currentFragment.utf8))
+            let previouslyOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
+            if current != digest, !previouslyOwned {
+                preserved.append(configURL.path)
+                if let previous = previousFiles.first(where: { $0.path == mcpPath }) {
+                    ownedFiles.append(previous)
+                }
+                shouldWriteConfig = false
+            }
+        } else if GrokConfigToml.hasChorusTable(existing), !GrokConfigToml.hasMarkers(existing) {
+            // Foreign unmanaged table — do not clobber.
+            preserved.append(configURL.path)
+            if let previous = previousFiles.first(where: { $0.path == mcpPath }) {
+                ownedFiles.append(previous)
+            }
+            shouldWriteConfig = false
+        }
+
+        if shouldWriteConfig {
+            try backupIfNeeded(configURL)
+            let merged = GrokConfigToml.upsert(existing: existing, fragment: fragment)
+            try AtomicInstallerFile.write(Data(merged.utf8), to: configURL, permissions: 0o600)
+            ownedFiles.append(OwnedInstalledFile(host: .grok, path: mcpPath, sha256: digest))
+        }
+
+        // chorus-speak skill (digest ownership, same as setup skills).
+        let skillText = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
+        let destination = skillsDirectory(for: .grok).appending(path: "chorus-speak/SKILL.md")
+        try installSkillFile(
+            text: skillText,
+            destination: destination,
+            host: .grok,
+            previousFiles: previousFiles,
+            ownedFiles: &ownedFiles,
+            preserved: &preserved
+        )
+    }
+
+    private func uninstallGrokHost(
+        manifest: InstallManifest,
+        preserved: inout [String]
+    ) throws {
+        let configURL = settingsURL(for: .grok)
+        let mcpPath = Self.mcpOwnershipPath(for: .grok)
+        if FileManager.default.fileExists(atPath: configURL.path),
+           let owned = manifest.files.first(where: { $0.host == .grok && $0.path == mcpPath }) {
+            let existing = try String(contentsOf: configURL, encoding: .utf8)
+            if let currentFragment = GrokConfigToml.ownedFragment(in: existing) {
+                let current = InstallerDigest.data(Data(currentFragment.utf8))
+                if current == owned.sha256 {
+                    let cleaned = GrokConfigToml.removeOwned(existing)
+                    try AtomicInstallerFile.write(Data(cleaned.utf8), to: configURL, permissions: 0o600)
+                } else {
+                    preserved.append(configURL.path)
+                }
+            }
+            // Markers gone: drop ownership silently (nothing to remove).
+        }
+
+        for owned in manifest.files where owned.host == .grok {
+            if owned.path.hasPrefix("mcp:") { continue }
+            try removeOwnedFile(owned, preserved: &preserved)
+        }
+    }
+
+    // MARK: - Shared helpers
+
+    private func installSkills(
+        for host: HostSource,
+        previousFiles: [OwnedInstalledFile],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        let templates = EmbeddedTemplates.skills(executable: executable)
+        for name in EmbeddedTemplates.skillNames {
+            guard let text = templates[name] else { continue }
+            let destination = skillsDirectory(for: host)
+                .appending(path: "chorus-\(name)/SKILL.md")
+            try installSkillFile(
+                text: text,
+                destination: destination,
+                host: host,
+                previousFiles: previousFiles,
+                ownedFiles: &ownedFiles,
+                preserved: &preserved
+            )
+        }
+    }
+
+    private func installSkillFile(
+        text: String,
+        destination: URL,
+        host: HostSource,
+        previousFiles: [OwnedInstalledFile],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        let data = Data(text.utf8)
+        let digest = InstallerDigest.data(data)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            let current = InstallerDigest.data(try Data(contentsOf: destination))
+            let previouslyOwned = previousFiles.contains { $0.path == destination.path && $0.sha256 == current }
+            if current != digest, !previouslyOwned {
+                preserved.append(destination.path)
+                if let previous = previousFiles.first(where: { $0.path == destination.path }) {
+                    ownedFiles.append(previous)
+                }
+                return
+            }
+        }
+        try AtomicInstallerFile.write(data, to: destination, permissions: 0o600)
+        ownedFiles.append(OwnedInstalledFile(host: host, path: destination.path, sha256: digest))
+    }
+
+    private func removeOwnedFile(_ owned: OwnedInstalledFile, preserved: inout [String]) throws {
+        guard FileManager.default.fileExists(atPath: owned.path) else { return }
+        let current = InstallerDigest.data(try Data(contentsOf: URL(fileURLWithPath: owned.path)))
+        if current == owned.sha256 {
+            try FileManager.default.removeItem(atPath: owned.path)
+        } else {
+            preserved.append(owned.path)
+        }
+    }
+
     private func settingsURL(for host: HostSource) -> URL {
         switch host {
         case .codex: home.appending(path: ".codex/hooks.json")
         case .claude: home.appending(path: ".claude/settings.json")
-        // Task 4: real Grok TOML path used by install; stub keeps switch exhaustive.
         case .grok: home.appending(path: ".grok/config.toml")
         }
     }

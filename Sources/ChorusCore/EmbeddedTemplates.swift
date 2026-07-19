@@ -11,7 +11,10 @@ public struct EmbeddedHookEntry: Codable, Equatable, Sendable {
 }
 
 public enum EmbeddedTemplates {
-    public static let hookEvents = HookEventName.allCases
+    /// Start-family hooks only — speech is MCP `speak`, not Stop extraction.
+    public static let hookEvents: [HookEventName] = [
+        .sessionStart, .userPromptSubmit, .subagentStart,
+    ]
     /// User control is the menu bar; only setup remains for install/repair guidance.
     public static let skillNames = ["setup"]
 
@@ -25,6 +28,45 @@ public enum EmbeddedTemplates {
         ])
     }
 
+    public static func mcpRegistration(executable: URL) -> [String: Any] {
+        [
+            "command": executable.path,
+            "args": ["mcp"],
+        ]
+    }
+
+    public static func grokMcpTomlFragment(executable: URL) -> String {
+        """
+        [mcp_servers.chorus]
+        command = "\(tomlString(executable.path))"
+        args = ["mcp"]
+        enabled = true
+        startup_timeout_sec = 15
+        tool_timeout_sec = 10
+        """
+    }
+
+    public static func grokSpeakSkillMarkdown(executable: URL) -> String {
+        """
+        ---
+        name: chorus-speak
+        description: Speak a short finish summary through local Chorus TTS via MCP tool chorus__speak. Use at end of a turn when a spoken one- or two-sentence summary helps.
+        ---
+
+        # Chorus speak
+
+        When you finish a turn that deserves a spoken summary, call the MCP tool on server `chorus`:
+
+        - Grok qualified name: `chorus__speak` (via `search_tool` / `use_tool` if required)
+        - Required arguments: `text`, `voice`, `speed`, `volume`
+        - Default main voice: `F1`, speed near `0.93`, volume near `0.85`
+        - Do **not** put HTML comments or JSON speech metadata in the assistant message body.
+        - Mute/mode are controlled only from the Chorus menu bar.
+
+        Binary: `\(executable.path)`.
+        """
+    }
+
     public static func skills(executable: URL) -> [String: String] {
         let command = shellQuote(executable.path)
         return [
@@ -34,7 +76,9 @@ public enum EmbeddedTemplates {
                 body: """
                 Run `\(command) install --repair` from a Chorus build if the app is missing or broken. \
                 Mute, mode, start/stop, and quit are controlled only from the Chorus menu bar — there is no user CLI. \
-                For Codex, remind the user to review hook definitions in `/hooks`.
+                Speech uses the local MCP tool `speak` on server `chorus` (Grok: `chorus__speak`); hosts register it via install. \
+                For Codex, remind the user to review hook definitions in `/hooks`. \
+                For Grok, MCP lives in `~/.grok/config.toml`; refresh tools with `/mcps` after install.
                 """
             ),
         ]
@@ -95,5 +139,11 @@ public enum EmbeddedTemplates {
 
     private static func shellQuote(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private static func tomlString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 }

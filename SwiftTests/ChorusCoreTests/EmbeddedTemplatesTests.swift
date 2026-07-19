@@ -4,12 +4,27 @@ import Testing
 
 @Suite("EmbeddedTemplatesTests")
 struct EmbeddedTemplatesTests {
-    @Test func templatesContainFiveHooksAndSetupSkillOnly() throws {
+    @Test func templatesInstallStartHooksOnlyAndMcpMeta() throws {
         let executable = URL(fileURLWithPath: "/Applications/Chorus.app/Contents/MacOS/chorus")
 
-        #expect(Set(EmbeddedTemplates.hookEvents) == Set(HookEventName.allCases))
+        #expect(Set(EmbeddedTemplates.hookEvents.map(\.rawValue)) == [
+            "SessionStart", "UserPromptSubmit", "SubagentStart",
+        ])
         #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set(["setup"]))
         #expect(EmbeddedTemplates.skillNames == ["setup"])
+
+        let mcp = EmbeddedTemplates.mcpRegistration(executable: executable)
+        #expect(mcp["command"] as? String == executable.path)
+        #expect(mcp["args"] as? [String] == ["mcp"])
+
+        let toml = EmbeddedTemplates.grokMcpTomlFragment(executable: executable)
+        #expect(toml.contains("[mcp_servers.chorus]"))
+        #expect(toml.contains(executable.path))
+        #expect(toml.contains(#""mcp""#) || toml.contains("mcp"))
+
+        let skill = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
+        #expect(skill.contains("chorus__speak") || skill.contains("`speak`"))
+        #expect(!skill.contains("chorus:speak"))
 
         for source in HostSource.allCases {
             let entry = EmbeddedTemplates.hookEntry(executable: executable, source: source)
@@ -24,6 +39,7 @@ struct EmbeddedTemplatesTests {
 
         let combined = EmbeddedTemplates.skills(executable: executable).values.joined(separator: "\n")
         #expect(combined.localizedCaseInsensitiveContains("menu bar"))
+        #expect(combined.localizedCaseInsensitiveContains("mcp") || combined.localizedCaseInsensitiveContains("grok"))
         #expect(!combined.localizedCaseInsensitiveContains("listen"))
         #expect(!combined.localizedCaseInsensitiveContains("digest"))
         #expect(!combined.localizedCaseInsensitiveContains("python"))

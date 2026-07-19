@@ -29,19 +29,111 @@ struct HostInstallerTests {
         let codexJSON = try json(at: codex)
         let claudeJSON = try json(at: claude)
         #expect((codexJSON["mcpServers"] as? [String: Any])?["keep"] != nil)
+        #expect((codexJSON["mcpServers"] as? [String: Any])?["chorus"] != nil)
+        #expect((claudeJSON["mcpServers"] as? [String: Any])?["chorus"] != nil)
         #expect(claudeJSON["theme"] as? String == "dark")
         assertInstalledHooks(codexJSON, unrelatedEvent: "PreToolUse")
         assertInstalledHooks(claudeJSON, unrelatedEvent: "Notification")
 
-        // Grok install is Task 4; only codex/claude skills are written today.
         for source in [HostSource.codex, .claude] {
-            let base = source == .codex ? home.appending(path: ".agents/skills") : home.appending(path: ".claude/skills")
+            let base = source == .codex
+                ? home.appending(path: ".agents/skills")
+                : home.appending(path: ".claude/skills")
             for name in EmbeddedTemplates.skillNames {
                 #expect(FileManager.default.fileExists(
                     atPath: base.appending(path: "chorus-\(name)/SKILL.md").path
                 ))
             }
         }
+        #expect(FileManager.default.fileExists(
+            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
+        ))
+    }
+
+    @Test func installMergesMcpAndStartHooksOnly() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let codex = home.appending(path: ".codex/hooks.json")
+        try writeJSON([
+            "mcpServers": ["keep": ["command": "unrelated"]],
+            "hooks": ["PreToolUse": [["hooks": [["type": "command", "command": "keep"]]]]],
+        ], to: codex)
+        let grokConfig = home.appending(path: ".grok/config.toml")
+        try FileManager.default.createDirectory(
+            at: grokConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        [mcp_servers.other]
+        command = "/bin/echo"
+        enabled = true
+        """.utf8).write(to: grokConfig)
+
+        let installer = HostInstaller(home: home, executable: URL(fileURLWithPath: "/tmp/chorus-bin"))
+        _ = try installer.install(hosts: Set(HostSource.allCases))
+
+        let codexJSON = try json(at: codex)
+        let mcpServers = try #require(codexJSON["mcpServers"] as? [String: Any])
+        #expect(mcpServers["keep"] != nil)
+        #expect(mcpServers["chorus"] != nil)
+        let hooks = try #require(codexJSON["hooks"] as? [String: Any])
+        #expect(hooks["SessionStart"] != nil)
+        #expect(hooks["UserPromptSubmit"] != nil)
+        #expect(hooks["SubagentStart"] != nil)
+        #expect(hooks["Stop"] == nil)
+        #expect(hooks["SubagentStop"] == nil)
+        #expect(hooks["PreToolUse"] != nil)
+
+        let toml = try String(contentsOf: grokConfig, encoding: .utf8)
+        #expect(toml.contains("[mcp_servers.other]"))
+        #expect(toml.contains("[mcp_servers.chorus]"))
+        #expect(toml.contains("# BEGIN chorus-mcp"))
+        #expect(toml.contains("# END chorus-mcp"))
+        #expect(FileManager.default.fileExists(
+            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
+        ))
+    }
+
+    @Test func uninstallRemovesChorusMcpPreservesOthers() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let codex = home.appending(path: ".codex/hooks.json")
+        try writeJSON([
+            "mcpServers": ["keep": ["command": "unrelated"]],
+            "hooks": ["PreToolUse": [["hooks": [["type": "command", "command": "keep"]]]]],
+        ], to: codex)
+        let grokConfig = home.appending(path: ".grok/config.toml")
+        try FileManager.default.createDirectory(
+            at: grokConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        [mcp_servers.other]
+        command = "/bin/echo"
+        enabled = true
+        """.utf8).write(to: grokConfig)
+
+        let installer = HostInstaller(home: home, executable: URL(fileURLWithPath: "/tmp/chorus-bin"))
+        try installer.install(hosts: Set(HostSource.allCases))
+        _ = try installer.uninstall(hosts: Set(HostSource.allCases))
+
+        let codexJSON = try json(at: codex)
+        let mcpServers = try #require(codexJSON["mcpServers"] as? [String: Any])
+        #expect(mcpServers["keep"] != nil)
+        #expect(mcpServers["chorus"] == nil)
+        let hooks = try #require(codexJSON["hooks"] as? [String: Any])
+        #expect(hooks["PreToolUse"] != nil)
+        for event in EmbeddedTemplates.hookEvents {
+            #expect(hooks[event.rawValue] == nil)
+        }
+
+        let toml = try String(contentsOf: grokConfig, encoding: .utf8)
+        #expect(toml.contains("[mcp_servers.other]"))
+        #expect(!toml.contains("[mcp_servers.chorus]"))
+        #expect(!toml.contains("# BEGIN chorus-mcp"))
+        #expect(!FileManager.default.fileExists(
+            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
+        ))
     }
 
     @Test func uninstallRemovesOnlyUnchangedOwnedContent() throws {
@@ -58,7 +150,7 @@ struct HostInstallerTests {
         #expect(result.preservedModifiedFiles == [modified.path])
         for settings in [home.appending(path: ".codex/hooks.json"), home.appending(path: ".claude/settings.json")] {
             let hooks = try #require(try json(at: settings)["hooks"] as? [String: Any])
-            for event in HookEventName.allCases {
+            for event in EmbeddedTemplates.hookEvents {
                 #expect(hooks[event.rawValue] == nil)
             }
         }
@@ -83,9 +175,11 @@ struct HostInstallerTests {
     private func assertInstalledHooks(_ root: [String: Any], unrelatedEvent: String) {
         let hooks = root["hooks"] as? [String: Any]
         #expect(hooks?[unrelatedEvent] != nil)
-        for event in HookEventName.allCases {
+        for event in EmbeddedTemplates.hookEvents {
             #expect((hooks?[event.rawValue] as? [Any])?.count == 1)
         }
+        #expect(hooks?["Stop"] == nil)
+        #expect(hooks?["SubagentStop"] == nil)
     }
 
     private func json(at url: URL) throws -> [String: Any] {
