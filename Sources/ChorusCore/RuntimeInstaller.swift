@@ -73,23 +73,43 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
             permissions: 0o600
         )
         try recordRuntimeOwnership(paths: paths)
+        try await bootstrapLaunchAgent(paths: paths)
+        // Legacy migration must not fail a successful app install/bootstrap.
+        try? await migrateLegacyIfPresent(paths: paths)
+        return hostResult
+    }
+
+    /// Enables, boots out any prior job, then bootstraps. Retries once on bootstrap I/O races.
+    private func bootstrapLaunchAgent(paths: ChorusPaths) async throws {
         let domain = "gui/\(userID)"
+        let service = "\(domain)/com.chorus.tts"
         // Menu Quit disables the agent so KeepAlive does not relaunch; re-enable on install.
         try await launchctl.run(
             arguments: LaunchAgentControl.enableArguments(userID: userID),
             allowFailure: true
         )
         try await launchctl.run(
-            arguments: ["bootout", "\(domain)/com.chorus.tts"],
+            arguments: ["bootout", service],
             allowFailure: true
         )
-        try await launchctl.run(
-            arguments: ["bootstrap", domain, paths.launchAgentURL.path],
-            allowFailure: false
-        )
-        // Legacy migration must not fail a successful app install/bootstrap.
-        try? await migrateLegacyIfPresent(paths: paths)
-        return hostResult
+        do {
+            try await launchctl.run(
+                arguments: ["bootstrap", domain, paths.launchAgentURL.path],
+                allowFailure: false
+            )
+        } catch {
+            // Concurrent replace of a live agent can return EIO once; bootout again and retry.
+            try await launchctl.run(arguments: ["bootout", service], allowFailure: true)
+            try? await Task.sleep(for: .milliseconds(300))
+            try await launchctl.run(
+                arguments: LaunchAgentControl.enableArguments(userID: userID),
+                allowFailure: true
+            )
+            try await launchctl.run(
+                arguments: ["bootstrap", domain, paths.launchAgentURL.path],
+                allowFailure: false
+            )
+        }
     }
 
     @discardableResult

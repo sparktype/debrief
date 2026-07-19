@@ -31,13 +31,18 @@ enum ChorusCLIMain {
         default:
             let result = NonMenubarRunner.run(command, home: home)
             if let error = result {
+                let detail = String(describing: error)
                 try? Diagnostics(home: home).recordError(
                     component: "app",
                     code: "command_failed",
-                    message: "command failed; open Chorus.app or reinstall"
+                    message: detail
                 )
-                FileHandle.standardError.write(Data("error: \(error)\n".utf8))
+                FileHandle.standardError.write(Data("error: \(detail)\n".utf8))
                 exit(1)
+            }
+            // Successful install/uninstall should not keep a stale menu-bar error.
+            if case .install = command {
+                try? Diagnostics(home: home).clearCurrentError()
             }
             exit(0)
         }
