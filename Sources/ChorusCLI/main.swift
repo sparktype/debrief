@@ -121,8 +121,9 @@ private enum NonMenubarRunner {
             let output = await HookCommandRunner.run(input: input, source: source, home: home)
             FileHandle.standardOutput.write(output)
         case .mcp:
-            // Task 3: MCP stdio server (speak tool)
-            throw CommandError.usage("mcp server not yet implemented")
+            let paths = ChorusPaths.forHome(home)
+            let sink = UnixSocketClient(socketURL: paths.socketURL)
+            await McpServer(home: home, sink: sink).run()
         case .menubar:
             break
         }
