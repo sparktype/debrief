@@ -21,6 +21,31 @@ struct McpSpeakToolTests {
         #expect(args.volume == 0.85)
     }
 
+    @Test func parseRejectsBooleanSpeedAndVolume() {
+        #expect(throws: (any Error).self) {
+            try McpSpeakTool.parseArguments([
+                "text": "hi",
+                "voice": "F1",
+                "speed": true,
+                "volume": 0.85,
+            ])
+        }
+        #expect(throws: (any Error).self) {
+            try McpSpeakTool.parseArguments([
+                "text": "hi",
+                "voice": "F1",
+                "speed": 0.93,
+                "volume": false,
+            ])
+        }
+        // JSONSerialization bridges true/false to CFBoolean NSNumbers.
+        let json = Data(#"{"text":"hi","voice":"F1","speed":true,"volume":1}"#.utf8)
+        let object = try! JSONSerialization.jsonObject(with: json) as! [String: Any]
+        #expect(throws: (any Error).self) {
+            try McpSpeakTool.parseArguments(object)
+        }
+    }
+
     @Test func executeSubmitsValidRequest() async throws {
         let home = FileManager.default.temporaryDirectory
             .appending(path: "chorus-mcp-speak-\(UUID().uuidString)")
@@ -63,16 +88,20 @@ struct McpSpeakToolTests {
         try! FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: home) }
 
+        let diagnostics = Diagnostics(home: home)
         let args = McpSpeakArguments(text: "x", voice: "F1", speed: 1, volume: 0.5)
         let result = await McpSpeakTool.execute(
             arguments: args,
             sink: RecordingSink(shouldFail: true),
-            diagnostics: Diagnostics(home: home)
+            diagnostics: diagnostics
         )
         #expect(result.isError)
-        #expect(result.message.contains("연결") || result.message.localizedCaseInsensitiveContains("fail")
-            || !result.message.isEmpty)
-        let errURL = ChorusPaths.forHome(home).lastErrorURL
-        #expect(FileManager.default.fileExists(atPath: errURL.path))
+        // RecordingSink throws RecordingSinkError.rejected → shortError uses String(describing:).
+        #expect(!result.message.isEmpty)
+        #expect(result.message.localizedCaseInsensitiveContains("rejected"))
+        let error = diagnostics.currentError()
+        #expect(error?.component == "mcp")
+        #expect(error?.code == "delivery_failed")
+        #expect(error?.message.contains("mcp speak:") == true)
     }
 }

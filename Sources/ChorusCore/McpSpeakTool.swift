@@ -72,10 +72,20 @@ public enum McpSpeakTool {
     }
 
     private static func number(_ value: Any?, name: String) throws -> Double {
+        // CFBoolean is an NSNumber subclass; reject booleans before numeric bridging.
+        if let n = value as? NSNumber {
+            guard !isBoolean(n) else {
+                throw CommandError.usage("speak requires number \(name)")
+            }
+            return n.doubleValue
+        }
         if let d = value as? Double { return d }
         if let i = value as? Int { return Double(i) }
-        if let n = value as? NSNumber { return n.doubleValue }
         throw CommandError.usage("speak requires number \(name)")
+    }
+
+    private static func isBoolean(_ number: NSNumber) -> Bool {
+        CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     private static func shortError(_ error: any Error) -> String {
