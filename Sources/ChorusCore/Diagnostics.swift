@@ -58,7 +58,9 @@ public struct Diagnostics: Sendable {
             modelValid: model.valid,
             launchAgentInstalled: FileManager.default.fileExists(atPath: paths.launchAgentURL.path),
             hostSettingsReadable: [
-                HostSource.codex.rawValue: settingsReadable(paths.home.appending(path: ".codex/hooks.json")),
+                HostSource.codex.rawValue:
+                    settingsReadable(paths.home.appending(path: ".codex/hooks.json"))
+                    && settingsReadableToml(paths.home.appending(path: ".codex/config.toml")),
                 HostSource.claude.rawValue: settingsReadable(paths.home.appending(path: ".claude/settings.json")),
                 HostSource.grok.rawValue: settingsReadableToml(paths.home.appending(path: ".grok/config.toml")),
             ],
@@ -185,7 +187,7 @@ public struct Diagnostics: Sendable {
         return (try? String(contentsOf: url, encoding: .utf8)) != nil
     }
 
-    /// Host-aware doctor code: JSON hosts use invalid_json; Grok uses invalid_toml.
+    /// Host-aware doctor code: JSON hosts use invalid_json; TOML hosts use invalid_toml.
     private func hostSettingsFinding(for host: HostSource) -> DiagnosticFinding {
         switch host {
         case .grok:
@@ -194,11 +196,26 @@ public struct Diagnostics: Sendable {
                 ok: false,
                 recovery: "repair ~/.grok/config.toml as UTF-8 TOML, then run chorus install --grok --repair"
             )
-        case .codex, .claude:
+        case .codex:
+            // Prefer specific code: hooks.json JSON vs config.toml UTF-8.
+            let hooksOK = settingsReadable(paths.home.appending(path: ".codex/hooks.json"))
+            if !hooksOK {
+                return .init(
+                    code: "host.codex.invalid_json",
+                    ok: false,
+                    recovery: "repair ~/.codex/hooks.json, then run chorus install --codex --repair"
+                )
+            }
             return .init(
-                code: "host.\(host.rawValue).invalid_json",
+                code: "host.codex.invalid_toml",
                 ok: false,
-                recovery: "repair the host JSON, then run chorus install --\(host.rawValue) --repair"
+                recovery: "repair ~/.codex/config.toml as UTF-8 TOML, then run chorus install --codex --repair"
+            )
+        case .claude:
+            return .init(
+                code: "host.claude.invalid_json",
+                ok: false,
+                recovery: "repair the host JSON, then run chorus install --claude --repair"
             )
         }
     }

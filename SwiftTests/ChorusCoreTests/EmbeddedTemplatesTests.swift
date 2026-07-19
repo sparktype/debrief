@@ -17,7 +17,7 @@ struct EmbeddedTemplatesTests {
         #expect(mcp["command"] as? String == executable.path)
         #expect(mcp["args"] as? [String] == ["mcp"])
 
-        let toml = EmbeddedTemplates.grokMcpTomlFragment(executable: executable)
+        let toml = EmbeddedTemplates.mcpTomlFragment(executable: executable)
         #expect(toml.contains("[mcp_servers.chorus]"))
         #expect(toml.contains(executable.path))
         #expect(toml.contains(#""mcp""#) || toml.contains("mcp"))

@@ -35,7 +35,8 @@ public enum EmbeddedTemplates {
         ]
     }
 
-    public static func grokMcpTomlFragment(executable: URL) -> String {
+    /// Shared TOML MCP fragment for Codex (`~/.codex/config.toml`) and Grok (`~/.grok/config.toml`).
+    public static func mcpTomlFragment(executable: URL) -> String {
         """
         [mcp_servers.chorus]
         command = "\(tomlString(executable.path))"
@@ -77,7 +78,7 @@ public enum EmbeddedTemplates {
                 Run `\(command) install --repair` from a Chorus build if the app is missing or broken. \
                 Mute, mode, start/stop, and quit are controlled only from the Chorus menu bar — there is no user CLI. \
                 Speech uses the local MCP tool `speak` on server `chorus` (Grok: `chorus__speak`); hosts register it via install. \
-                For Codex, remind the user to review hook definitions in `/hooks`. \
+                For Codex, MCP lives in `~/.codex/config.toml` and hooks in `~/.codex/hooks.json` — remind the user to review hooks in `/hooks`. \
                 For Grok, MCP lives in `~/.grok/config.toml`; refresh tools with `/mcps` after install.
                 """
             ),

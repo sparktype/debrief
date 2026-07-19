@@ -11,8 +11,8 @@ public struct HostInstallResult: Equatable, Sendable {
     public let preservedModifiedFiles: [String]
 }
 
-/// Grok `config.toml` MCP ownership via marker-wrapped table body.
-enum GrokConfigToml {
+/// Marker-wrapped TOML MCP table body for Codex / Grok `config.toml`.
+enum McpTomlConfig {
     static let begin = "# BEGIN chorus-mcp"
     static let end = "# END chorus-mcp"
 
@@ -85,9 +85,26 @@ public struct HostInstaller: Sendable {
             var ownedFiles: [OwnedInstalledFile] = []
 
             switch host {
-            case .codex, .claude:
+            case .codex:
                 try installJSONHost(
                     host,
+                    includeJSONMcp: false,
+                    previousFiles: previousFiles,
+                    previousHooks: previousHooks,
+                    ownedHooks: &ownedHooks,
+                    ownedFiles: &ownedFiles,
+                    preserved: &preserved
+                )
+                try installTomlMcp(
+                    host: .codex,
+                    previousFiles: previousFiles,
+                    ownedFiles: &ownedFiles,
+                    preserved: &preserved
+                )
+            case .claude:
+                try installJSONHost(
+                    host,
+                    includeJSONMcp: true,
                     previousFiles: previousFiles,
                     previousHooks: previousHooks,
                     ownedHooks: &ownedHooks,
@@ -121,8 +138,23 @@ public struct HostInstaller: Sendable {
 
         for host in hosts.sorted(by: { $0.rawValue < $1.rawValue }) {
             switch host {
-            case .codex, .claude:
-                try uninstallJSONHost(host, manifest: manifest, preserved: &preserved)
+            case .codex:
+                try uninstallJSONHost(
+                    host,
+                    removeJSONMcp: false,
+                    stripLegacyJSONMcp: true,
+                    manifest: manifest,
+                    preserved: &preserved
+                )
+                try uninstallTomlMcp(host: .codex, manifest: manifest, preserved: &preserved)
+            case .claude:
+                try uninstallJSONHost(
+                    host,
+                    removeJSONMcp: true,
+                    stripLegacyJSONMcp: false,
+                    manifest: manifest,
+                    preserved: &preserved
+                )
             case .grok:
                 try uninstallGrokHost(manifest: manifest, preserved: &preserved)
             }
@@ -133,10 +165,11 @@ public struct HostInstaller: Sendable {
         return HostInstallResult(codexReviewRequired: false, preservedModifiedFiles: preserved.sorted())
     }
 
-    // MARK: - JSON hosts (Codex / Claude)
+    // MARK: - JSON hosts (Codex hooks / Claude settings)
 
     private func installJSONHost(
         _ host: HostSource,
+        includeJSONMcp: Bool,
         previousFiles: [OwnedInstalledFile],
         previousHooks: [OwnedHook],
         ownedHooks: inout [OwnedHook],
@@ -171,13 +204,18 @@ public struct HostInstaller: Sendable {
         }
         root["hooks"] = hooks
 
-        try mergeJSONMcp(
-            into: &root,
-            host: host,
-            previousFiles: previousFiles,
-            ownedFiles: &ownedFiles,
-            preserved: &preserved
-        )
+        if includeJSONMcp {
+            try mergeJSONMcp(
+                into: &root,
+                host: host,
+                previousFiles: previousFiles,
+                ownedFiles: &ownedFiles,
+                preserved: &preserved
+            )
+        } else if host == .codex {
+            // Repair: strip previously owned JSON mcpServers.chorus from hooks.json.
+            try stripLegacyJSONMcpIfOwned(from: &root, host: host, previousFiles: previousFiles)
+        }
 
         try backupIfNeeded(settingsURL)
         try writeSettings(root, to: settingsURL)
@@ -221,8 +259,30 @@ public struct HostInstaller: Sendable {
         root["mcpServers"] = mcpServers
     }
 
+    /// Remove owned JSON `mcpServers.chorus` left in Codex hooks.json by older installs.
+    private func stripLegacyJSONMcpIfOwned(
+        from root: inout [String: Any],
+        host: HostSource,
+        previousFiles: [OwnedInstalledFile]
+    ) throws {
+        guard var mcpServers = root["mcpServers"] as? [String: Any],
+              let existing = mcpServers["chorus"] else { return }
+        let mcpPath = Self.mcpOwnershipPath(for: host)
+        let current = try InstallerDigest.json(existing)
+        let registrationDigest = try InstallerDigest.json(
+            EmbeddedTemplates.mcpRegistration(executable: executable)
+        )
+        let wasOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
+        if current == registrationDigest || wasOwned {
+            mcpServers.removeValue(forKey: "chorus")
+            root["mcpServers"] = mcpServers
+        }
+    }
+
     private func uninstallJSONHost(
         _ host: HostSource,
+        removeJSONMcp: Bool,
+        stripLegacyJSONMcp: Bool,
         manifest: InstallManifest,
         preserved: inout [String]
     ) throws {
@@ -241,7 +301,8 @@ public struct HostInstaller: Sendable {
             root["hooks"] = hooks
 
             let mcpPath = Self.mcpOwnershipPath(for: host)
-            if let owned = manifest.files.first(where: { $0.host == host && $0.path == mcpPath }),
+            if removeJSONMcp,
+               let owned = manifest.files.first(where: { $0.host == host && $0.path == mcpPath }),
                var mcpServers = root["mcpServers"] as? [String: Any] {
                 if let existing = mcpServers["chorus"],
                    (try? InstallerDigest.json(existing)) == owned.sha256 {
@@ -250,6 +311,9 @@ public struct HostInstaller: Sendable {
                 } else if mcpServers["chorus"] != nil {
                     preserved.append(mcpPath)
                 }
+            } else if stripLegacyJSONMcp {
+                let previous = manifest.files.filter { $0.host == host }
+                try stripLegacyJSONMcpIfOwned(from: &root, host: host, previousFiles: previous)
             }
 
             try writeSettings(root, to: settingsURL)
@@ -261,16 +325,17 @@ public struct HostInstaller: Sendable {
         }
     }
 
-    // MARK: - Grok (TOML MCP + speak skill)
+    // MARK: - TOML MCP (Codex config.toml / Grok config.toml)
 
-    private func installGrokHost(
+    private func installTomlMcp(
+        host: HostSource,
         previousFiles: [OwnedInstalledFile],
         ownedFiles: inout [OwnedInstalledFile],
         preserved: inout [String]
     ) throws {
-        let configURL = settingsURL(for: .grok)
-        let mcpPath = Self.mcpOwnershipPath(for: .grok)
-        let fragment = EmbeddedTemplates.grokMcpTomlFragment(executable: executable)
+        let configURL = mcpTomlConfigURL(for: host)
+        let mcpPath = Self.mcpOwnershipPath(for: host)
+        let fragment = EmbeddedTemplates.mcpTomlFragment(executable: executable)
             .trimmingCharacters(in: .newlines)
         let digest = InstallerDigest.data(Data(fragment.utf8))
         let existing = FileManager.default.fileExists(atPath: configURL.path)
@@ -278,7 +343,7 @@ public struct HostInstaller: Sendable {
             : ""
 
         var shouldWriteConfig = true
-        if let currentFragment = GrokConfigToml.ownedFragment(in: existing) {
+        if let currentFragment = McpTomlConfig.ownedFragment(in: existing) {
             let current = InstallerDigest.data(Data(currentFragment.utf8))
             let previouslyOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
             if current != digest, !previouslyOwned {
@@ -288,7 +353,7 @@ public struct HostInstaller: Sendable {
                 }
                 shouldWriteConfig = false
             }
-        } else if GrokConfigToml.hasChorusTable(existing), !GrokConfigToml.hasMarkers(existing) {
+        } else if McpTomlConfig.hasChorusTable(existing), !McpTomlConfig.hasMarkers(existing) {
             // Foreign unmanaged table — do not clobber.
             preserved.append(configURL.path)
             if let previous = previousFiles.first(where: { $0.path == mcpPath }) {
@@ -299,10 +364,48 @@ public struct HostInstaller: Sendable {
 
         if shouldWriteConfig {
             try backupIfNeeded(configURL)
-            let merged = GrokConfigToml.upsert(existing: existing, fragment: fragment)
+            let merged = McpTomlConfig.upsert(existing: existing, fragment: fragment)
             try AtomicInstallerFile.write(Data(merged.utf8), to: configURL, permissions: 0o600)
-            ownedFiles.append(OwnedInstalledFile(host: .grok, path: mcpPath, sha256: digest))
+            ownedFiles.append(OwnedInstalledFile(host: host, path: mcpPath, sha256: digest))
         }
+    }
+
+    private func uninstallTomlMcp(
+        host: HostSource,
+        manifest: InstallManifest,
+        preserved: inout [String]
+    ) throws {
+        let configURL = mcpTomlConfigURL(for: host)
+        let mcpPath = Self.mcpOwnershipPath(for: host)
+        if FileManager.default.fileExists(atPath: configURL.path),
+           let owned = manifest.files.first(where: { $0.host == host && $0.path == mcpPath }) {
+            let existing = try String(contentsOf: configURL, encoding: .utf8)
+            if let currentFragment = McpTomlConfig.ownedFragment(in: existing) {
+                let current = InstallerDigest.data(Data(currentFragment.utf8))
+                if current == owned.sha256 {
+                    let cleaned = McpTomlConfig.removeOwned(existing)
+                    try AtomicInstallerFile.write(Data(cleaned.utf8), to: configURL, permissions: 0o600)
+                } else {
+                    preserved.append(configURL.path)
+                }
+            }
+            // Markers gone: drop ownership silently (nothing to remove).
+        }
+    }
+
+    // MARK: - Grok (TOML MCP + speak skill)
+
+    private func installGrokHost(
+        previousFiles: [OwnedInstalledFile],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        try installTomlMcp(
+            host: .grok,
+            previousFiles: previousFiles,
+            ownedFiles: &ownedFiles,
+            preserved: &preserved
+        )
 
         // chorus-speak skill (digest ownership, same as setup skills).
         let skillText = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
@@ -321,22 +424,7 @@ public struct HostInstaller: Sendable {
         manifest: InstallManifest,
         preserved: inout [String]
     ) throws {
-        let configURL = settingsURL(for: .grok)
-        let mcpPath = Self.mcpOwnershipPath(for: .grok)
-        if FileManager.default.fileExists(atPath: configURL.path),
-           let owned = manifest.files.first(where: { $0.host == .grok && $0.path == mcpPath }) {
-            let existing = try String(contentsOf: configURL, encoding: .utf8)
-            if let currentFragment = GrokConfigToml.ownedFragment(in: existing) {
-                let current = InstallerDigest.data(Data(currentFragment.utf8))
-                if current == owned.sha256 {
-                    let cleaned = GrokConfigToml.removeOwned(existing)
-                    try AtomicInstallerFile.write(Data(cleaned.utf8), to: configURL, permissions: 0o600)
-                } else {
-                    preserved.append(configURL.path)
-                }
-            }
-            // Markers gone: drop ownership silently (nothing to remove).
-        }
+        try uninstallTomlMcp(host: .grok, manifest: manifest, preserved: &preserved)
 
         for owned in manifest.files where owned.host == .grok {
             if owned.path.hasPrefix("mcp:") { continue }
@@ -403,11 +491,21 @@ public struct HostInstaller: Sendable {
         }
     }
 
+    /// Hook / settings JSON path (Codex hooks, Claude settings). Grok uses TOML only.
     private func settingsURL(for host: HostSource) -> URL {
         switch host {
         case .codex: home.appending(path: ".codex/hooks.json")
         case .claude: home.appending(path: ".claude/settings.json")
         case .grok: home.appending(path: ".grok/config.toml")
+        }
+    }
+
+    /// Codex / Grok native MCP config path (TOML).
+    private func mcpTomlConfigURL(for host: HostSource) -> URL {
+        switch host {
+        case .codex: home.appending(path: ".codex/config.toml")
+        case .grok: home.appending(path: ".grok/config.toml")
+        case .claude: home.appending(path: ".claude/settings.json") // unused
         }
     }
 

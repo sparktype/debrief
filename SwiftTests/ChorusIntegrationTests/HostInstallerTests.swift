@@ -8,6 +8,7 @@ struct HostInstallerTests {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let codex = home.appending(path: ".codex/hooks.json")
+        let codexConfig = home.appending(path: ".codex/config.toml")
         let claude = home.appending(path: ".claude/settings.json")
         try writeJSON([
             "mcpServers": ["keep": ["command": "unrelated"]],
@@ -28,8 +29,12 @@ struct HostInstallerTests {
         #expect(FileManager.default.fileExists(atPath: claude.path + ".chorus-backup"))
         let codexJSON = try json(at: codex)
         let claudeJSON = try json(at: claude)
+        // Codex MCP lives in config.toml — hooks.json must not gain mcpServers.chorus.
         #expect((codexJSON["mcpServers"] as? [String: Any])?["keep"] != nil)
-        #expect((codexJSON["mcpServers"] as? [String: Any])?["chorus"] != nil)
+        #expect((codexJSON["mcpServers"] as? [String: Any])?["chorus"] == nil)
+        let codexToml = try String(contentsOf: codexConfig, encoding: .utf8)
+        #expect(codexToml.contains("[mcp_servers.chorus]"))
+        #expect(codexToml.contains("# BEGIN chorus-mcp"))
         #expect((claudeJSON["mcpServers"] as? [String: Any])?["chorus"] != nil)
         #expect(claudeJSON["theme"] as? String == "dark")
         assertInstalledHooks(codexJSON, unrelatedEvent: "PreToolUse")
@@ -54,10 +59,20 @@ struct HostInstallerTests {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let codex = home.appending(path: ".codex/hooks.json")
+        let codexConfig = home.appending(path: ".codex/config.toml")
         try writeJSON([
             "mcpServers": ["keep": ["command": "unrelated"]],
             "hooks": ["PreToolUse": [["hooks": [["type": "command", "command": "keep"]]]]],
         ], to: codex)
+        try FileManager.default.createDirectory(
+            at: codexConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        [mcp_servers.other]
+        command = "/bin/echo"
+        enabled = true
+        """.utf8).write(to: codexConfig)
         let grokConfig = home.appending(path: ".grok/config.toml")
         try FileManager.default.createDirectory(
             at: grokConfig.deletingLastPathComponent(),
@@ -75,7 +90,7 @@ struct HostInstallerTests {
         let codexJSON = try json(at: codex)
         let mcpServers = try #require(codexJSON["mcpServers"] as? [String: Any])
         #expect(mcpServers["keep"] != nil)
-        #expect(mcpServers["chorus"] != nil)
+        #expect(mcpServers["chorus"] == nil)
         let hooks = try #require(codexJSON["hooks"] as? [String: Any])
         #expect(hooks["SessionStart"] != nil)
         #expect(hooks["UserPromptSubmit"] != nil)
@@ -83,6 +98,13 @@ struct HostInstallerTests {
         #expect(hooks["Stop"] == nil)
         #expect(hooks["SubagentStop"] == nil)
         #expect(hooks["PreToolUse"] != nil)
+
+        let codexToml = try String(contentsOf: codexConfig, encoding: .utf8)
+        #expect(codexToml.contains("[mcp_servers.other]"))
+        #expect(codexToml.contains("[mcp_servers.chorus]"))
+        #expect(codexToml.contains("# BEGIN chorus-mcp"))
+        #expect(codexToml.contains("# END chorus-mcp"))
+        #expect(codexToml.contains("/tmp/chorus-bin"))
 
         let toml = try String(contentsOf: grokConfig, encoding: .utf8)
         #expect(toml.contains("[mcp_servers.other]"))
@@ -98,10 +120,20 @@ struct HostInstallerTests {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let codex = home.appending(path: ".codex/hooks.json")
+        let codexConfig = home.appending(path: ".codex/config.toml")
         try writeJSON([
             "mcpServers": ["keep": ["command": "unrelated"]],
             "hooks": ["PreToolUse": [["hooks": [["type": "command", "command": "keep"]]]]],
         ], to: codex)
+        try FileManager.default.createDirectory(
+            at: codexConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        [mcp_servers.other]
+        command = "/bin/echo"
+        enabled = true
+        """.utf8).write(to: codexConfig)
         let grokConfig = home.appending(path: ".grok/config.toml")
         try FileManager.default.createDirectory(
             at: grokConfig.deletingLastPathComponent(),
@@ -126,6 +158,11 @@ struct HostInstallerTests {
         for event in EmbeddedTemplates.hookEvents {
             #expect(hooks[event.rawValue] == nil)
         }
+
+        let codexToml = try String(contentsOf: codexConfig, encoding: .utf8)
+        #expect(codexToml.contains("[mcp_servers.other]"))
+        #expect(!codexToml.contains("[mcp_servers.chorus]"))
+        #expect(!codexToml.contains("# BEGIN chorus-mcp"))
 
         let toml = try String(contentsOf: grokConfig, encoding: .utf8)
         #expect(toml.contains("[mcp_servers.other]"))
@@ -154,6 +191,8 @@ struct HostInstallerTests {
                 #expect(hooks[event.rawValue] == nil)
             }
         }
+        let codexToml = try String(contentsOf: home.appending(path: ".codex/config.toml"), encoding: .utf8)
+        #expect(!codexToml.contains("[mcp_servers.chorus]"))
     }
 
     @Test func malformedSettingsAreRefusedWithoutBackupOrReplacement() throws {
@@ -201,29 +240,58 @@ struct HostInstallerTests {
         }
     }
 
-    @Test func installPreservesForeignJsonMcpChorus() throws {
+    @Test func installStripsLegacyOwnedJsonMcpFromCodexHooks() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
+        let executable = URL(fileURLWithPath: "/tmp/chorus-bin")
         let codex = home.appending(path: ".codex/hooks.json")
+        let registration = EmbeddedTemplates.mcpRegistration(executable: executable)
+        let digest = try InstallerDigest.json(registration)
         try writeJSON([
             "mcpServers": [
-                "chorus": [
-                    "command": "/usr/local/bin/other-chorus",
-                    "args": ["serve"],
-                ],
+                "keep": ["command": "unrelated"],
+                "chorus": registration,
             ],
         ], to: codex)
+        try InstallManifest(files: [
+            OwnedInstalledFile(host: .codex, path: HostInstaller.mcpOwnershipPath(for: .codex), sha256: digest),
+        ]).save(to: ChorusPaths.forHome(home).installManifestURL)
+
+        _ = try HostInstaller(home: home, executable: executable).install(hosts: [.codex])
+
+        let mcpServers = try #require(try json(at: codex)["mcpServers"] as? [String: Any])
+        #expect(mcpServers["keep"] != nil)
+        #expect(mcpServers["chorus"] == nil)
+        let toml = try String(contentsOf: home.appending(path: ".codex/config.toml"), encoding: .utf8)
+        #expect(toml.contains("[mcp_servers.chorus]"))
+        #expect(toml.contains("# BEGIN chorus-mcp"))
+    }
+
+    @Test func installPreservesForeignTomlMcpChorusOnCodex() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let codexConfig = home.appending(path: ".codex/config.toml")
+        try FileManager.default.createDirectory(
+            at: codexConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        [mcp_servers.chorus]
+        command = "/usr/local/bin/other-chorus"
+        enabled = false
+        """.utf8).write(to: codexConfig)
 
         let result = try HostInstaller(
             home: home,
             executable: URL(fileURLWithPath: "/tmp/chorus-bin")
         ).install(hosts: [.codex])
 
-        let mcpServers = try #require(try json(at: codex)["mcpServers"] as? [String: Any])
-        let chorus = try #require(mcpServers["chorus"] as? [String: Any])
-        #expect(chorus["command"] as? String == "/usr/local/bin/other-chorus")
-        #expect(chorus["args"] as? [String] == ["serve"])
-        #expect(result.preservedModifiedFiles.contains(HostInstaller.mcpOwnershipPath(for: .codex)))
+        let toml = try String(contentsOf: codexConfig, encoding: .utf8)
+        #expect(toml.contains("command = \"/usr/local/bin/other-chorus\""))
+        #expect(toml.contains("enabled = false"))
+        #expect(!toml.contains("# BEGIN chorus-mcp"))
+        #expect(result.preservedModifiedFiles.contains(codexConfig.path)
+            || result.preservedModifiedFiles.contains(HostInstaller.mcpOwnershipPath(for: .codex)))
     }
 
     @Test func installDoesNotClobberUnmanagedGrokChorusTable() throws {

@@ -78,7 +78,7 @@ Codex / Claude (start hooks only)
 
 | Host | Settings / MCP | Skills | Hooks |
 | --- | --- | --- | --- |
-| Codex | `~/.codex/hooks.json` → `mcpServers.chorus` | `~/.agents/skills` | start-family in same settings |
+| Codex | `~/.codex/config.toml` → `[mcp_servers.chorus]` | `~/.agents/skills` | start-family in `~/.codex/hooks.json` |
 | Claude | `~/.claude/settings.json` → `mcpServers.chorus` | `~/.claude/skills` | start-family in settings |
 | Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-speak` | none (skill + MCP carry contract) |
 
