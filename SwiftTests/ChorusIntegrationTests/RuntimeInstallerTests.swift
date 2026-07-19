@@ -43,6 +43,7 @@ struct RuntimeInstallerTests {
             from: Data(contentsOf: paths.launchAgentURL), format: nil
         ) as? [String: Any]
         #expect(plist?["ProgramArguments"] as? [String] == [installed.path, "menubar"])
+        #expect(plist?["AssociatedBundleIdentifiers"] as? [String] == ["com.chorus.tts"])
     }
 
     @Test func uninstallBootsOutBeforeRemovingExecutable() async throws {

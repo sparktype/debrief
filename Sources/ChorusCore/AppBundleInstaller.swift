@@ -7,6 +7,7 @@ public enum AppBundleInstallerError: Error, Equatable, Sendable {
     case failedToInstallExecutable
     case failedToCreateSymlink
     case iconConversionFailed
+    case codeSigningFailed
 }
 
 /// Installs `Chorus.app` under the user's Applications directory.
@@ -85,6 +86,48 @@ public enum AppBundleInstaller {
             try installIcon(png: iconPNG, destination: iconURL(appBundle: appBundle))
             try installMenuBarIcons(png: iconPNG, resources: resources)
         }
+
+        // Seal Info.plist + Resources so System Settings / BTM can trust the app icon.
+        // Skipped for non-Mach-O test fixtures; real installs always sign.
+        try signAdHocIfMachO(appBundle: appBundle)
+    }
+
+    /// Ad-hoc signs the bundle with identifier `com.chorus.tts` and sealed resources.
+    public static func signAdHoc(appBundle: URL) throws {
+        do {
+            try runTool(
+                "/usr/bin/codesign",
+                arguments: [
+                    "--force",
+                    "--deep",
+                    "--sign", "-",
+                    "--identifier", bundleIdentifier,
+                    appBundle.path,
+                ]
+            )
+        } catch {
+            throw AppBundleInstallerError.codeSigningFailed
+        }
+    }
+
+    /// Signs only when the installed executable is a Mach-O (skips unit-test stubs).
+    static func signAdHocIfMachO(appBundle: URL) throws {
+        let executable = executableURL(appBundle: appBundle)
+        guard isMachO(at: executable) else { return }
+        try signAdHoc(appBundle: appBundle)
+    }
+
+    /// True when the file starts with a known Mach-O / fat magic.
+    static func isMachO(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let magic = try? handle.read(upToCount: 4), magic.count == 4 else { return false }
+        let value = magic.withUnsafeBytes { $0.load(as: UInt32.self) }
+        // MH_MAGIC_64, MH_CIGAM_64, MH_MAGIC, MH_CIGAM, FAT_MAGIC, FAT_CIGAM
+        let magics: Set<UInt32> = [
+            0xFEED_FACF, 0xCFFA_EDFE, 0xFEED_FACE, 0xCEFA_EDFE, 0xCAFE_BABE, 0xBEBA_FECA,
+        ]
+        return magics.contains(value)
     }
 
     /// 18pt-class PNGs for `NSStatusItem` (1x + 2x). Template rendering uses alpha.

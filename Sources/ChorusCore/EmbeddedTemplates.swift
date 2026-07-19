@@ -92,6 +92,8 @@ public enum EmbeddedTemplates {
                 "ProgramArguments": [executable.path, "menubar"],
                 "RunAtLoad": true,
                 "KeepAlive": true,
+                // macOS BTM / "Allow in the Background" uses this to show the app icon.
+                "AssociatedBundleIdentifiers": [AppBundleInstaller.bundleIdentifier],
             ],
             format: .xml,
             options: 0
@@ -106,6 +108,8 @@ public enum EmbeddedTemplates {
                 "CFBundleDisplayName": "Chorus",
                 "CFBundleExecutable": AppBundleInstaller.executableName,
                 "CFBundleIconFile": AppBundleInstaller.iconFileName,
+                // Modern System Settings / BTM prefer IconName alongside IconFile.
+                "CFBundleIconName": AppBundleInstaller.iconFileName,
                 "CFBundleIdentifier": AppBundleInstaller.bundleIdentifier,
                 "CFBundleInfoDictionaryVersion": "6.0",
                 "CFBundleName": "Chorus",

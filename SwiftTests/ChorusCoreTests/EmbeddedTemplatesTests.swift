@@ -57,6 +57,18 @@ struct EmbeddedTemplatesTests {
         #expect(value["ProgramArguments"] as? [String] == [executable.path, "menubar"])
         #expect(value["RunAtLoad"] as? Bool == true)
         #expect(value["KeepAlive"] as? Bool == true)
+        // BTM "Allow in the Background" resolves icons via the associated app bundle.
+        #expect(value["AssociatedBundleIdentifiers"] as? [String] == ["com.chorus.tts"])
         #expect(!data.contains(Data("/bin/sh".utf8)))
+    }
+
+    @Test func appInfoPlistDeclaresIconNameForSystemUI() throws {
+        let data = try EmbeddedTemplates.appInfoPlist(version: "2.0.0")
+        let value = try #require(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+        #expect(value["CFBundleIconFile"] as? String == "AppIcon")
+        #expect(value["CFBundleIconName"] as? String == "AppIcon")
+        #expect(value["CFBundleIdentifier"] as? String == "com.chorus.tts")
     }
 }
