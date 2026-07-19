@@ -24,7 +24,7 @@ Sources/
 └── ChorusCore/
     ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
     ├── ChorusDaemon.swift     speech accept loop over Unix socket
-    ├── SpeechEnvelopeParser.swift  strict invisible-envelope validation
+    ├── SpeechEnvelope.swift   wire model and validation
     ├── HookAdapters.swift     Codex and Claude event adaptation
     ├── ModePolicy.swift       suppression and effective-volume policy
     ├── SpeechQueue.swift      bounded serialized speech queue
