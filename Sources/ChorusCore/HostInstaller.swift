@@ -347,7 +347,7 @@ public struct HostInstaller: Sendable {
         }
     }
 
-    // MARK: - Grok (TOML MCP + speak skill)
+    // MARK: - Grok (TOML MCP + full skill set; no hooks)
 
     private func installGrokHost(
         previousFiles: [OwnedInstalledFile],
@@ -361,17 +361,21 @@ public struct HostInstaller: Sendable {
             preserved: &preserved
         )
 
-        // chorus-speak skill (digest ownership, same as setup skills).
-        let skillText = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
-        let destination = skillsDirectory(for: .grok).appending(path: "chorus-speak/SKILL.md")
-        try installSkillFile(
-            text: skillText,
-            destination: destination,
-            host: .grok,
-            previousFiles: previousFiles,
-            ownedFiles: &ownedFiles,
-            preserved: &preserved
-        )
+        // Grok SessionStart cannot inject context — setup/install/speak skills carry the contract.
+        let templates = EmbeddedTemplates.grokSkills(executable: executable)
+        for name in EmbeddedTemplates.skillNames {
+            guard let text = templates[name] else { continue }
+            let destination = skillsDirectory(for: .grok)
+                .appending(path: "chorus-\(name)/SKILL.md")
+            try installSkillFile(
+                text: text,
+                destination: destination,
+                host: .grok,
+                previousFiles: previousFiles,
+                ownedFiles: &ownedFiles,
+                preserved: &preserved
+            )
+        }
     }
 
     private func uninstallGrokHost(

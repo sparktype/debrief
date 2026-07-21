@@ -17,7 +17,7 @@ swift build -c release
 .build/release/chorus install
 ```
 
-`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, start-family host hooks (plus a setup skill; Grok also gets a speak skill). There is **no user CLI** — mute, mode, start/stop, and quit live on the menu bar only.
+`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, start-family host hooks (Claude/Codex), and skills. Grok gets MCP + skills `chorus-setup` / `chorus-install` / `chorus-speak` (no hooks — SessionStart context is ignored). There is **no user CLI** — mute, mode, start/stop, and quit live on the menu bar only.
 
 Double-click **Chorus** in Applications (or use Spotlight) to open the menu bar. LaunchAgent also starts the app at login.
 
@@ -37,7 +37,9 @@ Agents call the Chorus MCP tool `speak` (server `chorus`) once per turn:
 
 Do not put speech JSON or HTML comments in the chat body. Install registers MCP for Codex, Claude Code, and Grok.
 
-**Claude Code:** tools may appear as `mcp__chorus__speak` and `mcp__chorus__install`. Install places skills `chorus-setup`, `chorus-install`, and `chorus-speak` under `~/.claude/skills`. Use MCP `install` (or `chorus install --claude --repair`) to wire/repair hosts; restart Claude after install so MCP tools load.
+**Claude Code:** tools may appear as `mcp__chorus__speak` and `mcp__chorus__install`. Skills under `~/.claude/skills`. Restart Claude after install.
+
+**Grok:** tools are `chorus__speak` and `chorus__install` (`search_tool` / `use_tool`). Skills under `~/.grok/skills`. After install or tool changes run **`/mcps`**. Prefer skill `chorus-install` or shell `chorus install --grok --repair`.
 
 Default role mapping (for `voice` / baseline speed):
 

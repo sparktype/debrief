@@ -8,10 +8,11 @@ Chorus speaks text prepared by Codex, Claude Code, or Grok through **Chorus.app*
 2. Run `.build/release/chorus install`.
 3. Wait for the pinned Supertonic 3 model download and checksum verification.
 4. Open **Chorus** from Applications (or wait for LaunchAgent at login).
-5. Confirm the host registered MCP server `chorus` (and for Grok, refresh tools with `/mcps` if needed).
-6. **Claude Code:** restart the app (or reconnect MCP) so `speak` / `mcp__chorus__speak` appears; skill `chorus-speak` is installed under `~/.claude/skills`.
-7. In Codex, review the three start-family hook definitions in `/hooks`.
-8. Ask the agent for a short spoken summary by calling MCP tool `speak` with `text`, `voice`, `speed`, and `volume` (optional `priority`).
+5. Confirm the host registered MCP server `chorus`.
+6. **Claude Code:** restart so `speak` / `mcp__chorus__speak` (and `install`) appear; skills under `~/.claude/skills`.
+7. **Grok:** run **`/mcps`** so `chorus__speak` and `chorus__install` appear; skills under `~/.grok/skills` (`chorus-setup`, `chorus-install`, `chorus-speak`). Call tools via `search_tool` / `use_tool` when required.
+8. In Codex, review the three start-family hook definitions in `/hooks`.
+9. Ask the agent for a short spoken summary via MCP speak (`text`, `voice`, `speed`, `volume`; optional `priority`).
 
 Use `--codex`, `--claude`, and/or `--grok` to limit host integration, and `--repair` to restore owned files without overwriting unrelated settings.
 

@@ -5,7 +5,7 @@
 Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executable. Its responsibilities are deliberately narrow:
 
 1. install and verify the pinned Supertonic 3 model;
-2. install the executable, LaunchAgent, start-family host hooks, setup skill, and MCP registration (plus Grok speak skill);
+2. install the executable, LaunchAgent, start-family host hooks (Claude/Codex), skills (setup/install/speak), and MCP registration;
 3. accept strict agent-provided MCP `speak` arguments (`text`, `voice`, `speed`, `volume`; optional `priority`);
 4. synthesize with the local ONNX Runtime backend and play audio;
 5. expose current-state diagnostics on the menu bar (**진단** submenu + last-error file).
@@ -84,7 +84,7 @@ Codex / Claude (start hooks only)
 | --- | --- | --- | --- |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.chorus]` | `~/.agents/skills` | start-family in `~/.codex/hooks.json` |
 | Claude | `~/.claude/settings.json` → `mcpServers.chorus` | `~/.claude/skills` | start-family in settings |
-| Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-speak` | none (skill + MCP carry contract) |
+| Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-{setup,install,speak}` | none (skills + MCP; SessionStart stdout ignored) |
 
 MCP registration always points at the app absolute path with `args: ["mcp"]`.
 
@@ -115,7 +115,7 @@ Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/
 
 ## Runtime lifecycle
 
-`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), pinned model, host hooks (start-family), MCP registration, a single setup skill (and Grok speak skill), LaunchAgent replacement, and a health-gated legacy cutover. There is no user CLI and no `~/.local/bin/chorus` symlink; hooks and MCP invoke the app executable directly. Owned-file digests prevent uninstall or repair from overwriting user modifications. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments (menu bar).
+`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), pinned model, host hooks (start-family for Claude/Codex), MCP registration, skills `setup`/`install`/`speak` (Grok-specific skill text), LaunchAgent replacement, and a health-gated legacy cutover. There is no user CLI and no `~/.local/bin/chorus` symlink; hooks and MCP invoke the app executable directly. Owned-file digests prevent uninstall or repair from overwriting user modifications. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments (menu bar).
 
 The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. It must not await `launchctl bootout` from inside the job — launchd waits for the process to exit and that deadlocks. `install --repair` re-enables and bootstraps the agent.
 
@@ -134,7 +134,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -
 
 - Add a focused failing test before behavior changes.
 - Run impact analysis before editing an existing symbol.
-- Keep the hook set exact (start-family only). Skills for Claude/Codex are `setup` + `install` + `speak`; MCP tools are `speak` + `install`. Grok gets `chorus-speak` via its install path. Additions are product-scope changes.
+- Keep the hook set exact (start-family only). Skills for Claude/Codex/Grok are `setup` + `install` + `speak` (Grok text is Grok-specific via `grokSkills`). MCP tools are `speak` + `install` (Grok names: `chorus__speak` / `chorus__install`). Additions are product-scope changes.
 - Do not persist hook payload text or synthesized audio.
 - Preserve unrelated host settings and modified installed files.
 - Run the full Swift suite and release build before claiming completion.

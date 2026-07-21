@@ -60,7 +60,7 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 - Unix domain socket + 메뉴바 `ResidentService` (LaunchAgent `com.chorus.tts`)
 - `install` / `uninstall` / `menubar` / `hook` / `mcp`
 - Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
-- Grok: `~/.grok/config.toml` MCP + `chorus-speak` skill
+- Grok: `~/.grok/config.toml` MCP + skills `chorus-setup` / `chorus-install` / `chorus-speak` (`chorus__speak` · `chorus__install`)
 - 메뉴바: mute · mode · 진단 · start/stop · quit (사용자 CLI 없음)
 
 **제외**

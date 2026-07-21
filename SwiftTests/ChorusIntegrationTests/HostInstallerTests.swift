@@ -55,9 +55,22 @@ struct HostInstallerTests {
             #expect(speak.contains("speak"))
             #expect(speak.contains("mcp__chorus__speak") || speak.contains("chorus__speak"))
         }
-        #expect(FileManager.default.fileExists(
-            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
-        ))
+        let grokSkillsRoot = home.appending(path: ".grok/skills")
+        for name in EmbeddedTemplates.skillNames {
+            let path = grokSkillsRoot.appending(path: "chorus-\(name)/SKILL.md")
+            #expect(FileManager.default.fileExists(atPath: path.path))
+        }
+        let grokSpeak = try String(
+            contentsOf: grokSkillsRoot.appending(path: "chorus-speak/SKILL.md"),
+            encoding: .utf8
+        )
+        #expect(grokSpeak.contains("chorus__speak"))
+        #expect(grokSpeak.contains("use_tool") || grokSpeak.contains("search_tool"))
+        let grokInstall = try String(
+            contentsOf: grokSkillsRoot.appending(path: "chorus-install/SKILL.md"),
+            encoding: .utf8
+        )
+        #expect(grokInstall.contains("chorus__install"))
     }
 
     @Test func installMergesMcpAndStartHooksOnly() throws {
@@ -116,9 +129,11 @@ struct HostInstallerTests {
         #expect(toml.contains("[mcp_servers.chorus]"))
         #expect(toml.contains("# BEGIN chorus-mcp"))
         #expect(toml.contains("# END chorus-mcp"))
-        #expect(FileManager.default.fileExists(
-            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
-        ))
+        for name in EmbeddedTemplates.skillNames {
+            #expect(FileManager.default.fileExists(
+                atPath: home.appending(path: ".grok/skills/chorus-\(name)/SKILL.md").path
+            ))
+        }
     }
 
     @Test func uninstallRemovesChorusMcpPreservesOthers() throws {
@@ -173,9 +188,11 @@ struct HostInstallerTests {
         #expect(toml.contains("[mcp_servers.other]"))
         #expect(!toml.contains("[mcp_servers.chorus]"))
         #expect(!toml.contains("# BEGIN chorus-mcp"))
-        #expect(!FileManager.default.fileExists(
-            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
-        ))
+        for name in EmbeddedTemplates.skillNames {
+            #expect(!FileManager.default.fileExists(
+                atPath: home.appending(path: ".grok/skills/chorus-\(name)/SKILL.md").path
+            ))
+        }
     }
 
     @Test func uninstallRemovesOnlyUnchangedOwnedContent() throws {
@@ -323,9 +340,12 @@ struct HostInstallerTests {
         #expect(toml.contains("enabled = false"))
         #expect(!toml.contains("# BEGIN chorus-mcp"))
         #expect(result.preservedModifiedFiles.contains(grokConfig.path))
-        #expect(FileManager.default.fileExists(
-            atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path
-        ))
+        // Skills still install even when foreign MCP table is preserved.
+        for name in EmbeddedTemplates.skillNames {
+            #expect(FileManager.default.fileExists(
+                atPath: home.appending(path: ".grok/skills/chorus-\(name)/SKILL.md").path
+            ))
+        }
     }
 
     private func assertInstalledHooks(_ root: [String: Any], unrelatedEvent: String) {

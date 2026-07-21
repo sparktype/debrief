@@ -158,7 +158,8 @@ public enum VoiceCatalog {
         case .codex:
             return "MCP tool `speak` on server `chorus`"
         case .grok:
-            return "MCP tool `chorus__speak` (server `chorus`)"
+            // Grok qualifies tools as server__tool; discover via search_tool / use_tool.
+            return "MCP tool `chorus__speak` (search_tool / use_tool; server `chorus`)"
         }
     }
 

@@ -24,8 +24,17 @@ struct EmbeddedTemplatesTests {
         #expect(toml.contains("tool_timeout_sec = 120"))
 
         let skill = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
-        #expect(skill.contains("chorus__speak") || skill.contains("`speak`"))
+        #expect(skill.contains("chorus__speak"))
+        #expect(skill.contains("search_tool") || skill.contains("use_tool"))
+        #expect(skill.contains("priority"))
+        #expect(skill.contains("/mcps") || skill.contains("chorus-install"))
         #expect(!skill.contains("chorus:speak"))
+
+        let grokSkills = EmbeddedTemplates.grokSkills(executable: executable)
+        #expect(Set(grokSkills.keys) == Set(["setup", "install", "speak"]))
+        #expect(grokSkills["install"]?.contains("chorus__install") == true)
+        #expect(grokSkills["setup"]?.contains("/mcps") == true)
+        #expect(grokSkills["speak"]?.contains("use_tool") == true)
 
         for source in HostSource.allCases {
             let entry = EmbeddedTemplates.hookEntry(executable: executable, source: source)

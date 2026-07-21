@@ -1,43 +1,42 @@
 ---
 name: chorus-install
-description: Install or repair Chorus.app, MCP tools (speak/install), and Claude Code hooks. Prefer MCP tool install (mcp__chorus__install).
+description: Install or repair Chorus.app and host MCP registration. Prefer MCP install (Claude: mcp__chorus__install; Grok: chorus__install).
 ---
 
 # chorus-install
 
 ## Preferred — MCP tool
 
-When the Chorus MCP server is already available, call **`install`** (Claude: `mcp__chorus__install`):
-
-| Argument | Default | Notes |
-|----------|---------|--------|
-| `hosts` | all | Array: `claude`, `codex`, `grok` |
-| `repair` | `true` | Re-verify model + re-merge owned hooks/MCP |
-
-Claude-only repair:
+| Host | Tool name |
+|------|-----------|
+| Claude Code | `mcp__chorus__install` |
+| Grok | `chorus__install` (`search_tool` → `use_tool`) |
+| Codex | `install` on server `chorus` |
 
 ```json
-{ "hosts": ["claude"], "repair": true }
+{ "hosts": ["grok"], "repair": true }
 ```
 
-Then **restart Claude Code** so `mcp__chorus__speak` / `mcp__chorus__install` refresh.
+- `hosts`: optional `claude` / `codex` / `grok` (omit = all)
+- `repair`: default `true`
 
-## Shell — first install or MCP timeout
+Then refresh: **Claude** restart · **Grok** `/mcps`.
+
+## Shell — first install or timeout
 
 ```bash
 ./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --claude --repair
+.build/release/chorus install --grok --repair
+# or --claude / --codex / no flags for all
 ```
 
-Installed binary:
-
 ```bash
-'/Applications/Chorus.app/Contents/MacOS/chorus' install --claude --repair
+'/Applications/Chorus.app/Contents/MacOS/chorus' install --grok --repair
 ```
 
 ## After success
 
-- Menu bar app running (LaunchAgent)
-- `~/.claude/settings.json` → `mcpServers.chorus`
-- Skills: `chorus-setup`, `chorus-install`, `chorus-speak`
-- Use `speak` at turn end (skill `chorus-speak`)
+- Menu bar Chorus running
+- MCP server `chorus` registered
+- Skills: setup, install, speak
+- Turn-end speech: skill **chorus-speak**

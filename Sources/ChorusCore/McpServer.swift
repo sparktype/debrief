@@ -87,7 +87,8 @@ public enum McpJSONRPC {
             "description":
                 "Speak a short one- or two-sentence summary of the finished work through local Chorus TTS. "
                 + "Call once at the end of a turn when speech is appropriate. "
-                + "On Claude Code this tool may appear as mcp__chorus__speak. "
+                + "On Claude Code this may appear as mcp__chorus__speak; on Grok as chorus__speak "
+                + "(search_tool / use_tool). "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",
             "inputSchema": [
                 "type": "object",
@@ -112,9 +113,10 @@ public enum McpJSONRPC {
             "name": "install",
             "description":
                 "Install or repair Chorus.app host integration (MCP registration, start-family hooks, skills, LaunchAgent). "
-                + "On Claude Code this may appear as mcp__chorus__install. "
+                + "On Claude Code this may appear as mcp__chorus__install; on Grok as chorus__install "
+                + "(search_tool / use_tool). "
                 + "Prefer repair=true for fixes. First-time model download can be slow — use shell install if the tool times out. "
-                + "After install, restart Claude Code so tools refresh.",
+                + "After install: Claude restart; Grok run /mcps to refresh tools.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
