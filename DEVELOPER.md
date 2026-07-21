@@ -100,6 +100,15 @@ Agents call tool `speak` on server `chorus` once per turn. Required arguments:
 | volume | 0.0–1.0 finite |
 | priority | optional: `main` (default) or `subagent` |
 
+### MCP tool `install`
+
+| Field | Constraints |
+| --- | --- |
+| hosts | optional array of `codex` / `claude` / `grok` (omit = all) |
+| repair | optional boolean (default `true`) |
+
+Runs the same `RuntimeInstaller` path as CLI `chorus install` using the MCP process executable as the source binary. Prefer shell install for first-time model download if the host tool timeout is short.
+
 No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (no envelope fallback). Internal `SpeechEnvelope` validation still backs UDS frames after MCP parse. `SpeechRequest.priority` drives `ModePolicy` and queue main/subagent rules — not host hook event names.
 
 Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/last-error.json` and appear under the menu **진단** submenu.
@@ -125,7 +134,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -
 
 - Add a focused failing test before behavior changes.
 - Run impact analysis before editing an existing symbol.
-- Keep the hook set exact (start-family only). Skills for Claude/Codex are `setup` + `speak`; Grok gets `chorus-speak` via its install path. Additions are product-scope changes.
+- Keep the hook set exact (start-family only). Skills for Claude/Codex are `setup` + `install` + `speak`; MCP tools are `speak` + `install`. Grok gets `chorus-speak` via its install path. Additions are product-scope changes.
 - Do not persist hook payload text or synthesized audio.
 - Preserve unrelated host settings and modified installed files.
 - Run the full Swift suite and release build before claiming completion.

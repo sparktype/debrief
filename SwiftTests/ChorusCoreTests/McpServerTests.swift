@@ -20,13 +20,35 @@ struct McpServerTests {
         #expect(serverInfo?["name"] as? String == "chorus")
     }
 
-    @Test func toolsListContainsSpeak() async {
+    @Test func toolsListContainsSpeakAndInstall() async {
         let req: [String: Any] = [
             "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": [:],
         ]
         let res = await McpJSONRPC.handle(request: req, speak: { _ in .init(isError: false, message: "") })!
         let tools = (res["result"] as? [String: Any])?["tools"] as? [[String: Any]]
         #expect(tools?.contains(where: { ($0["name"] as? String) == "speak" }) == true)
+        #expect(tools?.contains(where: { ($0["name"] as? String) == "install" }) == true)
+    }
+
+    @Test func toolsCallInstallInvokesHandler() async {
+        let box = SeenBox()
+        let req: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": [
+                "name": "install",
+                "arguments": ["hosts": ["claude"], "repair": true],
+            ],
+        ]
+        let res = await McpJSONRPC.handle(request: req, callTool: { name, args in
+            box.text = name
+            #expect((args["hosts"] as? [String]) == ["claude"])
+            return McpToolCallResult(isError: false, message: #"{"ok":true}"#)
+        })!
+        #expect(box.text == "install")
+        let result = res["result"] as? [String: Any]
+        #expect(result?["isError"] as? Bool == false)
     }
 
     @Test func toolsCallSpeakInvokesHandler() async {

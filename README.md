@@ -37,7 +37,7 @@ Agents call the Chorus MCP tool `speak` (server `chorus`) once per turn:
 
 Do not put speech JSON or HTML comments in the chat body. Install registers MCP for Codex, Claude Code, and Grok.
 
-**Claude Code:** the tool may appear as `mcp__chorus__speak`. Install also places skills `chorus-setup` and `chorus-speak` under `~/.claude/skills`. Restart Claude after install so MCP tools load.
+**Claude Code:** tools may appear as `mcp__chorus__speak` and `mcp__chorus__install`. Install places skills `chorus-setup`, `chorus-install`, and `chorus-speak` under `~/.claude/skills`. Use MCP `install` (or `chorus install --claude --repair`) to wire/repair hosts; restart Claude after install so MCP tools load.
 
 Default role mapping (for `voice` / baseline speed):
 

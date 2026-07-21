@@ -10,8 +10,8 @@ struct EmbeddedTemplatesTests {
         #expect(Set(EmbeddedTemplates.hookEvents.map(\.rawValue)) == [
             "SessionStart", "UserPromptSubmit", "SubagentStart",
         ])
-        #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set(["setup", "speak"]))
-        #expect(EmbeddedTemplates.skillNames == ["setup", "speak"])
+        #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set(["setup", "install", "speak"]))
+        #expect(EmbeddedTemplates.skillNames == ["setup", "install", "speak"])
 
         let mcp = EmbeddedTemplates.mcpRegistration(executable: executable)
         #expect(mcp["command"] as? String == executable.path)
@@ -21,6 +21,7 @@ struct EmbeddedTemplatesTests {
         #expect(toml.contains("[mcp_servers.chorus]"))
         #expect(toml.contains(executable.path))
         #expect(toml.contains(#""mcp""#) || toml.contains("mcp"))
+        #expect(toml.contains("tool_timeout_sec = 120"))
 
         let skill = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
         #expect(skill.contains("chorus__speak") || skill.contains("`speak`"))

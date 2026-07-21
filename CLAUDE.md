@@ -56,7 +56,7 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 **포함**
 
 - Supertonic 3 + ONNX Runtime (Swift 패키지)
-- MCP tool `speak` 검증 (`text`, `voice`, `speed`, `volume`, 선택 `priority`) + `chorus mcp` stdio 서버
+- MCP tool `speak` 검증 (`text`, `voice`, `speed`, `volume`, 선택 `priority`) + `install` (hosts/repair) + `chorus mcp` stdio 서버
 - Unix domain socket + 메뉴바 `ResidentService` (LaunchAgent `com.chorus.tts`)
 - `install` / `uninstall` / `menubar` / `hook` / `mcp`
 - Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
@@ -93,7 +93,8 @@ Claude Code에서는 도구가 `mcp__chorus__speak`로 보일 수 있습니다.
 Chorus는 요약하지 않습니다. `voice`는 역할 배정과 일치해야 합니다 (메인 기본 F1).  
 서브에이전트는 `priority: "subagent"`를 권장합니다 (focus/quiet/night에서 억제).  
 본문에 speech JSON·HTML 주석을 넣지 마세요. 도구를 생략하면 무음입니다.  
-설치 시 `chorus-speak` 스킬이 `~/.claude/skills`에 등록됩니다 (훅 context와 함께 규약 유지).
+설치 시 `chorus-setup` · `chorus-install` · `chorus-speak` 스킬이 `~/.claude/skills`에 등록됩니다.  
+복구는 MCP `install` (`mcp__chorus__install`) 또는 `chorus install --claude --repair`를 사용합니다.
 
 설치:
 

@@ -5,29 +5,25 @@ description: Install or repair local Chorus TTS (Chorus.app), MCP speak registra
 
 # chorus-setup
 
-## Claude Code (recommended)
+Prefer skill **chorus-install** or MCP tool **`install`** (`mcp__chorus__install`).
 
-From a Chorus build tree:
+## Claude Code
+
+1. Call `install` with `{ "hosts": ["claude"], "repair": true }` when MCP works, **or** shell:
 
 ```bash
 ./scripts/with-xcode.sh swift build -c release
 .build/release/chorus install --claude --repair
 ```
 
-Then:
+2. Restart Claude Code.
+3. Confirm tools `speak` / `install` (and `mcp__chorus__*`).
+4. Turn-end speech: skill **chorus-speak**.
 
-1. Confirm `mcpServers.chorus` in `~/.claude/settings.json`.
-2. Confirm hooks: `SessionStart`, `UserPromptSubmit`, `SubagentStart`.
-3. Restart Claude Code (or reconnect MCP) so `speak` / `mcp__chorus__speak` is available.
-4. At turn end, call the speak tool once (skill `chorus-speak`).
-
-Mute, mode, diagnostics, start/stop, and quit are **menu bar only** — there is no user CLI.
+Mute, mode, diagnostics, start/stop, and quit are **menu bar only**.
 
 ## All hosts
 
 ```bash
 .build/release/chorus install --repair
 ```
-
-- Codex: MCP in `~/.codex/config.toml`, hooks in `~/.codex/hooks.json` — review `/hooks`.
-- Grok: MCP in `~/.grok/config.toml`; refresh tools with `/mcps`.

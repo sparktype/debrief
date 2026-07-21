@@ -15,8 +15,8 @@ public enum EmbeddedTemplates {
     public static let hookEvents: [HookEventName] = [
         .sessionStart, .userPromptSubmit, .subagentStart,
     ]
-    /// setup = install/repair; speak = durable MCP speak contract (Claude/Codex skills path).
-    public static let skillNames = ["setup", "speak"]
+    /// setup = guidance; install = MCP/shell install action; speak = MCP speak contract.
+    public static let skillNames = ["setup", "install", "speak"]
 
     public static func hookEntry(executable: URL, source: HostSource) -> EmbeddedHookEntry {
         EmbeddedHookEntry(hooks: [
@@ -44,7 +44,7 @@ public enum EmbeddedTemplates {
         args = ["mcp"]
         enabled = true
         startup_timeout_sec = 15
-        tool_timeout_sec = 10
+        tool_timeout_sec = 120
         """
     }
 
@@ -68,31 +68,58 @@ public enum EmbeddedTemplates {
 
     public static func skills(executable: URL) -> [String: String] {
         let command = shellQuote(executable.path)
+        let installSkill = skill(
+            name: "chorus-install",
+            description:
+                "Install or repair Chorus.app, MCP tools (speak/install), and Claude/Codex/Grok hooks. Prefer MCP tool install (mcp__chorus__install) when available.",
+            body: """
+            ## Preferred (when MCP already works)
+
+            Call MCP tool `install` on server `chorus` (Claude: `mcp__chorus__install`):
+
+            - `hosts`: optional array — `\"claude\"`, `\"codex\"`, `\"grok\"` (omit = all)
+            - `repair`: boolean, default **true**
+
+            Example (Claude only repair):
+            `install` with `{ "hosts": ["claude"], "repair": true }`
+
+            Then **restart Claude Code** so tools refresh.
+
+            ## Shell (first install or MCP timeout)
+
+            From a Chorus build tree:
+
+            ```bash
+            ./scripts/with-xcode.sh swift build -c release
+            .build/release/chorus install --claude --repair
+            # all hosts: .build/release/chorus install --repair
+            ```
+
+            Or re-run from the installed app:
+
+            ```bash
+            \(command) install --claude --repair
+            ```
+
+            ## After install
+
+            1. `mcpServers.chorus` in host settings
+            2. Start-family hooks present
+            3. Skills: chorus-setup, chorus-install, chorus-speak
+            4. Tools: `speak` / `install` (Claude may show `mcp__chorus__*`)
+            """
+        )
         return [
             "setup": skill(
                 name: "chorus-setup",
-                description: "Install or repair local Chorus TTS (Chorus.app), MCP speak registration, and host hooks for Claude Code / Codex / Grok.",
+                description: "Guide Chorus TTS setup for Claude Code / Codex / Grok (points to install skill and MCP install tool).",
                 body: """
-                From a Chorus build tree:
-
-                ```bash
-                ./scripts/with-xcode.sh swift build -c release
-                .build/release/chorus install --repair
-                # Claude only: .build/release/chorus install --claude --repair
-                ```
-
-                After install for **Claude Code**:
-                1. Confirm MCP server `chorus` in `~/.claude/settings.json` → `mcpServers.chorus`.
-                2. Confirm start-family hooks (SessionStart, UserPromptSubmit, SubagentStart).
-                3. Restart Claude Code or reconnect MCP so `speak` / `mcp__chorus__speak` appears.
-                4. At end of turns that deserve speech, call the speak tool (see skill `chorus-speak`).
-
-                Mute, mode, diagnostics, start/stop, and quit are **menu bar only** — no user CLI. \
-                Codex: MCP in `~/.codex/config.toml`, hooks in `~/.codex/hooks.json` (review with `/hooks`). \
-                Grok: MCP in `~/.grok/config.toml`; refresh with `/mcps`. \
-                Binary used by hooks/MCP: `\(command)`.
+                Use skill **chorus-install** or MCP tool `install` (`mcp__chorus__install`) to install/repair. \
+                After wiring, use **chorus-speak** / MCP `speak` at turn end. \
+                Mute/mode/diagnostics are menu bar only. Binary: `\(command)`.
                 """
             ),
+            "install": installSkill,
             "speak": claudeCodexSpeakSkillMarkdown(executable: executable),
         ]
     }
