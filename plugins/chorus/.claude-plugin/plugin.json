@@ -1,10 +1,10 @@
 {
   "name": "chorus",
-  "version": "1.0.0",
-  "description": "Single-binary local TTS for Claude Code and Codex on Apple Silicon.",
+  "version": "2.0.0",
+  "description": "Local TTS-only for Claude Code via MCP speak + start-family hooks on Apple Silicon.",
   "author": {
     "name": "Chorus contributors"
   },
   "license": "MIT",
-  "keywords": ["voice", "tts", "codex", "claude", "accessibility"]
+  "keywords": ["voice", "tts", "claude", "mcp", "accessibility", "apple-silicon"]
 }

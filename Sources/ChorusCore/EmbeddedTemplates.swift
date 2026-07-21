@@ -15,15 +15,16 @@ public enum EmbeddedTemplates {
     public static let hookEvents: [HookEventName] = [
         .sessionStart, .userPromptSubmit, .subagentStart,
     ]
-    /// User control is the menu bar; only setup remains for install/repair guidance.
-    public static let skillNames = ["setup"]
+    /// setup = install/repair; speak = durable MCP speak contract (Claude/Codex skills path).
+    public static let skillNames = ["setup", "speak"]
 
     public static func hookEntry(executable: URL, source: HostSource) -> EmbeddedHookEntry {
         EmbeddedHookEntry(hooks: [
             EmbeddedHookHandler(
                 type: "command",
                 command: "\(shellQuote(executable.path)) hook --source \(source.rawValue)",
-                timeout: 2
+                // Cold launch of the app binary can exceed 2s on first use.
+                timeout: 5
             ),
         ])
     }
@@ -48,25 +49,21 @@ public enum EmbeddedTemplates {
     }
 
     public static func grokSpeakSkillMarkdown(executable: URL) -> String {
-        """
-        ---
-        name: chorus-speak
-        description: Speak a short finish summary through local Chorus TTS via MCP tool chorus__speak. Use at end of a turn when a spoken one- or two-sentence summary helps.
-        ---
+        speakSkillMarkdown(
+            toolLine: "Grok qualified name: `chorus__speak` (via `search_tool` / `use_tool` if required)",
+            executable: executable
+        )
+    }
 
-        # Chorus speak
-
-        When you finish a turn that deserves a spoken summary, call the MCP tool on server `chorus`:
-
-        - Grok qualified name: `chorus__speak` (via `search_tool` / `use_tool` if required)
-        - Required arguments: `text`, `voice`, `speed`, `volume`
-        - Optional: `priority` = `main` (default) or `subagent` (suppressed in focus/quiet/night)
-        - Default main voice: `F1`, speed near `0.93`, volume near `0.85`
-        - Do **not** put HTML comments or JSON speech metadata in the assistant message body.
-        - Mute/mode are controlled only from the Chorus menu bar.
-
-        Binary: `\(executable.path)`.
-        """
+    /// Durable speak contract for Claude Code / Codex skill directories.
+    public static func claudeCodexSpeakSkillMarkdown(executable: URL) -> String {
+        speakSkillMarkdown(
+            toolLine: """
+            - Claude Code: server `chorus`, tool `speak` (often listed as `mcp__chorus__speak`)
+            - Codex: server `chorus`, tool `speak`
+            """,
+            executable: executable
+        )
     }
 
     public static func skills(executable: URL) -> [String: String] {
@@ -74,16 +71,54 @@ public enum EmbeddedTemplates {
         return [
             "setup": skill(
                 name: "chorus-setup",
-                description: "Install or repair local Chorus TTS (Chorus.app), MCP speak registration, and host hooks.",
+                description: "Install or repair local Chorus TTS (Chorus.app), MCP speak registration, and host hooks for Claude Code / Codex / Grok.",
                 body: """
-                Run `\(command) install --repair` from a Chorus build if the app is missing or broken. \
-                Mute, mode, start/stop, and quit are controlled only from the Chorus menu bar — there is no user CLI. \
-                Speech uses the local MCP tool `speak` on server `chorus` (Grok: `chorus__speak`); hosts register it via install. \
-                For Codex, MCP lives in `~/.codex/config.toml` and hooks in `~/.codex/hooks.json` — remind the user to review hooks in `/hooks`. \
-                For Grok, MCP lives in `~/.grok/config.toml`; refresh tools with `/mcps` after install.
+                From a Chorus build tree:
+
+                ```bash
+                ./scripts/with-xcode.sh swift build -c release
+                .build/release/chorus install --repair
+                # Claude only: .build/release/chorus install --claude --repair
+                ```
+
+                After install for **Claude Code**:
+                1. Confirm MCP server `chorus` in `~/.claude/settings.json` → `mcpServers.chorus`.
+                2. Confirm start-family hooks (SessionStart, UserPromptSubmit, SubagentStart).
+                3. Restart Claude Code or reconnect MCP so `speak` / `mcp__chorus__speak` appears.
+                4. At end of turns that deserve speech, call the speak tool (see skill `chorus-speak`).
+
+                Mute, mode, diagnostics, start/stop, and quit are **menu bar only** — no user CLI. \
+                Codex: MCP in `~/.codex/config.toml`, hooks in `~/.codex/hooks.json` (review with `/hooks`). \
+                Grok: MCP in `~/.grok/config.toml`; refresh with `/mcps`. \
+                Binary used by hooks/MCP: `\(command)`.
                 """
             ),
+            "speak": claudeCodexSpeakSkillMarkdown(executable: executable),
         ]
+    }
+
+    private static func speakSkillMarkdown(toolLine: String, executable: URL) -> String {
+        """
+        ---
+        name: chorus-speak
+        description: Speak a short finish summary through local Chorus TTS via MCP tool speak (Claude: mcp__chorus__speak). Use at end of a turn when a spoken one- or two-sentence summary helps.
+        ---
+
+        # Chorus speak
+
+        When you finish a turn that deserves a spoken summary, call the Chorus MCP tool **once**:
+
+        \(toolLine)
+        - Required arguments: `text`, `voice`, `speed`, `volume`
+        - Optional: `priority` = `main` (default) or `subagent` (use for background/subagents; suppressed in focus/quiet/night)
+        - Default main voice: `F1`, speed near `0.93`, volume near `0.85`
+        - Keep `text` ≤ 800 characters, natural spoken Korean or English
+        - Do **not** put HTML comments or JSON speech metadata in the assistant message body
+        - Omitting the tool is silence — the user will not hear a summary
+        - Mute/mode/diagnostics are controlled only from the Chorus menu bar
+
+        Binary: `\(executable.path)`.
+        """
     }
 
     public static func launchAgent(executable: URL) throws -> Data {

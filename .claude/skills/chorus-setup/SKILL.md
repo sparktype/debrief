@@ -1,21 +1,30 @@
 ---
 name: chorus:setup
-description: "Chorus.app 설치·복구와 MCP speak 등록을 안내합니다."
+description: "Chorus.app 설치·복구와 Claude Code MCP speak 등록을 안내합니다."
 ---
 
 # chorus:setup
 
-빌드 트리에서 설치·복구:
+## Claude Code
 
 ```bash
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-# 또는 ./scripts/with-xcode.sh
 ./scripts/with-xcode.sh swift build -c release
+.build/release/chorus install --claude --repair
+```
+
+그다음:
+
+1. `~/.claude/settings.json`에 `mcpServers.chorus` 확인
+2. 훅 `SessionStart` / `UserPromptSubmit` / `SubagentStart` 확인
+3. Claude Code 재시작 → `speak` 또는 `mcp__chorus__speak` 노출
+4. 턴 종료 시 skill `chorus-speak` / MCP speak 한 번 호출
+
+## 공통
+
+```bash
 .build/release/chorus install --repair
 ```
 
-- 음소거·모드·시작/중지·종료는 **메뉴바만** 사용합니다.
-- 발화는 MCP 도구 `speak` (서버 `chorus`, Grok: `chorus__speak`).
-- Codex: MCP는 `~/.codex/config.toml`, 훅은 `~/.codex/hooks.json` — `/hooks`에서 검토.
-- Grok: `~/.grok/config.toml` — 설치 후 `/mcps`로 도구 새로고침.
-- 진단은 메뉴바 **진단** 메뉴 또는 진단 요약 복사.
+- 음소거·모드·진단·시작/중지·종료는 **메뉴바만**
+- Codex: MCP `~/.codex/config.toml`, 훅 `~/.codex/hooks.json`
+- Grok: `~/.grok/config.toml` → `/mcps`

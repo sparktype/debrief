@@ -45,10 +45,15 @@ struct HostInstallerTests {
                 ? home.appending(path: ".agents/skills")
                 : home.appending(path: ".claude/skills")
             for name in EmbeddedTemplates.skillNames {
-                #expect(FileManager.default.fileExists(
-                    atPath: base.appending(path: "chorus-\(name)/SKILL.md").path
-                ))
+                let skillPath = base.appending(path: "chorus-\(name)/SKILL.md").path
+                #expect(FileManager.default.fileExists(atPath: skillPath))
             }
+            let speak = try String(
+                contentsOf: base.appending(path: "chorus-speak/SKILL.md"),
+                encoding: .utf8
+            )
+            #expect(speak.contains("speak"))
+            #expect(speak.contains("mcp__chorus__speak") || speak.contains("chorus__speak"))
         }
         #expect(FileManager.default.fileExists(
             atPath: home.appending(path: ".grok/skills/chorus-speak/SKILL.md").path

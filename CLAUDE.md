@@ -89,8 +89,11 @@ Claude / Codex start hooks (선택적 context)
 ```
 
 에이전트는 턴 종료 시 채팅 본문이 아니라 MCP tool `speak`를 **한 번** 호출합니다.  
+Claude Code에서는 도구가 `mcp__chorus__speak`로 보일 수 있습니다.  
 Chorus는 요약하지 않습니다. `voice`는 역할 배정과 일치해야 합니다 (메인 기본 F1).  
-본문에 speech JSON·HTML 주석을 넣지 마세요. 도구를 생략하면 무음입니다.
+서브에이전트는 `priority: "subagent"`를 권장합니다 (focus/quiet/night에서 억제).  
+본문에 speech JSON·HTML 주석을 넣지 마세요. 도구를 생략하면 무음입니다.  
+설치 시 `chorus-speak` 스킬이 `~/.claude/skills`에 등록됩니다 (훅 context와 함께 규약 유지).
 
 설치:
 

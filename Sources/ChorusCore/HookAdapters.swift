@@ -40,8 +40,15 @@ public enum HookAdapter {
             name: eventName,
             sessionID: sessionID,
             turnID: string(in: payload, keys: ["turn_id", "turnId"]),
-            agentType: string(in: payload, keys: ["agent_type", "agentType"]),
-            lastAssistantMessage: string(in: payload, keys: ["last_assistant_message"])
+            // Claude SubagentStart may use agent_type; some hosts send subagent_type / agent_name.
+            agentType: string(in: payload, keys: [
+                "agent_type", "agentType",
+                "subagent_type", "subagentType",
+                "agent_name", "agentName",
+            ]),
+            lastAssistantMessage: string(in: payload, keys: [
+                "last_assistant_message", "lastAssistantMessage",
+            ])
         )
     }
 

@@ -76,6 +76,7 @@ public enum McpJSONRPC {
             "description":
                 "Speak a short one- or two-sentence summary of the finished work through local Chorus TTS. "
                 + "Call once at the end of a turn when speech is appropriate. "
+                + "On Claude Code this tool may appear as mcp__chorus__speak. "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",
             "inputSchema": [
                 "type": "object",

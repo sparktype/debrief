@@ -125,7 +125,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -
 
 - Add a focused failing test before behavior changes.
 - Run impact analysis before editing an existing symbol.
-- Keep the hook set and skill set exact; additions are product-scope changes.
+- Keep the hook set exact (start-family only). Skills for Claude/Codex are `setup` + `speak`; Grok gets `chorus-speak` via its install path. Additions are product-scope changes.
 - Do not persist hook payload text or synthesized audio.
 - Preserve unrelated host settings and modified installed files.
 - Run the full Swift suite and release build before claiming completion.

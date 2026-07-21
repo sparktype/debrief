@@ -56,6 +56,8 @@ struct RepositoryCutoverTests {
             .joined(separator: "\n")
 
         #expect(!text.localizedCaseInsensitiveContains("node_repl"))
+        #expect(!text.localizedCaseInsensitiveContains("listen mode"))
+        #expect(!text.localizedCaseInsensitiveContains("external summary provider"))
     }
 
     private var repositoryRoot: URL {

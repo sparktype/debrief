@@ -1,8 +1,8 @@
 {
   "description": "Forward three start-family lifecycle events to the installed Chorus.app binary. Speech is MCP tool speak (not Stop extraction). Prefer `chorus install` so HostInstaller writes absolute paths; bare `chorus` is not on PATH after the menu-bar cutover.",
   "hooks": {
-    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 2}]}],
-    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 2}]}],
-    "SubagentStart": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 2}]}]
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 5}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 5}]}],
+    "SubagentStart": [{"matcher": "", "hooks": [{"type": "command", "command": "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 5}]}]
   }
 }

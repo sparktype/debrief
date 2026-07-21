@@ -10,8 +10,8 @@ struct EmbeddedTemplatesTests {
         #expect(Set(EmbeddedTemplates.hookEvents.map(\.rawValue)) == [
             "SessionStart", "UserPromptSubmit", "SubagentStart",
         ])
-        #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set(["setup"]))
-        #expect(EmbeddedTemplates.skillNames == ["setup"])
+        #expect(Set(EmbeddedTemplates.skills(executable: executable).keys) == Set(["setup", "speak"]))
+        #expect(EmbeddedTemplates.skillNames == ["setup", "speak"])
 
         let mcp = EmbeddedTemplates.mcpRegistration(executable: executable)
         #expect(mcp["command"] as? String == executable.path)
@@ -34,13 +34,15 @@ struct EmbeddedTemplatesTests {
                 entry.hooks[0].command
                     == "'/Applications/Chorus.app/Contents/MacOS/chorus' hook --source \(source.rawValue)"
             )
-            #expect(entry.hooks[0].timeout == 2)
+            #expect(entry.hooks[0].timeout == 5)
         }
 
         let combined = EmbeddedTemplates.skills(executable: executable).values.joined(separator: "\n")
         #expect(combined.localizedCaseInsensitiveContains("menu bar"))
         #expect(combined.localizedCaseInsensitiveContains("mcp") || combined.localizedCaseInsensitiveContains("grok"))
-        #expect(!combined.localizedCaseInsensitiveContains("listen"))
+        #expect(combined.contains("mcp__chorus__speak") || combined.contains("speak"))
+        #expect(combined.localizedCaseInsensitiveContains("claude"))
+        #expect(!combined.localizedCaseInsensitiveContains("listen mode"))
         #expect(!combined.localizedCaseInsensitiveContains("digest"))
         #expect(!combined.localizedCaseInsensitiveContains("python"))
         #expect(!combined.localizedCaseInsensitiveContains("node_repl"))
