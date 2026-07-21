@@ -11,11 +11,12 @@ dist/
 .supertonic.pid
 **/__pycache__/
 *.pyc
-.claude/
+# Keep local Claude state private; track shared agents + skills only.
+.claude/*
 !.claude/agents/
-!.claude/agents/*.md
+!.claude/agents/**
 !.claude/skills/
-!.claude/skills/**/
+!.claude/skills/**
 .superpowers/
 .worktrees/
 
