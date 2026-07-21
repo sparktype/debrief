@@ -80,7 +80,7 @@ using the assistant message as a side channel, not a parser bug.
 | Speech side channel | MCP tool only |
 | Tool name | `speak` (qualified `chorus__speak` on Grok) |
 | Server name | `chorus` |
-| Required tool args | `text`, `voice`, `speed`, `volume` (all five) |
+| Required tool args | `text`, `voice`, `speed`, `volume` (required four); optional `priority` = `main`\|`subagent` (default `main`) |
 | Version field | Internal `SpeechEnvelope.v = 1` still set by server; not exposed as MCP arg |
 | HTML envelope | Removed from product contract and Stop path |
 | Stop / SubagentStop hooks | **Uninstalled** (not no-op stubs) |

@@ -24,7 +24,8 @@ final class MenuBarController {
             muted: false,
             mode: .normal,
             activeVoice: nil,
-            lastError: nil
+            lastError: nil,
+            doctorLines: []
         )
     }
 
@@ -61,7 +62,8 @@ final class MenuBarController {
             muted: snapshot.muted,
             mode: snapshot.mode,
             activeVoice: voice,
-            lastError: lastError
+            lastError: lastError,
+            doctorLines: diagnostics.doctorProblemLines()
         )
         // Avoid rebuilding the menu on every poll tick when nothing visible changed.
         if next != status {
@@ -142,6 +144,11 @@ final class MenuBarController {
     /// Records a typed error using the Korean short-string map when applicable.
     func noteError(_ error: any Error) {
         noteError(Self.describe(error))
+    }
+
+    /// Plain-text doctor report for the pasteboard.
+    func doctorReportText() -> String {
+        Diagnostics(home: home).doctorReportText()
     }
 
     // MARK: - Serialization

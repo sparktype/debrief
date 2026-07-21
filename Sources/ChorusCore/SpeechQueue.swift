@@ -81,7 +81,3 @@ public actor SpeechQueue {
         return SHA256.hash(data: data)
     }
 }
-
-private extension SpeechRequest {
-    var isMain: Bool { event == .stop }
-}

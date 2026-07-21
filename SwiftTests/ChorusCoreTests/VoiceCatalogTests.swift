@@ -69,6 +69,8 @@ struct VoiceCatalogTests {
         #expect(text.contains("0.7"))
         #expect(text.contains("2.0"))
         #expect(text.contains("800"))
+        #expect(text.contains("priority"))
+        #expect(text.contains("subagent"))
         #expect(!text.contains("chorus:speak"))
         #expect(!text.contains("<!--"))
         #expect(!text.localizedCaseInsensitiveContains("Chorus summarizes"))

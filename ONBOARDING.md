@@ -18,11 +18,12 @@ Use `--codex`, `--claude`, and/or `--grok` to limit host integration, and `--rep
 
 Control everything from the **menu bar**:
 
-- **Mode** — `normal`, `focus`, `quiet`, `verbose`, or `night`
+- **Mode** — `normal` (default), `focus` / `quiet` / `night` (suppress subagent speech), `verbose` (include subagent); quiet/night also lower volume ceilings
 - **Mute** — pause or restore speech
+- **진단** — doctor findings; copy full report
 - **Start / Stop service** — TTS service only
 - **Chorus 종료** — quit (disables auto-start until reinstall)
 
 There is no user CLI for mute/mode/status/speak. Agents call the MCP `speak` tool; hosts spawn `…/chorus mcp` automatically after install.
 
-Agents are responsible for the spoken text and must always specify voice, speed, and volume. Do not put speech JSON or HTML comments in the chat body. Chorus performs no text generation or summarization.
+Agents are responsible for the spoken text and must always specify voice, speed, and volume. Optional `priority` is `main` (default) or `subagent`. Do not put speech JSON or HTML comments in the chat body. Chorus performs no text generation or summarization.

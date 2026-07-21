@@ -1,13 +1,18 @@
+/// Mute, mode, and volume-ceiling policy for admitted speech (MCP path).
 public enum ModePolicy {
+    /// Returns effective playback gain, or `nil` when the request must be dropped.
+    ///
+    /// - `muted`: all speech rejected
+    /// - `focus` / `quiet` / `night`: reject `.subagent` priority only
+    /// - volume ceilings: clamp gain per mode (`quiet` 0.45, `night` 0.20 by default)
     public static func admit(
-        event: HookEventName,
+        priority: SpeechPriority,
         requestedVolume: Double,
         configuration: ChorusConfiguration
     ) -> Double? {
         guard !configuration.muted, requestedVolume.isFinite else { return nil }
-        guard event == .stop || event == .subagentStop else { return nil }
 
-        if event == .subagentStop {
+        if priority == .subagent {
             switch configuration.mode {
             case .focus, .quiet, .night:
                 return nil

@@ -84,6 +84,11 @@ public enum McpJSONRPC {
                     "voice": ["type": "string"] as [String: Any],
                     "speed": ["type": "number"] as [String: Any],
                     "volume": ["type": "number"] as [String: Any],
+                    "priority": [
+                        "type": "string",
+                        "description": "main (default) or subagent; focus/quiet/night suppress subagent",
+                        "enum": ["main", "subagent"],
+                    ] as [String: Any],
                 ] as [String: Any],
                 "required": ["text", "voice", "speed", "volume"],
             ] as [String: Any],

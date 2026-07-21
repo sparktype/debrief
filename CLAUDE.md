@@ -56,12 +56,12 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 **포함**
 
 - Supertonic 3 + ONNX Runtime (Swift 패키지)
-- MCP tool `speak` 검증 (`text`, `voice`, `speed`, `volume`) + `chorus mcp` stdio 서버
+- MCP tool `speak` 검증 (`text`, `voice`, `speed`, `volume`, 선택 `priority`) + `chorus mcp` stdio 서버
 - Unix domain socket + 메뉴바 `ResidentService` (LaunchAgent `com.chorus.tts`)
 - `install` / `uninstall` / `menubar` / `hook` / `mcp`
 - Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
 - Grok: `~/.grok/config.toml` MCP + `chorus-speak` skill
-- 메뉴바: mute · mode · start/stop · quit (사용자 CLI 없음)
+- 메뉴바: mute · mode · 진단 · start/stop · quit (사용자 CLI 없음)
 
 **제외**
 

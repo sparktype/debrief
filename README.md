@@ -33,6 +33,7 @@ Agents call the Chorus MCP tool `speak` (server `chorus`) once per turn:
 | voice | yes | F1…F5, M1…M5 |
 | speed | yes | 0.7–2.0 |
 | volume | yes | 0.0–1.0 |
+| priority | no | `main` (default) or `subagent`; focus/quiet/night suppress subagent |
 
 Do not put speech JSON or HTML comments in the chat body. Install registers MCP for Codex, Claude Code, and Grok.
 
@@ -55,10 +56,21 @@ Default role mapping (for `voice` / baseline speed):
 | Action | Purpose |
 | --- | --- |
 | Status header | Running / muted / mode |
+| 진단 | Doctor findings; copy full report to pasteboard |
 | Mute | Toggle mute |
-| Mode | `normal`, `focus`, `quiet`, `verbose`, `night` |
+| Mode | See modes below |
 | Start / Stop service | In-process TTS service |
 | Chorus 종료 | Quit (disables LaunchAgent so KeepAlive does not relaunch) |
+
+### Modes
+
+| Mode | Effect |
+| --- | --- |
+| `normal` | Default; main and subagent speech play; volume ceiling 1.0 |
+| `focus` | Suppress `priority=subagent` |
+| `quiet` | Volume ceiling 0.45; suppress subagent |
+| `verbose` | Include subagent; volume ceiling 1.0 |
+| `night` | Volume ceiling 0.20; suppress subagent |
 
 Start-family hooks (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) inject the MCP speak contract. Hosts spawn `chorus mcp` for the `speak` tool — not a CLI tool for users.
 

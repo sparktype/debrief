@@ -62,7 +62,36 @@ struct McpSpeakToolTests {
         #expect(!result.isError)
         #expect(await sink.recorded().count == 1)
         #expect(await sink.recorded().first?.envelope.text == "완료했습니다.")
-        #expect(await sink.recorded().first?.event == .stop)
+        #expect(await sink.recorded().first?.priority == .main)
+    }
+
+    @Test func parseOptionalPriorityDefaultsToMain() throws {
+        let main = try McpSpeakTool.parseArguments([
+            "text": "hi",
+            "voice": "F1",
+            "speed": 1.0,
+            "volume": 0.5,
+        ])
+        #expect(main.priority == .main)
+
+        let sub = try McpSpeakTool.parseArguments([
+            "text": "hi",
+            "voice": "F1",
+            "speed": 1.0,
+            "volume": 0.5,
+            "priority": "subagent",
+        ])
+        #expect(sub.priority == .subagent)
+
+        #expect(throws: (any Error).self) {
+            try McpSpeakTool.parseArguments([
+                "text": "hi",
+                "voice": "F1",
+                "speed": 1.0,
+                "volume": 0.5,
+                "priority": "boss",
+            ])
+        }
     }
 
     @Test func executeRejectsBadVoiceWithoutSubmit() async {

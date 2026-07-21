@@ -6,9 +6,9 @@ Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executabl
 
 1. install and verify the pinned Supertonic 3 model;
 2. install the executable, LaunchAgent, start-family host hooks, setup skill, and MCP registration (plus Grok speak skill);
-3. accept strict agent-provided MCP `speak` arguments;
+3. accept strict agent-provided MCP `speak` arguments (`text`, `voice`, `speed`, `volume`; optional `priority`);
 4. synthesize with the local ONNX Runtime backend and play audio;
-5. expose current-state `status` and `doctor` diagnostics.
+5. expose current-state diagnostics on the menu bar (**진단** submenu + last-error file).
 
 The coding agent owns summarization and selects text, voice, speed, and volume via the MCP tool.
 
@@ -20,15 +20,18 @@ Sources/
 ├── ChorusCLI/                 command parsing and process entry point
 │   ├── main.swift             subcommand dispatch (menubar / daemon / mcp / CLI)
 │   ├── MenuBarApp.swift       LSUIElement NSStatusItem + NSMenu host
+│   ├── MenuBarIcons.swift     badge / silhouette icon rendering
 │   └── MenuBarModel.swift     menu actions against ResidentService
 └── ChorusCore/
     ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
     ├── ChorusDaemon.swift     speech accept loop over Unix socket
     ├── SpeechEnvelope.swift   internal wire model and validation
+    ├── SpeechRequest.swift    envelope + SpeechPriority (main/subagent)
     ├── McpServer.swift        stdio JSON-RPC MCP (tools only)
     ├── McpSpeakTool.swift     speak arg parse + UDS submit
+    ├── McpTomlConfig.swift    Codex/Grok TOML MCP ownership markers
     ├── HookAdapters.swift     Codex and Claude event adaptation
-    ├── ModePolicy.swift       suppression and effective-volume policy
+    ├── ModePolicy.swift       mute / subagent suppress / volume ceiling
     ├── SpeechQueue.swift      bounded serialized speech queue
     ├── SupertonicEngine.swift local ONNX TTS backend
     ├── UnixSocket.swift       local resident transport
@@ -38,11 +41,12 @@ Sources/
     ├── EmbeddedTemplates.swift hooks, skills, LaunchAgent (args: menubar)
     ├── HostInstaller.swift    safe hook/skill/MCP merge/uninstall (incl. Grok)
     ├── LegacyMigration.swift  one-time allowlisted configuration import
-    └── Diagnostics.swift      bounded current-state diagnostics
+    └── Diagnostics.swift      status, doctor findings, last-error
 SwiftTests/
 ├── ChorusCoreTests/
 └── ChorusIntegrationTests/
 plugins/chorus/               marketplace metadata, start-family hooks, setup skill
+docs/archive/                 superseded Python-era designs (not product truth)
 ```
 
 ## Process model
@@ -94,8 +98,11 @@ Agents call tool `speak` on server `chorus` once per turn. Required arguments:
 | voice | F1…F5, M1…M5 |
 | speed | 0.7–2.0 finite |
 | volume | 0.0–1.0 finite |
+| priority | optional: `main` (default) or `subagent` |
 
-No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (no envelope fallback). Internal `SpeechEnvelope` validation still backs UDS frames after MCP parse.
+No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (no envelope fallback). Internal `SpeechEnvelope` validation still backs UDS frames after MCP parse. `SpeechRequest.priority` drives `ModePolicy` and queue main/subagent rules — not host hook event names.
+
+Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/last-error.json` and appear under the menu **진단** submenu.
 
 ## Runtime lifecycle
 
@@ -111,6 +118,8 @@ swift build -c release
 ```
 
 On the Command Line Tools 27 toolchain, the local environment may require the Testing plugin and runtime search-path flags documented in the implementation plan. Release verification must also inspect the executable architecture and linked libraries, then run installation and offline speech smoke tests from a clean temporary home.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`. Local development still prefers Xcode 27 beta via `./scripts/with-xcode.sh`.
 
 ## Change rules
 

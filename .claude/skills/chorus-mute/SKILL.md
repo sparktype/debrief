@@ -1,15 +1,14 @@
 ---
 name: chorus:mute
-description: "chorus TTS 음소거를 토글합니다. /chorus:mute 를 실행하면 autoSpeak가 켜져 있으면 끄고, 꺼져 있으면 켭니다."
+description: "chorus TTS 음소거를 안내합니다. /chorus:mute 실행 시 메뉴바에서 음소거를 토글하도록 안내합니다."
 ---
 
-# chorus:mute — 음소거 토글
+# chorus:mute — 음소거 안내
 
-chorus TTS의 `autoSpeak` 설정을 토글합니다.
+Chorus 음소거는 **메뉴바 아이콘 → 음소거 / 음소거 해제**에서만 토글합니다.
 
-현재 켜져 있으면 음소거, 꺼져 있으면 음소거 해제합니다.  
-해제 시 음성으로 "음소거가 해제됐습니다"라고 안내합니다.
+- 사용자 CLI (`chorus mute`)와 Python (`hook_voice`)은 **제거되었습니다**.
+- 에이전트가 설정 파일을 직접 수정하지 마세요.
+- 음소거 중에는 MCP `speak` 요청이 큐에 들어와도 재생되지 않습니다.
 
-```bash
-.venv/bin/python -m hook_voice mute
-```
+사용자에게 메뉴바에서 음소거를 토글해 달라고 안내하세요.

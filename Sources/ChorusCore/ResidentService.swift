@@ -110,12 +110,20 @@ public actor ResidentService {
         }
 
         let server = try socketFactory(paths.socketURL)
+        let homeForDiagnostics = home
         let daemon = ChorusDaemon(
             source: server,
             queue: SpeechQueue(),
             backend: backend,
             audio: audioFactory(),
-            configuration: { ChorusConfiguration.load(from: paths.configURL) }
+            configuration: { ChorusConfiguration.load(from: paths.configURL) },
+            recordError: { component, code, message in
+                try? Diagnostics(home: homeForDiagnostics).recordError(
+                    component: component,
+                    code: code,
+                    message: message
+                )
+            }
         )
 
         let pid = "\(getpid())"

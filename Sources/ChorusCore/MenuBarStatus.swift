@@ -9,19 +9,23 @@ public struct MenuBarStatus: Equatable, Sendable {
     /// Currently speaking voice ID (`F1`…`M5`), or `nil` when idle.
     public var activeVoice: String?
     public var lastError: String?
+    /// Failed doctor findings for the diagnostics submenu (empty when healthy).
+    public var doctorLines: [String]
 
     public init(
         serviceRunning: Bool,
         muted: Bool,
         mode: ChorusMode,
         activeVoice: String? = nil,
-        lastError: String? = nil
+        lastError: String? = nil,
+        doctorLines: [String] = []
     ) {
         self.serviceRunning = serviceRunning
         self.muted = muted
         self.mode = mode
         self.activeVoice = activeVoice
         self.lastError = lastError
+        self.doctorLines = doctorLines
     }
 
     /// 메뉴 헤더용 한 줄 요약 (한국어).
@@ -38,5 +42,9 @@ public struct MenuBarStatus: Equatable, Sendable {
     public var isSpeaking: Bool {
         if let activeVoice, !activeVoice.isEmpty { return true }
         return false
+    }
+
+    public var hasDoctorProblems: Bool {
+        !doctorLines.isEmpty
     }
 }

@@ -1,37 +1,26 @@
 ---
 name: chorus:mode
-description: "chorus TTS 모드 프리셋을 변경합니다. /chorus:mode 를 실행하면 현재 모드를 보여주고 normal·focus·quiet·verbose·night 중 선택해 바로 적용합니다."
+description: "chorus TTS 모드 프리셋을 안내합니다. /chorus:mode 를 실행하면 현재 모드 의미와 메뉴바 변경 방법을 설명합니다."
 ---
 
-# chorus:mode — 음성 모드 변경
+# chorus:mode — 음성 모드 안내
 
-상황에 맞는 TTS 프리셋을 선택해 즉시 적용합니다.
+Chorus 모드는 **메뉴바 → 모드**에서만 변경합니다. 사용자 CLI나 Python 런타임은 없습니다.
 
-## 모드 목록
+## 모드 효과 (MCP `speak` 기준)
 
-| 모드 | 용도 | minChars | ttsSpeed | 브리지 |
-|------|------|----------|----------|--------|
-| `normal` | 기본값 | 50 | 1.1 | off |
-| `focus` | 집중 작업 — 긴 응답만 읽음 | 120 | 1.05 | off |
-| `quiet` | 중요한 것만 — 짧은 응답 건너뜀 | 300 | 1.0 | off |
-| `verbose` | 짧은 것도 읽기 + 브리지 WAV | 20 | 1.1 | on |
-| `night` | 느리고 조용하게 | 120 | 0.95 | off |
+| 모드 | 효과 |
+|------|------|
+| `normal` | 기본. `main`·`subagent` 모두 재생, 볼륨 천장 1.0 |
+| `focus` | `priority=subagent` 발화 억제. 메인 턴만 재생 |
+| `quiet` | 볼륨 천장 0.45 + 서브에이전트 억제 |
+| `verbose` | 서브에이전트 포함, 볼륨 천장 1.0 |
+| `night` | 볼륨 천장 0.20 + 서브에이전트 억제 |
+
+음소거는 **메뉴바 → 음소거**입니다. `priority`는 MCP `speak` 선택 인자이며 생략 시 `main`입니다.
 
 ## 진행 방식
 
-1. 현재 모드 확인
-
-```bash
-.venv/bin/python -m hook_voice mode show
-```
-
-2. 변경할 모드를 AskUserQuestion으로 묻는다.
-
-3. 선택한 모드 적용
-
-```bash
-# 예: focus 모드로 변경
-.venv/bin/python -m hook_voice mode set focus
-```
-
-서버 재시작 없이 다음 hook 호출부터 즉시 반영됩니다.
+1. 사용자에게 메뉴바에서 모드를 고르도록 안내합니다.
+2. 에이전트는 모드를 바꾸지 않습니다 (파일 직접 편집 금지).
+3. 서브에이전트 발화를 허용/억제하려면 해당 에이전트가 `speak`에 `priority: "subagent"`를 넣는지 확인합니다.

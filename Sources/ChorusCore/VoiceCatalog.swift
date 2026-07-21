@@ -103,6 +103,7 @@ public enum VoiceCatalog {
         return """
         When you finish this turn, call the Chorus MCP tool `speak` once with a one- or two-sentence spoken summary. \
         Required arguments: text, voice, speed, volume. \
+        Optional: priority \"main\" (default) or \"subagent\" — use subagent for background agents so focus/quiet/night can suppress them. \
         Use voice \(assignment.voice) (\(assignment.name)); choose speed from 0.7 through 2.0 (baseline \(assignment.baselineSpeed)) \
         and volume from 0.0 through 1.0 (typical 0.85). \
         Keep text at 800 characters or fewer. \

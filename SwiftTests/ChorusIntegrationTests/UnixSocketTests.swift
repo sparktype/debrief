@@ -11,7 +11,7 @@ struct UnixSocketTests {
         let server = try UnixSocketServer(socketURL: socketURL)
         let client = UnixSocketClient(socketURL: socketURL)
         let envelope = SpeechEnvelope(v: 1, text: "완료", voice: "F1", speed: 0.93, volume: 0.6)
-        let fixture = SpeechRequest(envelope: envelope, event: .stop, agentType: nil)
+        let fixture = SpeechRequest(envelope: envelope, priority: .main, agentType: nil)
 
         async let received = server.accept()
         try await client.submit(fixture)
@@ -31,7 +31,7 @@ struct UnixSocketTests {
                 speed: 1,
                 volume: 1
             ),
-            event: .stop,
+            priority: .main,
             agentType: nil
         )
 
@@ -63,7 +63,7 @@ struct UnixSocketTests {
         let client = UnixSocketClient(socketURL: directory.appending(path: "missing.sock"))
         let request = SpeechRequest(
             envelope: SpeechEnvelope(v: 1, text: "x", voice: "F1", speed: 1, volume: 1),
-            event: .stop,
+            priority: .main,
             agentType: nil
         )
         let clock = ContinuousClock()

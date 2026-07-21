@@ -6,12 +6,21 @@ public struct McpSpeakArguments: Equatable, Sendable {
     public let voice: String
     public let speed: Double
     public let volume: Double
+    /// Defaults to `.main` when the agent omits `priority`.
+    public let priority: SpeechPriority
 
-    public init(text: String, voice: String, speed: Double, volume: Double) {
+    public init(
+        text: String,
+        voice: String,
+        speed: Double,
+        volume: Double,
+        priority: SpeechPriority = .main
+    ) {
         self.text = text
         self.voice = voice
         self.speed = speed
         self.volume = volume
+        self.priority = priority
     }
 }
 
@@ -35,7 +44,14 @@ public enum McpSpeakTool {
         }
         let speed = try number(object["speed"], name: "speed")
         let volume = try number(object["volume"], name: "volume")
-        return McpSpeakArguments(text: text, voice: voice, speed: speed, volume: volume)
+        let priority = try optionalPriority(object["priority"])
+        return McpSpeakArguments(
+            text: text,
+            voice: voice,
+            speed: speed,
+            volume: volume,
+            priority: priority
+        )
     }
 
     public static func execute(
@@ -55,7 +71,11 @@ public enum McpSpeakTool {
         } catch {
             return McpToolCallResult(isError: true, message: "잘못된 speak 인자입니다.")
         }
-        let request = SpeechRequest(envelope: envelope, event: .stop, agentType: nil)
+        let request = SpeechRequest(
+            envelope: envelope,
+            priority: arguments.priority,
+            agentType: nil
+        )
         do {
             try await sink.submit(request)
             try? diagnostics.clearCurrentError()
@@ -69,6 +89,15 @@ public enum McpSpeakTool {
             )
             return McpToolCallResult(isError: true, message: message)
         }
+    }
+
+    private static func optionalPriority(_ value: Any?) throws -> SpeechPriority {
+        guard let value else { return .main }
+        guard let raw = value as? String,
+              let priority = SpeechPriority(rawValue: raw) else {
+            throw CommandError.usage("speak priority must be \"main\" or \"subagent\"")
+        }
+        return priority
     }
 
     private static func number(_ value: Any?, name: String) throws -> Double {

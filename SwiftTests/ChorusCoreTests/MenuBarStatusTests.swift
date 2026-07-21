@@ -51,4 +51,17 @@ struct MenuBarStatusTests {
         #expect(speaking.activeVoice == "M3")
         #expect(speaking.summaryLine.contains("M3"))
     }
+
+    @Test func doctorLinesSurfaceProblems() {
+        let healthy = MenuBarStatus(serviceRunning: true, muted: false, mode: .normal)
+        #expect(!healthy.hasDoctorProblems)
+        let sick = MenuBarStatus(
+            serviceRunning: false,
+            muted: false,
+            mode: .normal,
+            doctorLines: ["[문제] daemon.missing — chorus install --repair"]
+        )
+        #expect(sick.hasDoctorProblems)
+        #expect(sick.doctorLines.count == 1)
+    }
 }

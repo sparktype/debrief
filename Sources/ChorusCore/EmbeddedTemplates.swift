@@ -60,6 +60,7 @@ public enum EmbeddedTemplates {
 
         - Grok qualified name: `chorus__speak` (via `search_tool` / `use_tool` if required)
         - Required arguments: `text`, `voice`, `speed`, `volume`
+        - Optional: `priority` = `main` (default) or `subagent` (suppressed in focus/quiet/night)
         - Default main voice: `F1`, speed near `0.93`, volume near `0.85`
         - Do **not** put HTML comments or JSON speech metadata in the assistant message body.
         - Mute/mode are controlled only from the Chorus menu bar.
