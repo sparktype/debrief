@@ -8,13 +8,13 @@ description: Install or repair Chorus.app and host MCP registration. Prefer MCP 
 ## Preferred — MCP tool
 
 | Host | Tool name |
-|------|-----------|
+| --- | --- |
 | Claude Code | `mcp__chorus__install` |
 | Grok | `chorus__install` (`search_tool` → `use_tool`) |
 | Codex | `install` on server `chorus` |
 
 ```json
-{ "hosts": ["grok"], "repair": true }
+{ "hosts": ["claude"], "repair": true }
 ```
 
 - `hosts`: optional `claude` / `codex` / `grok` (omit = all)
@@ -26,8 +26,8 @@ Then refresh: **Claude** restart · **Grok** `/mcps`.
 
 ```bash
 ./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --grok --repair
-# or --claude / --codex / no flags for all
+.build/release/chorus install --repair
+# or --claude / --codex / --grok
 ```
 
 ```bash

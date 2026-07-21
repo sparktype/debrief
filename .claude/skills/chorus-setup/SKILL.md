@@ -1,9 +1,17 @@
 ---
 name: chorus:setup
-description: "Chorus.app 설치·복구와 Claude Code MCP speak 등록을 안내합니다."
+description: "Chorus 설치·복구 안내. MCP install 또는 skill chorus-install을 우선합니다."
 ---
 
 # chorus:setup
+
+우선 skill **chorus-install** 또는 MCP **`install`**:
+
+| 호스트 | 도구 |
+|--------|------|
+| Claude | `mcp__chorus__install` |
+| Grok | `chorus__install` |
+| Codex | `install` |
 
 ## Claude Code
 
@@ -12,19 +20,19 @@ description: "Chorus.app 설치·복구와 Claude Code MCP speak 등록을 안�
 .build/release/chorus install --claude --repair
 ```
 
-그다음:
+1. Claude 재시작 → `mcp__chorus__speak` / `mcp__chorus__install`
+2. 턴 종료 발화: skill **chorus-speak**
 
-1. `~/.claude/settings.json`에 `mcpServers.chorus` 확인
-2. 훅 `SessionStart` / `UserPromptSubmit` / `SubagentStart` 확인
-3. Claude Code 재시작 → `speak` 또는 `mcp__chorus__speak` 노출
-4. 턴 종료 시 skill `chorus-speak` / MCP speak 한 번 호출
+## Grok
+
+```bash
+.build/release/chorus install --grok --repair
+```
+
+1. **`/mcps`**
+2. skill **chorus-speak** → `chorus__speak`
 
 ## 공통
 
-```bash
-.build/release/chorus install --repair
-```
-
 - 음소거·모드·진단·시작/중지·종료는 **메뉴바만**
-- Codex: MCP `~/.codex/config.toml`, 훅 `~/.codex/hooks.json`
-- Grok: `~/.grok/config.toml` → `/mcps`
+- 전체 호스트: `.build/release/chorus install --repair`

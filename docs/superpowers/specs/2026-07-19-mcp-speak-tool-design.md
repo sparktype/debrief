@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-19
 
-**Status:** Approved
+**Status:** Approved (with product errata below)
 
 **Target:** macOS 14+ Apple Silicon
 
@@ -13,6 +13,24 @@ extraction. Menu bar resident process model from
 
 **Related product choice:** User-selected option 1 — no machine metadata in the
 chat body; silence if the agent omits the speak tool (no envelope fallback).
+
+### Product errata (post-approval, 2026-07)
+
+The following are **shipping product truth** and supersede conflicting paragraphs
+in the body of this document:
+
+| Topic | Original (2026-07-19) | Current |
+| --- | --- | --- |
+| MCP tools | `speak` only | `speak` + **`install`** (`hosts`, `repair` default true) |
+| Speak `priority` | Main-only / future optional | Optional **`main` \| `subagent`** (default `main`); drives ModePolicy |
+| SpeechRequest | Forged `event: .stop` | **`SpeechPriority`** on the request (not hook event names) |
+| Grok skills | `chorus-speak` only | **`chorus-setup`**, **`chorus-install`**, **`chorus-speak`** |
+| Claude/Codex skills | setup (+ speak later) | **`setup` + `install` + `speak`** |
+| TOML `tool_timeout_sec` | 10 | **120** (install may run longer than speak) |
+| Diagnostics | last-error + menu line | Also menu **진단** submenu + doctor report copy |
+| Modes | envelope-era subagent via Stop | Subagent = MCP `priority=subagent`; volume ceilings for quiet/night |
+
+Canonical user/dev docs: `README.md`, `ONBOARDING.md`, `DEVELOPER.md`, `CLAUDE.md`.
 
 ---
 

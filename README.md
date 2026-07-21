@@ -1,6 +1,6 @@
 # Chorus
 
-Chorus is a local, TTS-only companion for Codex, Claude Code, and Grok on Apple Silicon Macs. It installs as **Chorus.app**, hosts TTS in a menu bar process, registers an MCP `speak` tool, wires start-family host hooks, and speaks only text supplied by the agent through MCP.
+Chorus is a local, **TTS-only** companion for Codex, Claude Code, and Grok on Apple Silicon Macs. It installs as **Chorus.app**, runs a menu bar resident process, exposes MCP tools `speak` and `install`, wires start-family host hooks (Claude/Codex), and speaks only text the agent supplies through MCP.
 
 ## Requirements
 
@@ -13,19 +13,37 @@ Chorus is a local, TTS-only companion for Codex, Claude Code, and Grok on Apple 
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+# or: ./scripts/with-xcode.sh
 swift build -c release
 .build/release/chorus install
 ```
 
-`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, start-family host hooks (Claude/Codex), and skills. Grok gets MCP + skills `chorus-setup` / `chorus-install` / `chorus-speak` (no hooks — SessionStart context is ignored). There is **no user CLI** — mute, mode, start/stop, and quit live on the menu bar only.
+`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, skills, and (for Claude/Codex) start-family hooks.
 
-Double-click **Chorus** in Applications (or use Spotlight) to open the menu bar. LaunchAgent also starts the app at login.
+| Host | After install |
+| --- | --- |
+| **Claude Code** | `mcpServers.chorus` in `~/.claude/settings.json`; skills under `~/.claude/skills`; restart Claude so tools load |
+| **Codex** | MCP in `~/.codex/config.toml`; hooks in `~/.codex/hooks.json` (review `/hooks`); skills under `~/.agents/skills` |
+| **Grok** | MCP in `~/.grok/config.toml`; skills under `~/.grok/skills`; **no hooks** — run `/mcps` to refresh tools |
 
-Use `chorus install --repair` from a build tree if the app is missing or broken. Limit hosts with `--codex`, `--claude`, and/or `--grok`. Codex users should review hook definitions in `/hooks` after installation.
+Limit hosts with `--codex`, `--claude`, and/or `--grok`. Use `--repair` to restore owned files without overwriting user-modified settings.
 
-## Agent speech contract
+There is **no user CLI** for mute/mode/status/speak. Control those from the menu bar only. Agents use MCP; hooks/MCP always point at the **app absolute path**.
 
-Agents call the Chorus MCP tool `speak` (server `chorus`) once per turn:
+Double-click **Chorus** in Applications (or Spotlight) to open the menu bar. LaunchAgent also starts the app at login.
+
+## MCP tools
+
+Server name: **`chorus`**.
+
+| Tool | Claude | Grok | Purpose |
+| --- | --- | --- | --- |
+| `speak` | `mcp__chorus__speak` | `chorus__speak` | Spoken turn summary |
+| `install` | `mcp__chorus__install` | `chorus__install` | Install/repair host wiring + model check |
+
+Grok discovers tools with `search_tool` / `use_tool` when required.
+
+### `speak` arguments
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -35,11 +53,16 @@ Agents call the Chorus MCP tool `speak` (server `chorus`) once per turn:
 | volume | yes | 0.0–1.0 |
 | priority | no | `main` (default) or `subagent`; focus/quiet/night suppress subagent |
 
-Do not put speech JSON or HTML comments in the chat body. Install registers MCP for Codex, Claude Code, and Grok.
+Call **once** per turn when speech helps. Do **not** put speech JSON or HTML comments in the chat body. Omitting the tool is silence.
 
-**Claude Code:** tools may appear as `mcp__chorus__speak` and `mcp__chorus__install`. Skills under `~/.claude/skills`. Restart Claude after install.
+### `install` arguments
 
-**Grok:** tools are `chorus__speak` and `chorus__install` (`search_tool` / `use_tool`). Skills under `~/.grok/skills`. After install or tool changes run **`/mcps`**. Prefer skill `chorus-install` or shell `chorus install --grok --repair`.
+| Field | Default | Notes |
+| --- | --- | --- |
+| hosts | all | Array: `codex`, `claude`, `grok` |
+| repair | `true` | Re-verify model and re-merge owned hooks/MCP/skills |
+
+After install: Claude → restart; Grok → `/mcps`. First-time model download may exceed short MCP timeouts — use shell install if needed.
 
 Default role mapping (for `voice` / baseline speed):
 
@@ -59,7 +82,7 @@ Default role mapping (for `voice` / baseline speed):
 
 | Action | Purpose |
 | --- | --- |
-| Status header | Running / muted / mode |
+| Status header | Running / muted / mode / active voice |
 | 진단 | Doctor findings; copy full report to pasteboard |
 | Mute | Toggle mute |
 | Mode | See modes below |
@@ -76,15 +99,22 @@ Default role mapping (for `voice` / baseline speed):
 | `verbose` | Include subagent; volume ceiling 1.0 |
 | `night` | Volume ceiling 0.20; suppress subagent |
 
-Start-family hooks (`SessionStart`, `UserPromptSubmit`, `SubagentStart`) inject the MCP speak contract. Hosts spawn `chorus mcp` for the `speak` tool — not a CLI tool for users.
+Claude/Codex start-family hooks inject the speak contract. Grok relies on skills + MCP tool descriptions (SessionStart stdout is ignored).
 
 ## Local state
 
 ```text
 /Applications/Chorus.app/          (or ~/Applications)
 ~/Library/Application Support/Chorus/
-~/Library/Caches/Chorus/
+~/Library/Caches/Chorus/           # socket, last-error.json, …
 ~/Library/LaunchAgents/com.chorus.tts.plist
 ```
 
-See [ONBOARDING.md](ONBOARDING.md) for first use and [DEVELOPER.md](DEVELOPER.md) for implementation details.
+## Docs
+
+| Doc | Audience |
+| --- | --- |
+| [ONBOARDING.md](ONBOARDING.md) | First use |
+| [DEVELOPER.md](DEVELOPER.md) | Build, architecture, change rules |
+| [docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md](docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md) | Approved MCP design (+ errata) |
+| [docs/archive/](docs/archive/) | Superseded Python-era notes only |
