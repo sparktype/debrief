@@ -57,13 +57,14 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 **포함**
 
 - Supertonic 3 + ONNX Runtime (Swift 패키지)
-- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`) + MCP `install` (`hosts`, `repair`)
+- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + 메뉴바 `ResidentService` (LaunchAgent `com.chorus.tts`)
 - CLI: `install` / `uninstall` / `menubar` / `hook` / `mcp` (사용자 mute/mode CLI 없음)
 - Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
 - Skills (모든 호스트): `chorus-setup` · `chorus-install` · `chorus-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `chorus__speak` · `chorus__install`
-- 메뉴바: mute · mode · 진단 · start/stop · quit
+- 메뉴바: mute · 도우미 음성 · mode · 진단 · start/stop · quit
+- 관조 도우미 계약: companion 기본, 침묵 허용, 감정 enum (스펙 `2026-07-22-reflective-companion-design.md`)
 
 **제외**
 

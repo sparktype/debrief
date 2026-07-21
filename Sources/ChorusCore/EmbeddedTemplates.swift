@@ -113,65 +113,88 @@ public enum EmbeddedTemplates {
     }
 
     public static func grokSpeakSkillMarkdown(executable: URL) -> String {
+        companionSpeakSkillMarkdown(
+            title: "Chorus speak (Grok)",
+            toolIntro: """
+            Grok has **no SessionStart speech context** — this skill is the durable contract.
+
+            1. `search_tool` query `chorus speak` if needed
+            2. `use_tool` **`chorus__speak`** with JSON below
+            """,
+            executable: executable
+        )
+    }
+
+    /// Durable speak contract for Claude Code / Codex skill directories.
+    public static func claudeCodexSpeakSkillMarkdown(executable: URL) -> String {
+        companionSpeakSkillMarkdown(
+            title: "Chorus speak",
+            toolIntro: """
+            | Host | Tool |
+            | --- | --- |
+            | Claude Code | `mcp__chorus__speak` |
+            | Codex | `speak` on server `chorus` |
+            | Grok | `chorus__speak` (`search_tool` / `use_tool`) |
+            """,
+            executable: executable
+        )
+    }
+
+    private static func companionSpeakSkillMarkdown(
+        title: String,
+        toolIntro: String,
+        executable: URL
+    ) -> String {
         """
         ---
         name: chorus-speak
-        description: Speak a short finish summary through local Chorus TTS via MCP tool chorus__speak. Use at end of a turn when a spoken one- or two-sentence summary helps. Discover with search_tool then use_tool.
+        description: Reflective companion TTS via MCP speak (Claude: mcp__chorus__speak; Grok: chorus__speak). Prefer short observation + next step; silence OK; optional lane/emotion.
         ---
 
-        # Chorus speak (Grok)
+        # \(title)
 
-        Grok has **no SessionStart speech context** — this skill is the durable contract.
+        \(toolIntro)
 
-        When you finish a turn that deserves a spoken summary, call the Chorus MCP tool **once**:
+        Prefer **one short companion line** when speech helps. **Silence is correct** when the turn is pure thrash, repeats the last status, or would only read on-screen lists.
 
-        1. `search_tool` with query `chorus speak` if needed
-        2. `use_tool` with `tool_name`: **`chorus__speak`** and `tool_input`:
+        ## Companion text (default `lane=companion`)
+
+        Structure: **observe** + **meaning** + **one next step or rest**. Prefer voice **F1**, speed ~0.93, volume ~0.85.
+
+        Avoid: file/diff inventories, “completed A/B/C” checklists, chat paste, hype.
+
+        ## When to speak
+
+        Phase boundary, user decision needed, long-session breath, real risk/failure.
+
+        ## Args
 
         ```json
         {
-          "text": "한두 문장 요약",
+          "text": "관찰 한 줄. 의미와 다음 한 걸음.",
           "voice": "F1",
           "speed": 0.93,
           "volume": 0.85,
-          "priority": "main"
+          "priority": "main",
+          "lane": "companion",
+          "emotion": "neutral"
         }
         ```
 
         | Field | Required | Notes |
         |-------|----------|--------|
-        | text | yes | ≤ 800 chars, natural Korean or English |
-        | voice | yes | F1…F5, M1…M5 (default main F1) |
-        | speed | yes | 0.7–2.0 (baseline ~0.93) |
-        | volume | yes | 0.0–1.0 (typical 0.85) |
-        | priority | no | `main` (default) or `subagent` |
+        | text | yes | ≤ 800 chars |
+        | voice | yes | F1…M5; companion → F1 |
+        | speed | yes | 0.7–2.0 |
+        | volume | yes | 0.0–1.0 |
+        | priority | no | `main` / `subagent` |
+        | lane | no | `companion` (default) / `work` |
+        | emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (restrained; prosody bias only) |
 
-        Subagent / background work: set `"priority": "subagent"` (suppressed in focus/quiet/night).
+        Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents: `priority=subagent`, prefer `lane=work`.
 
-        ## Do not
-
-        - Put HTML comments or JSON speech metadata in the assistant message body
-        - Skip the tool and assume the user heard anything (omit = silence)
-        - Change mute/mode via CLI (menu bar only)
-
-        ## Related
-
-        - Repair wiring: skill **chorus-install** / tool **`chorus__install`**
-        - After install or tool changes: **`/mcps`**
-        - Binary: `\(executable.path)`
+        Menu: mute · mode · **도우미 음성** · 진단. Binary: `\(executable.path)`.
         """
-    }
-
-    /// Durable speak contract for Claude Code / Codex skill directories.
-    public static func claudeCodexSpeakSkillMarkdown(executable: URL) -> String {
-        speakSkillMarkdown(
-            toolLine: """
-            - Claude Code: server `chorus`, tool `speak` (often listed as `mcp__chorus__speak`)
-            - Codex: server `chorus`, tool `speak`
-            - Grok: `chorus__speak` via `search_tool` / `use_tool` (see Grok skills under ~/.grok/skills)
-            """,
-            executable: executable
-        )
     }
 
     public static func skills(executable: URL) -> [String: String] {
@@ -231,30 +254,6 @@ public enum EmbeddedTemplates {
             "install": installSkill,
             "speak": claudeCodexSpeakSkillMarkdown(executable: executable),
         ]
-    }
-
-    private static func speakSkillMarkdown(toolLine: String, executable: URL) -> String {
-        """
-        ---
-        name: chorus-speak
-        description: Speak a short finish summary through local Chorus TTS via MCP tool speak (Claude: mcp__chorus__speak; Grok: chorus__speak). Use at end of a turn when a spoken one- or two-sentence summary helps.
-        ---
-
-        # Chorus speak
-
-        When you finish a turn that deserves a spoken summary, call the Chorus MCP tool **once**:
-
-        \(toolLine)
-        - Required arguments: `text`, `voice`, `speed`, `volume`
-        - Optional: `priority` = `main` (default) or `subagent` (use for background/subagents; suppressed in focus/quiet/night)
-        - Default main voice: `F1`, speed near `0.93`, volume near `0.85`
-        - Keep `text` ≤ 800 characters, natural spoken Korean or English
-        - Do **not** put HTML comments or JSON speech metadata in the assistant message body
-        - Omitting the tool is silence — the user will not hear a summary
-        - Mute/mode/diagnostics are controlled only from the Chorus menu bar
-
-        Binary: `\(executable.path)`.
-        """
     }
 
     public static func launchAgent(executable: URL) throws -> Data {

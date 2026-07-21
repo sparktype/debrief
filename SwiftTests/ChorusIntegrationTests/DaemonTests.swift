@@ -50,6 +50,34 @@ struct DaemonTests {
         #expect(await backend.texts == ["keep"])
     }
 
+    @Test func companionDisabledRejectsCompanionLane() async {
+        let backend = RecordingBackend(failingText: nil)
+        let audio = RecordingAudio(blockingMarker: nil)
+        let config = ChorusConfiguration(mode: .normal, muted: false, companionEnabled: false)
+        let daemon = ChorusDaemon(
+            queue: SpeechQueue(capacity: 8, duplicateWindow: .zero),
+            backend: backend,
+            audio: audio,
+            configuration: { config }
+        )
+        let companion = SpeechRequest(
+            envelope: SpeechEnvelope(v: 1, text: "hi", voice: "F1", speed: 1, volume: 0.5),
+            priority: .main,
+            lane: .companion,
+            emotion: .warm
+        )
+        let work = SpeechRequest(
+            envelope: SpeechEnvelope(v: 1, text: "work", voice: "M1", speed: 1, volume: 0.5),
+            priority: .main,
+            lane: .work,
+            emotion: .neutral
+        )
+        #expect(await daemon.submit(companion) == nil)
+        await daemon.submit(work)
+        await backend.waitUntilCount(1)
+        #expect(await backend.texts == ["work"])
+    }
+
     @Test func mainInterruptsActiveSubagentAndDropsQueuedSubagents() async {
         let backend = RecordingBackend(failingText: nil)
         let audio = RecordingAudio(blockingMarker: 10)

@@ -14,6 +14,7 @@ struct MenuBarStatusTests {
         #expect(line.contains("실행 중"))
         #expect(line.contains("음소거"))
         #expect(line.contains("focus"))
+        #expect(line.contains("도우미"))
     }
 
     @Test func statusLineSummarizesStoppedUnmutedMode() {
@@ -25,6 +26,7 @@ struct MenuBarStatusTests {
         #expect(line.contains("중지됨"))
         #expect(line.contains("음성 사용"))
         #expect(line.contains("normal"))
+        #expect(line.contains("도우미 켜짐"))
     }
 
     @Test func lastErrorIsOptionalAndEquatable() {
@@ -63,5 +65,15 @@ struct MenuBarStatusTests {
         )
         #expect(sick.hasDoctorProblems)
         #expect(sick.doctorLines.count == 1)
+    }
+
+    @Test func companionDisabledShowsInSummary() {
+        let line = MenuBarStatus(
+            serviceRunning: true,
+            muted: false,
+            companionEnabled: false,
+            mode: .normal
+        ).summaryLine
+        #expect(line.contains("도우미 꺼짐"))
     }
 }

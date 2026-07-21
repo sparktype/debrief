@@ -85,10 +85,10 @@ public enum McpJSONRPC {
         [
             "name": "speak",
             "description":
-                "Speak a short one- or two-sentence summary of the finished work through local Chorus TTS. "
-                + "Call once at the end of a turn when speech is appropriate. "
-                + "On Claude Code this may appear as mcp__chorus__speak; on Grok as chorus__speak "
-                + "(search_tool / use_tool). "
+                "Speak a short reflective companion line when speech helps; silence is OK when it does not. "
+                + "Prefer observation + meaning + one next step (not file lists). "
+                + "lane=companion (default, prefer voice F1) or work; emotion biases prosody only. "
+                + "On Claude Code: mcp__chorus__speak; on Grok: chorus__speak (search_tool/use_tool). "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",
             "inputSchema": [
                 "type": "object",
@@ -101,6 +101,17 @@ public enum McpJSONRPC {
                         "type": "string",
                         "description": "main (default) or subagent; focus/quiet/night suppress subagent",
                         "enum": ["main", "subagent"],
+                    ] as [String: Any],
+                    "lane": [
+                        "type": "string",
+                        "description": "companion (default reflective) or work (factual report)",
+                        "enum": ["companion", "work"],
+                    ] as [String: Any],
+                    "emotion": [
+                        "type": "string",
+                        "description":
+                            "restrained affect for companion: neutral (default), warm, focused, concerned, relieved, tired",
+                        "enum": ["neutral", "warm", "focused", "concerned", "relieved", "tired"],
                     ] as [String: Any],
                 ] as [String: Any],
                 "required": ["text", "voice", "speed", "volume"],

@@ -1,27 +1,34 @@
 ---
 name: chorus-speak
-description: Speak a short finish summary through local Chorus TTS via MCP speak (Claude: mcp__chorus__speak; Grok: chorus__speak).
+description: Reflective companion TTS via MCP speak (Claude: mcp__chorus__speak; Grok: chorus__speak). Silence OK; optional lane/emotion.
 ---
 
 # Chorus speak
 
-When you finish a turn that deserves a spoken summary, call the Chorus MCP tool **once**:
+Prefer **one short companion line** when speech helps. **Silence is correct** for thrash, repeated status, or on-screen lists.
 
 | Host | Tool |
 | --- | --- |
 | Claude Code | `mcp__chorus__speak` |
-| Grok | `chorus__speak` (`search_tool` / `use_tool`) |
-| Codex | `speak` on server `chorus` |
+| Grok | `chorus__speak` |
+| Codex | `speak` |
+
+## Companion (`lane=companion`, default)
+
+Observe + meaning + one next step. Prefer **F1**, speed ~0.93, volume ~0.85.
+
+Avoid file lists, checklists, chat paste, hype.
+
+## Args
 
 | Field | Required | Notes |
 | --- | --- | --- |
 | text | yes | ≤ 800 chars |
-| voice | yes | F1…F5, M1…M5 (default main F1) |
+| voice | yes | F1…M5 |
 | speed | yes | 0.7–2.0 |
-| volume | yes | 0.0–1.0 (typical 0.85) |
-| priority | no | `main` (default) or `subagent` |
+| volume | yes | 0.0–1.0 |
+| priority | no | main / subagent |
+| lane | no | companion (default) / work |
+| emotion | no | neutral, warm, focused, concerned, relieved, tired |
 
-- Do **not** put HTML comments or JSON speech metadata in the message body
-- Omitting the tool is silence
-- Mute/mode/diagnostics: menu bar only
-- Repair wiring: skill **chorus-install** / MCP **install**
+Menu: mute · mode · **도우미 음성** · 진단.

@@ -22,6 +22,7 @@ final class MenuBarController {
         self.status = MenuBarStatus(
             serviceRunning: false,
             muted: false,
+            companionEnabled: true,
             mode: .normal,
             activeVoice: nil,
             lastError: nil,
@@ -60,6 +61,7 @@ final class MenuBarController {
         let next = MenuBarStatus(
             serviceRunning: running,
             muted: snapshot.muted,
+            companionEnabled: snapshot.companionEnabled,
             mode: snapshot.mode,
             activeVoice: voice,
             lastError: lastError,
@@ -110,6 +112,18 @@ final class MenuBarController {
         await enqueue {
             do {
                 _ = try ConfigurationCommands.applyMode(mode.rawValue, home: self.home)
+                self.status.lastError = nil
+            } catch {
+                self.status.lastError = Self.describe(error)
+            }
+            await self.refresh()
+        }
+    }
+
+    func toggleCompanion() async {
+        await enqueue {
+            do {
+                _ = try ConfigurationCommands.applyCompanion("toggle", home: self.home)
                 self.status.lastError = nil
             } catch {
                 self.status.lastError = Self.describe(error)

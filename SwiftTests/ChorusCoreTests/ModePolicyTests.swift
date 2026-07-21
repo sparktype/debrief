@@ -32,4 +32,24 @@ struct ModePolicyTests {
         let config = ChorusConfiguration(mode: .quiet, muted: false)
         #expect(ModePolicy.admit(priority: .main, requestedVolume: 1.0, configuration: config) == 0.45)
     }
+
+    @Test func companionDisabledRejectsCompanionLaneOnly() {
+        let config = ChorusConfiguration(mode: .normal, muted: false, companionEnabled: false)
+        #expect(
+            ModePolicy.admit(
+                priority: .main,
+                lane: .companion,
+                requestedVolume: 0.8,
+                configuration: config
+            ) == nil
+        )
+        #expect(
+            ModePolicy.admit(
+                priority: .main,
+                lane: .work,
+                requestedVolume: 0.8,
+                configuration: config
+            ) == 0.8
+        )
+    }
 }

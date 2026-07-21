@@ -47,13 +47,15 @@ Grok discovers tools with `search_tool` / `use_tool` when required.
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| text | yes | ≤ 800 chars spoken summary |
-| voice | yes | F1…F5, M1…M5 |
+| text | yes | ≤ 800 chars; prefer observe + meaning + one next step |
+| voice | yes | F1…F5, M1…M5 (companion prefers F1) |
 | speed | yes | 0.7–2.0 |
 | volume | yes | 0.0–1.0 |
 | priority | no | `main` (default) or `subagent`; focus/quiet/night suppress subagent |
+| lane | no | `companion` (default reflective) or `work` (factual) |
+| emotion | no | `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (prosody bias) |
 
-Call **once** per turn when speech helps. Do **not** put speech JSON or HTML comments in the chat body. Omitting the tool is silence.
+Prefer a **reflective companion** line when speech helps; **silence is OK** when it would only read on-screen lists. Do **not** put speech JSON or HTML comments in the chat body.
 
 ### `install` arguments
 
@@ -85,6 +87,7 @@ Default role mapping (for `voice` / baseline speed):
 | Status header | Running / muted / mode / active voice |
 | 진단 | Doctor findings; copy full report to pasteboard |
 | Mute | Toggle mute |
+| 도우미 음성 | Enable/disable companion-lane speech |
 | Mode | See modes below |
 | Start / Stop service | In-process TTS service |
 | Chorus 종료 | Quit (disables LaunchAgent so KeepAlive does not relaunch) |

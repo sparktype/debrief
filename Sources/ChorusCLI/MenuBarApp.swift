@@ -222,6 +222,17 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         muteItem.isEnabled = true
         menu.addItem(muteItem)
 
+        let companionTitle = controller.status.companionEnabled ? "도우미 음성 끄기" : "도우미 음성 켜기"
+        let companionItem = NSMenuItem(
+            title: companionTitle,
+            action: #selector(toggleCompanion),
+            keyEquivalent: ""
+        )
+        companionItem.target = self
+        companionItem.state = controller.status.companionEnabled ? .on : .off
+        companionItem.isEnabled = true
+        menu.addItem(companionItem)
+
         let modeMenu = NSMenu()
         for mode in ChorusMode.allCases {
             let modeItem = NSMenuItem(
@@ -315,6 +326,10 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleMute() {
         Task { @MainActor in await controller.toggleMute() }
+    }
+
+    @objc private func toggleCompanion() {
+        Task { @MainActor in await controller.toggleCompanion() }
     }
 
     @objc private func selectMode(_ sender: NSMenuItem) {

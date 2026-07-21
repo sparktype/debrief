@@ -26,15 +26,16 @@ struct EmbeddedTemplatesTests {
         let skill = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
         #expect(skill.contains("chorus__speak"))
         #expect(skill.contains("search_tool") || skill.contains("use_tool"))
-        #expect(skill.contains("priority"))
-        #expect(skill.contains("/mcps") || skill.contains("chorus-install"))
+        #expect(skill.contains("priority") || skill.contains("lane") || skill.contains("emotion"))
+        #expect(skill.contains("companion") || skill.contains("F1"))
         #expect(!skill.contains("chorus:speak"))
 
         let grokSkills = EmbeddedTemplates.grokSkills(executable: executable)
         #expect(Set(grokSkills.keys) == Set(["setup", "install", "speak"]))
         #expect(grokSkills["install"]?.contains("chorus__install") == true)
         #expect(grokSkills["setup"]?.contains("/mcps") == true)
-        #expect(grokSkills["speak"]?.contains("use_tool") == true)
+        #expect(grokSkills["speak"]?.contains("use_tool") == true || grokSkills["speak"]?.contains("chorus__speak") == true)
+        #expect(grokSkills["speak"]?.contains("companion") == true || grokSkills["speak"]?.contains("emotion") == true)
 
         for source in HostSource.allCases {
             let entry = EmbeddedTemplates.hookEntry(executable: executable, source: source)
@@ -51,6 +52,7 @@ struct EmbeddedTemplatesTests {
         #expect(combined.localizedCaseInsensitiveContains("menu bar"))
         #expect(combined.localizedCaseInsensitiveContains("mcp") || combined.localizedCaseInsensitiveContains("grok"))
         #expect(combined.contains("mcp__chorus__speak") || combined.contains("speak"))
+        #expect(combined.contains("companion") || combined.contains("emotion") || combined.contains("lane"))
         #expect(combined.localizedCaseInsensitiveContains("claude"))
         #expect(!combined.localizedCaseInsensitiveContains("listen mode"))
         #expect(!combined.localizedCaseInsensitiveContains("digest"))

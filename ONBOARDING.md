@@ -42,6 +42,7 @@ Control everything from the **menu bar**:
 
 - **Mode** — `normal` (default); `focus` / `quiet` / `night` suppress `priority=subagent`; quiet/night also lower volume ceilings; `verbose` includes subagent speech
 - **Mute** — pause or restore speech
+- **도우미 음성** — companion-lane on/off (work lane still allowed when on mute off)
 - **진단** — doctor findings; copy full report
 - **Start / Stop service** — TTS service only
 - **Chorus 종료** — quit (disables auto-start until reinstall)

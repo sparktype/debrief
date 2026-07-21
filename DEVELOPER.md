@@ -7,10 +7,10 @@ Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executabl
 1. install and verify the pinned Supertonic 3 model;
 2. install the executable, LaunchAgent, host MCP registration, skills (`setup` / `install` / `speak`), and start-family hooks (Claude/Codex only);
 3. accept agent MCP tools:
-   - **`speak`**: `text`, `voice`, `speed`, `volume`; optional `priority` (`main` | `subagent`);
+   - **`speak`**: `text`, `voice`, `speed`, `volume`; optional `priority`, `lane` (`companion`|`work`), `emotion`;
    - **`install`**: optional `hosts`, optional `repair` (default `true`);
 4. synthesize with the local ONNX Runtime backend and play audio;
-5. expose current-state diagnostics on the menu bar (**진단** submenu + `last-error.json`).
+5. expose diagnostics on the menu bar (**진단**, **도우미 음성** toggle, `last-error.json`).
 
 The coding agent owns summarization and selects spoken text and voice parameters.
 
@@ -100,6 +100,8 @@ MCP registration always points at the app absolute path with `args: ["mcp"]`. TO
 | speed | 0.7–2.0 finite |
 | volume | 0.0–1.0 finite |
 | priority | optional: `main` (default) or `subagent` |
+| lane | optional: `companion` (default) or `work` |
+| emotion | optional closed enum; prosody bias only |
 
 No HTML comments or speech JSON in the chat body. Omitting the tool produces silence. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse. `SpeechRequest.priority` drives `ModePolicy` and queue main/subagent rules (not host hook event names).
 

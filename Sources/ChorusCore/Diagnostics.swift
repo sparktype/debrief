@@ -11,6 +11,7 @@ public enum DaemonProcessState: String, Codable, Equatable, Sendable {
 public struct StatusSnapshot: Codable, Equatable, Sendable {
     public let mode: ChorusMode
     public let muted: Bool
+    public let companionEnabled: Bool
     public let process: DaemonProcessState
     public let socketPresent: Bool
     public let modelRevision: String?
@@ -61,6 +62,7 @@ public struct Diagnostics: Sendable {
         return StatusSnapshot(
             mode: configuration.mode,
             muted: configuration.muted,
+            companionEnabled: configuration.companionEnabled,
             process: process,
             socketPresent: FileManager.default.fileExists(atPath: paths.socketURL.path),
             modelRevision: model.revision,

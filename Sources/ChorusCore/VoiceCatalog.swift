@@ -99,39 +99,36 @@ public enum VoiceCatalog {
     }
 
     /// MCP speak contract for start-family hooks (host- and event-aware).
+    /// Reflective companion by default: attitude + silence + optional lane/emotion.
     public static func context(for event: HookEvent, source: HostSource) -> String {
         let assignment = assignment(for: event.agentType)
         let tool = toolReference(source: source)
         let priority = recommendedPriority(for: event.name)
-        let volumeHint = "0.85"
 
         switch event.name {
         case .userPromptSubmit:
-            // Compact: UserPromptSubmit fires every turn — keep token cost low.
             return """
-            Chorus TTS: at end of this turn call \(tool) once with text (≤800 chars), \
-            voice \(assignment.voice), speed near \(format(assignment.baselineSpeed)), volume near \(volumeHint). \
-            priority=\(priority.rawValue). No HTML comments or speech JSON in the message body.
+            Chorus: speak only if this turn needs user-facing reflection. Prefer \(tool) once as lane=companion \
+            (voice F1, emotion neutral|warm|focused|concerned|relieved|tired). Text = observe + meaning + one next step — \
+            no file lists. Silence is correct when nothing new matters. No HTML/JSON speech in the body.
             """
 
         case .subagentStart:
             return """
-            You are a subagent. When you finish this turn, call \(tool) once with a one- or two-sentence spoken summary. \
-            Required: text, voice, speed, volume. Set priority to \"subagent\" so focus/quiet/night can suppress you. \
-            Use voice \(assignment.voice) (\(assignment.name)); speed baseline \(format(assignment.baselineSpeed)) (range 0.7–2.0); \
-            volume near \(volumeHint) (range 0.0–1.0). Keep text ≤ 800 characters. \
-            Do not put HTML comments, JSON speech metadata, or legacy speech envelopes in the assistant message body. \
-            Omitting the tool is silence — the user will not hear a summary.
+            Subagent: if you speak, use \(tool) with priority=subagent, lane=work, voice \(assignment.voice) (\(assignment.name)). \
+            Facts only, one short line; companion lane discouraged. focus/quiet/night may suppress subagent. Silence OK. \
+            No HTML/JSON speech in the body.
             """
 
         case .sessionStart, .stop, .subagentStop:
             return """
-            When you finish a turn that deserves spoken feedback, call \(tool) once with a one- or two-sentence summary. \
-            Required arguments: text, voice, speed, volume. Optional priority: \"main\" (default) or \"subagent\". \
-            Prefer voice \(assignment.voice) (\(assignment.name)); speed near \(format(assignment.baselineSpeed)) (0.7–2.0); \
-            volume near \(volumeHint) (0.0–1.0). Keep text ≤ 800 characters. \
-            Call the tool at the end of the turn — do not put HTML comments or JSON speech metadata in the message body. \
-            If you skip the tool, the user hears nothing. Mute/mode are menu-bar only (not CLI).
+            Chorus reflective companion TTS via \(tool). Prefer one short companion line when speech helps; silence when it does not \
+            (read-only thrash, same status as last turn, or pure lists already on screen). \
+            Companion structure: observe + meaning + one next step or rest. Prefer voice F1, speed ~0.93, volume ~0.85, \
+            lane=companion (default), emotion from neutral|warm|focused|concerned|relieved|tired (restrained). \
+            Optional work lane for pure facts with role voice \(assignment.voice) (\(assignment.name)), speed ~\(format(assignment.baselineSpeed)). \
+            Required args: text, voice, speed, volume. Optional: priority (\(priority.rawValue) default here), lane, emotion. \
+            Never inventory files or checklist completions. No HTML/JSON speech in the body. Mute/mode/companion toggle: menu bar only.
             """
         }
     }

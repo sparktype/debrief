@@ -73,6 +73,8 @@ struct McpSpeakToolTests {
             "volume": 0.5,
         ])
         #expect(main.priority == .main)
+        #expect(main.lane == .companion)
+        #expect(main.emotion == .neutral)
 
         let sub = try McpSpeakTool.parseArguments([
             "text": "hi",
@@ -80,8 +82,12 @@ struct McpSpeakToolTests {
             "speed": 1.0,
             "volume": 0.5,
             "priority": "subagent",
+            "lane": "work",
+            "emotion": "focused",
         ])
         #expect(sub.priority == .subagent)
+        #expect(sub.lane == .work)
+        #expect(sub.emotion == .focused)
 
         #expect(throws: (any Error).self) {
             try McpSpeakTool.parseArguments([
@@ -92,6 +98,42 @@ struct McpSpeakToolTests {
                 "priority": "boss",
             ])
         }
+        #expect(throws: (any Error).self) {
+            try McpSpeakTool.parseArguments([
+                "text": "hi",
+                "voice": "F1",
+                "speed": 1.0,
+                "volume": 0.5,
+                "emotion": "angry",
+            ])
+        }
+    }
+
+    @Test func executeAppliesEmotionProsodyToEnvelope() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-mcp-emotion-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let sink = RecordingSink()
+        let args = McpSpeakArguments(
+            text: "잠시 쉬어도 됩니다.",
+            voice: "F1",
+            speed: 1.0,
+            volume: 1.0,
+            emotion: .tired
+        )
+        let result = await McpSpeakTool.execute(
+            arguments: args,
+            sink: sink,
+            diagnostics: Diagnostics(home: home)
+        )
+        #expect(!result.isError)
+        let env = await sink.recorded().first?.envelope
+        #expect(env?.speed == 0.92)
+        #expect(env?.volume == 0.90)
+        #expect(await sink.recorded().first?.lane == .companion)
+        #expect(await sink.recorded().first?.emotion == .tired)
     }
 
     @Test func executeRejectsBadVoiceWithoutSubmit() async {

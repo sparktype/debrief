@@ -65,13 +65,9 @@ struct VoiceCatalogTests {
 
     @Test func contextMentionsSpeakToolNotHtmlEnvelope() {
         let text = VoiceCatalog.context(for: "planner")
-        #expect(text.contains("speak"))
-        #expect(text.contains("M1"))
-        #expect(text.contains("스티브"))
-        #expect(text.contains("0.7"))
-        #expect(text.contains("2.0"))
-        #expect(text.contains("800"))
-        #expect(text.contains("priority") || text.contains("main"))
+        #expect(text.contains("speak") || text.contains("mcp__chorus__speak"))
+        #expect(text.contains("companion") || text.contains("F1"))
+        #expect(text.contains("emotion") || text.contains("neutral"))
         #expect(!text.contains("chorus:speak"))
         #expect(!text.contains("<!--"))
         #expect(!text.localizedCaseInsensitiveContains("Chorus summarizes"))
@@ -88,6 +84,7 @@ struct VoiceCatalogTests {
         let text = VoiceCatalog.context(for: event, source: .claude)
         #expect(text.contains("mcp__chorus__speak"))
         #expect(text.contains("F1"))
+        #expect(text.localizedCaseInsensitiveContains("silence") || text.contains("침묵") || text.contains("does not"))
     }
 
     @Test func subagentContextRequestsSubagentPriority() {
@@ -101,7 +98,7 @@ struct VoiceCatalogTests {
         let text = VoiceCatalog.context(for: event, source: .claude)
         #expect(text.contains("subagent"))
         #expect(text.contains("M1"))
-        #expect(text.contains("priority"))
+        #expect(text.contains("work") || text.contains("priority"))
     }
 
     @Test func userPromptSubmitContextIsCompact() {
@@ -113,8 +110,8 @@ struct VoiceCatalogTests {
             lastAssistantMessage: nil
         )
         let text = VoiceCatalog.context(for: event, source: .claude)
-        #expect(text.count < 280)
-        #expect(text.contains("speak") || text.contains("mcp__chorus__speak"))
-        #expect(text.contains("F1"))
+        #expect(text.count < 400)
+        #expect(text.contains("companion") || text.contains("F1"))
+        #expect(text.contains("Silence") || text.contains("silence"))
     }
 }

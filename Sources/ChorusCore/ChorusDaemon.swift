@@ -27,7 +27,13 @@ public enum DirectSpeechCommand {
             volume: volume
         )
         try envelope.validate()
-        let request = SpeechRequest(envelope: envelope, priority: priority, agentType: nil)
+        let request = SpeechRequest(
+            envelope: envelope,
+            priority: priority,
+            lane: .companion,
+            emotion: .neutral,
+            agentType: nil
+        )
         try await UnixSocketClient(socketURL: ChorusPaths.forHome(home).socketURL).submit(request)
     }
 }
@@ -107,6 +113,7 @@ public actor ChorusDaemon {
         guard !shuttingDown,
               ModePolicy.admit(
                 priority: request.priority,
+                lane: request.lane,
                 requestedVolume: request.envelope.volume,
                 configuration: configuration()
               ) != nil else {
@@ -156,6 +163,7 @@ public actor ChorusDaemon {
                 if !discardActive,
                    let gain = ModePolicy.admit(
                     priority: request.priority,
+                    lane: request.lane,
                     requestedVolume: request.envelope.volume,
                     configuration: configuration()
                    ) {
