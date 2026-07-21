@@ -1,7 +1,7 @@
 # Reflective Companion Speech Design
 
 **Date:** 2026-07-22  
-**Status:** Approved (user 2026-07-22; axes 1+2+optional 3 + emotion)  
+**Status:** Implemented (P0–P2 shipped on `improve/post-mcp-cleanup`; approved 2026-07-22)  
 **Target:** macOS 14+ Apple Silicon, Chorus 2.x  
 **Depends on:** MCP speak contract (`2026-07-19-mcp-speak-tool-design.md` + product errata)
 
@@ -40,8 +40,8 @@ That is **report mode**. The desired product is **companion mode**: step back, n
 | Layer | Responsibility |
 | --- | --- |
 | Agent (skills, hooks, MCP args) | Choose *whether* to speak; write companion/work text; choose voice, speed, volume, priority, optional `lane` / `emotion` |
-| Chorus | Validate args; admit/reject via mute/mode/priority/(later lane); synthesize and play supplied text; optional **prosody bias** from `emotion` |
-| User (menu) | Mute, mode, diagnostics; later optional “도우미 음성” toggle |
+| Chorus | Validate args; admit/reject via mute/mode/priority/`companionEnabled`/lane; synthesize and play supplied text; **prosody bias** from `emotion` |
+| User (menu) | Mute, mode, diagnostics, **도우미 음성** (`companionEnabled`) |
 
 ### Out of scope
 
@@ -58,7 +58,7 @@ That is **report mode**. The desired product is **companion mode**: step back, n
 | Topic | Decision |
 | --- | --- |
 | Who writes text | **Agent only** |
-| Default lane | **companion** (when `lane` is implemented; until then contract text pushes companion attitude) |
+| Default lane | **companion** (omit `lane` → companion) |
 | Companion voice | Prefer **F1** (연아), speed ~0.90–0.93, volume ~0.80–0.85 |
 | Work voice | Role map (M3/M4/…); may use existing `priority` for subagent suppression |
 | Silence | Valid; preferred over empty report |
@@ -124,7 +124,7 @@ If only one `speak` call: treat as **companion** unless the agent explicitly mar
 - Read-only exploration with no decision  
 - Same “still working” as previous turn  
 - Intermediate tool thrash  
-- Mute, or policy blocks companion (P1/P2)  
+- Mute, or policy blocks companion (`companionEnabled` off, or mode rejects the request)  
 - Everything important is already obvious on screen as a list  
 
 **One-liner:** *If you would only read what the screen already shows, do not speak.*
@@ -138,11 +138,11 @@ Subagents: prefer `priority=subagent` and **work** lane if anything; companion i
 ### 8.1 Intent
 
 Companion speech may carry **light affect** so presence feels human without becoming drama.  
-Emotion is **not** a second content channel: the spoken sentence still carries meaning; emotion shapes **wording (agent)** and optionally **playback bias (Chorus)**.
+Emotion is **not** a second content channel: the spoken sentence still carries meaning; emotion shapes **wording (agent)** and **playback bias (Chorus)** via `EmotionProsody`.
 
 ### 8.2 Allowed emotion set (closed enum)
 
-| `emotion` | Companion stance | Text cue (agent) | Playback bias (P1+, optional) |
+| `emotion` | Companion stance | Text cue (agent) | Playback bias (shipped) |
 | --- | --- | --- | --- |
 | `neutral` | Calm default | Plain, even | speed/volume unchanged from args |
 | `warm` | Gentle encouragement | Soft, supportive, no hype | speed × ~0.97, volume × ~1.00 |
@@ -158,7 +158,7 @@ Default when omitted: **`neutral`**.
 1. **Companion emotions only from the table** — no free-string emotion.  
 2. **Restrained intensity** — no shouting, guilt, or continuous pep-talk.  
 3. **Match content** — `relieved` only when something actually resolved; do not fake affect.  
-4. **Work lane** — prefer `neutral` or omit; emotion is primarily for companion.  
+4. **Work lane** — prefer `neutral` or omit; server forces **neutral** prosody for work regardless of agent `emotion`.  
 5. **Mode interaction**  
    - `night` / `quiet`: prefer `neutral` or `tired`; avoid high-arousal wording  
    - `focus`: companion OK if short; avoid `warm` spam  
@@ -183,15 +183,15 @@ Supertonic path today has no guaranteed multi-emotion voice model. Therefore:
 
 `text`, `voice`, `speed`, `volume`, optional `priority` (`main` | `subagent`)
 
-### 9.2 Add (P1)
+### 9.2 Added (P1 — shipped)
 
 | Field | Required | Values | Notes |
 | --- | --- | --- | --- |
-| `lane` | no | `companion` \| `work` | Default **`companion`** when omitted (P1+) |
-| `emotion` | no | enum in §8.2 | Default **`neutral`**; ignored or forced-neutral for work if product chooses |
+| `lane` | no | `companion` \| `work` | Default **`companion`** when omitted |
+| `emotion` | no | enum in §8.2 | Default **`neutral`**; work lane forces neutral prosody |
 
-Internal UDS `SpeechRequest` gains the same optional fields (or maps into envelope extensions without bumping chat contracts).  
-`SpeechEnvelope.v` stays **1** unless a breaking envelope change is required; prefer extending MCP-only parse then carrying fields on `SpeechRequest` outside the historical five-field envelope if cleaner—implementation plan chooses the minimal encoding that preserves older clients (unknown fields ignored by old daemons is acceptable only if mixed versions are unsupported; same-version app+mcp is the supported pair).
+Internal UDS `SpeechRequest` carries `lane` and `emotion`.  
+`SpeechEnvelope.v` stays **1**. Same-version app + `chorus mcp` is the supported pair.
 
 ### 9.3 Host tool names
 
@@ -213,7 +213,7 @@ Speak a short reflective companion line when speech helps; stay silent when it d
 | quiet | admit + volume ceiling | reject subagent | prefer neutral/tired; bias volume already capped |
 | night | admit + low ceiling | reject subagent | prefer neutral/tired; stronger soft speed bias |
 
-**P2 optional:** user toggle `companionEnabled` in config (menu “도우미 음성”). When false, reject `lane=companion` (or treat as silence).
+**P2 shipped:** user toggle `companionEnabled` in config (menu **도우미 음성**). When false, `ModePolicy` rejects `lane=companion` (work lane still admitted when not muted).
 
 Mute still rejects **all** speech.
 
@@ -240,33 +240,41 @@ Rewrite for all hosts (Claude/Codex shared text; Grok `grokSkills` variant):
 
 ### Docs
 
-README / ONBOARDING / DEVELOPER / CLAUDE: companion contract, emotion enum, silence, phases.
+README / ONBOARDING / DEVELOPER / CLAUDE: companion contract, emotion enum, silence, menu toggle (shipped).
 
 ---
 
 ## 12. Phased delivery
 
-### P0 — Contract only (no schema)
+| Phase | Status | Delivered |
+| --- | --- | --- |
+| **P0** Contract only | **Shipped** | Skills + hook context: silence, companion structure, emotion in wording, F1 default |
+| **P1** Schema + prosody | **Shipped** | MCP `lane` / `emotion`; defaults; `EmotionProsody` bias + clamp; parse/bias tests |
+| **P2** User control | **Shipped** | Menu **도우미 음성**; `companionEnabled` config + diagnostics; `ModePolicy` rejects companion when off |
+
+Stricter mode×lane matrix beyond subagent suppression remains **out of scope** unless reopened.
+
+### P0 — Contract only (no schema) — shipped
 
 - Update `chorus-speak` (all install paths) + hook `VoiceCatalog.context`  
 - Document silence, companion structure, emotion *in wording*, F1 default  
 - No MCP field changes  
 - **Exit:** agents in-repo and installed skills teach the new behavior  
 
-### P1 — Schema + light prosody
+### P1 — Schema + light prosody — shipped
 
 - MCP: optional `lane`, `emotion`  
 - Validation + defaults  
 - Prosody bias table (§8.2) applied to speed/volume after agent values, then clamp  
-- ModePolicy unchanged except documentation; optional companion-specific admit later  
+- Work lane forces neutral prosody  
 - Tests for parse/defaults/bias clamps  
 - **Exit:** tools/list schema + unit/integration tests green  
 
-### P2 — User control
+### P2 — User control — shipped
 
 - Menu: 도우미 음성 on/off  
 - Config key + diagnostics surface  
-- Optional stricter mode×lane matrix  
+- `ModePolicy.admit(…, lane:)` rejects companion when `companionEnabled` is false  
 
 ---
 
@@ -313,8 +321,9 @@ No requirement to golden-file audio.
 | Axes | **1 + 2 + optional 3** (lanes) |
 | Emotion | **In scope** as §8 |
 | Companion voice | **F1 preferred** |
-| quiet/night | Lower volume ceilings remain; emotion prefers calm/tired; no full companion ban in P0/P1 |
-| First ship | **P0 then P1** (this design authorizes both; implement in order) |
+| quiet/night | Lower volume ceilings remain; emotion prefers calm/tired; no full companion ban by mode |
+| First ship | **P0 → P1 → P2** in order; all three shipped |
+| Work + emotion | Prosody forced to `neutral` for `lane=work` |
 
 ---
 

@@ -55,7 +55,7 @@ Grok discovers tools with `search_tool` / `use_tool` when required.
 | lane | no | `companion` (default reflective) or `work` (factual) |
 | emotion | no | `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (prosody bias) |
 
-Prefer a **reflective companion** line when speech helps; **silence is OK** when it would only read on-screen lists. Do **not** put speech JSON or HTML comments in the chat body.
+Prefer a **reflective companion** line when speech helps (observe + meaning + one next step); **silence is OK** when it would only read on-screen lists. Default `lane` is `companion` (prefer voice F1); use `work` for factual reports. `emotion` only biases prosody—wording still comes from the agent. Do **not** put speech JSON or HTML comments in the chat body.
 
 ### `install` arguments
 
@@ -119,5 +119,6 @@ Claude/Codex start-family hooks inject the speak contract. Grok relies on skills
 | --- | --- |
 | [ONBOARDING.md](ONBOARDING.md) | First use |
 | [DEVELOPER.md](DEVELOPER.md) | Build, architecture, change rules |
-| [docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md](docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md) | Approved MCP design (+ errata) |
+| [docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md](docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md) | MCP speak + install (+ errata) |
+| [docs/superpowers/specs/2026-07-22-reflective-companion-design.md](docs/superpowers/specs/2026-07-22-reflective-companion-design.md) | Companion lane, silence, emotion, 도우미 음성 (P0–P2 shipped) |
 | [docs/archive/](docs/archive/) | Superseded Python-era notes only |

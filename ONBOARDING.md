@@ -25,7 +25,7 @@ Chorus speaks text prepared by Codex, Claude Code, or Grok through **Chorus.app*
 6. **Claude Code:** restart the app so `mcp__chorus__speak` and `mcp__chorus__install` appear. Skills: `~/.claude/skills/chorus-{setup,install,speak}`.
 7. **Grok:** run **`/mcps`** so `chorus__speak` and `chorus__install` appear. Skills: `~/.grok/skills/chorus-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
 8. **Codex:** review start-family hooks in `/hooks`; MCP lives in `~/.codex/config.toml`.
-9. Ask the agent for a short spoken summary via MCP `speak` (`text`, `voice`, `speed`, `volume`; optional `priority`).
+9. Ask the agent for a short spoken companion line via MCP `speak` (`text`, `voice`, `speed`, `volume`; optional `priority`, `lane`, `emotion`). Silence is fine when speech would only read the screen.
 
 Repair without wiping unrelated host settings:
 
@@ -52,7 +52,9 @@ There is no user CLI for mute/mode/status/speak. Agents call MCP `speak`; hosts 
 ## Agent rules (all hosts)
 
 - Spoken text is the agent’s job; Chorus does not summarize.
-- Always pass `voice`, `speed`, and `volume`. Optional `priority`: `main` (default) or `subagent`.
+- Prefer a short **reflective companion** line (observe + meaning + one next step), not a file/checklist inventory.
+- Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum; prosody only).
+- Companion prefers voice **F1**. Subagents: prefer `priority=subagent` and `lane=work` if anything.
 - Do not put speech JSON or HTML comments in the chat body.
-- Skipping the speak tool is silence.
-- Mute/mode/diagnostics: menu bar only.
+- Skipping the speak tool is silence (and often correct).
+- Mute / mode / **도우미 음성** / diagnostics: menu bar only.

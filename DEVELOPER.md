@@ -28,13 +28,15 @@ Sources/
     ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
     ├── ChorusDaemon.swift     speech accept loop over Unix socket
     ├── SpeechEnvelope.swift   internal wire model and validation
-    ├── SpeechRequest.swift    envelope + SpeechPriority (main/subagent)
+    ├── SpeechRequest.swift    envelope + SpeechPriority + lane + emotion
+    ├── SpeechLane.swift       companion | work
+    ├── SpeechEmotion.swift    closed emotion enum + EmotionProsody bias
     ├── McpServer.swift        stdio JSON-RPC MCP (tools: speak, install)
     ├── McpSpeakTool.swift     speak arg parse + UDS submit
     ├── McpInstallTool.swift   install/repair via RuntimeInstaller
     ├── McpTomlConfig.swift    Codex/Grok TOML MCP ownership markers
     ├── HookAdapters.swift     Codex and Claude event adaptation
-    ├── ModePolicy.swift       mute / subagent suppress / volume ceiling
+    ├── ModePolicy.swift       mute / companionEnabled / subagent suppress / volume ceiling
     ├── SpeechQueue.swift      bounded serialized speech queue
     ├── SupertonicEngine.swift local ONNX TTS backend
     ├── UnixSocket.swift       local resident transport
@@ -63,7 +65,7 @@ LaunchAgent (com.chorus.tts)
         │ ProgramArguments: [Chorus.app/Contents/MacOS/chorus, "menubar"]
         ▼
 Chorus.app (LSUIElement menu bar)
-        ├── Menu: status · 진단 · mute · mode · start · stop · quit
+        ├── Menu: status · 진단 · mute · 도우미 음성 · mode · start · stop · quit
         └── ResidentService (in-process)
               ├── pid file
               ├── Unix socket server
@@ -101,9 +103,19 @@ MCP registration always points at the app absolute path with `args: ["mcp"]`. TO
 | volume | 0.0–1.0 finite |
 | priority | optional: `main` (default) or `subagent` |
 | lane | optional: `companion` (default) or `work` |
-| emotion | optional closed enum; prosody bias only |
+| emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); prosody bias only |
 
-No HTML comments or speech JSON in the chat body. Omitting the tool produces silence. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse. `SpeechRequest.priority` drives `ModePolicy` and queue main/subagent rules (not host hook event names).
+No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (preferred when speech would only restate the screen). Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
+
+Policy (`ModePolicy.admit`):
+
+- **mute** rejects all speech
+- **`companionEnabled == false`** (menu 도우미 음성) rejects `lane=companion`; work lane still plays
+- **focus / quiet / night** reject `priority=subagent`
+- **quiet / night** apply volume ceilings (0.45 / 0.20)
+- **work** lane forces neutral emotion for prosody
+
+`SpeechRequest.priority` / `lane` / `emotion` are request fields (not host hook event names).
 
 Host tool display names:
 
@@ -157,6 +169,7 @@ Release verification should also inspect architecture (`arm64`) and run install 
 | --- | --- |
 | `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` | Single-binary Swift TTS (envelope contract superseded) |
 | `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` | Menu bar resident process |
-| `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` | MCP speak + Grok (see errata at top for install tool / priority) |
+| `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` | MCP speak + install + Grok (see errata for product truth) |
+| `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` | Companion lane, silence, emotion, 도우미 음성 (P0–P2 shipped) |
 
 Older material lives under `docs/archive/` and is not product truth.
