@@ -23,7 +23,7 @@ struct MenuBarMenuTitlesTests {
         #expect(MenuBarMenuTitles.doctorRoot(hasProblems: true) == "🩺 진단 (문제 있음)")
         #expect(MenuBarMenuTitles.doctorOK == "✅ 문제 없음")
         #expect(MenuBarMenuTitles.copyDoctor == "📋 진단 요약 복사")
-        #expect(MenuBarMenuTitles.repairMcp == "🔧 문제 호스트 복구")
+        #expect(MenuBarMenuTitles.repairMcp == "🔧 문제 에이전트 복구")
         #expect(MenuBarMenuTitles.quit == "⏻ Chorus 종료")
         #expect(MenuBarMenuTitles.modeRoot == "🎚️ 모드")
     }

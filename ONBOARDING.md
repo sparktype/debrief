@@ -43,7 +43,7 @@ Control everything from the **menu bar**:
 - **Mode** — `normal` (default); `focus` / `quiet` / `night` suppress `priority=subagent`; quiet/night also lower volume ceilings; `verbose` includes subagent speech
 - **Mute** — pause or restore speech
 - **도우미 음성** — companion-lane on/off (work lane still allowed when on mute off)
-- **MCP** — Claude / Codex / Grok wiring status; **문제 호스트 복구** re-runs install repair for broken hosts
+- **MCP** — Claude / Codex / Grok wiring status; **문제 에이전트 복구** re-runs install repair for broken agents
 - **진단** — doctor findings (includes MCP problems); copy full report
 - **Start / Stop service** — TTS service only
 - **Chorus 종료** — quit (disables auto-start until reinstall)

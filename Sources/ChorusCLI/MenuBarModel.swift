@@ -88,7 +88,7 @@ final class MenuBarController {
         }
     }
 
-    /// Re-runs install --repair for hosts whose MCP wiring is broken (not absent/ok).
+    /// Re-runs install --repair for agents whose MCP wiring is broken (not absent/ok).
     func repairProblemMcpHosts() async {
         await enqueue {
             let paths = ChorusPaths.forHome(self.home)

@@ -85,7 +85,7 @@ Default role mapping (for `voice` / baseline speed):
 | Action | Purpose |
 | --- | --- |
 | Status header | Running / muted / mode / active voice |
-| MCP | Per-host chorus MCP wiring (Claude / Codex / Grok); repair problem hosts |
+| MCP | Per-agent chorus MCP wiring (Claude / Codex / Grok); repair problem agents |
 | 진단 | Doctor findings (includes MCP); copy full report to pasteboard |
 | Mute | Toggle mute |
 | 도우미 음성 | Enable/disable companion-lane speech |

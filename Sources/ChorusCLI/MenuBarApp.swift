@@ -179,7 +179,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(errorItem)
         }
 
-        // MCP host wiring submenu
+        // MCP agent wiring submenu
         let mcpMenu = NSMenu()
         let mcpLines = controller.status.mcpLines
         if mcpLines.isEmpty {

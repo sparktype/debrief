@@ -37,7 +37,7 @@ Today the menu bar shows service / mute / companion / mode and a generic **진�
 - Menu **MCP** submenu with one line per host (Korean, 경어체)
 - **Menu emoji (이모티콘)** on MCP submenu and the rest of the menubar action titles for scannability
 - Doctor findings for problem states (copyable with 진단 요약 복사)
-- **문제 호스트 복구** menu action → install/repair for hosts that fail the probe
+- **문제 에이전트 복구** menu action → install/repair for agents that fail the probe
 - Unit/integration tests for probe + status + doctor codes
 
 ### Out of scope
@@ -107,19 +107,19 @@ Owned markers (`# BEGIN chorus-mcp` … `# END chorus-mcp`) remain the install o
     ⚠️ Codex: 미등록
     🔄 Grok: 경로 불일치
     ────────
-    🔧 문제 호스트 복구           # enabled only if any problem host
+    🔧 문제 에이전트 복구         # enabled only if any problem agent
 🩺 진단 | 🩺 진단 (문제 있음)  ▸  # existing; gains mcp.* findings
 …
 ```
 
-- Host lines: disabled (display only). Format:  
-  `{stateEmoji} {HostDisplayName}: {KoreanState}`  
+- Agent lines: disabled (display only). Format:  
+  `{stateEmoji} {AgentDisplayName}: {KoreanState}`  
   e.g. `✅ Claude: 등록됨`, `⚠️ Codex: 미등록`, `⚪ Grok: 설정 없음`
-- **문제 호스트 복구**:
-  - Title: `🔧 문제 호스트 복구`
-  - Disabled when every host is `ok` or `absent`.
-  - Enabled when any host is `missing` / `unreadable` / `stalePath`.
-  - Runs repair only for **problem** hosts (not `absent` / `ok`).
+- **문제 에이전트 복구**:
+  - Title: `🔧 문제 에이전트 복구`
+  - Disabled when every agent is `ok` or `absent`.
+  - Enabled when any agent is `missing` / `unreadable` / `stalePath`.
+  - Runs repair only for **problem** agents (not `absent` / `ok`).
 - On success: clear stale install error when appropriate, refresh status.
 - On failure: surface via existing `lastError` + `Diagnostics.recordError` (`component: "mcp"` or `"app"` consistent with install tool).
 - No second “전체 재배선” item in v1 (YAGNI).
@@ -147,7 +147,7 @@ Height stays 16 (menu-bar convention). No change to `NSStatusItem.variableLength
 |-----------|-------|----------------|
 | MCP root | 🔌 | `🔌 MCP` / `🔌 MCP (문제 있음)` |
 | Host line | per state (§4 table) | `✅ Claude: 등록됨` |
-| MCP repair | 🔧 | `🔧 문제 호스트 복구` |
+| MCP repair | 🔧 | `🔧 문제 에이전트 복구` |
 | Error row | ❌ | `❌ 오류: …` |
 | Doctor root | 🩺 | `🩺 진단` / `🩺 진단 (문제 있음)` |
 | Doctor OK leaf | ✅ | `✅ 문제 없음` |
@@ -182,7 +182,7 @@ doctor()
   → for each problem HostMcpStatus
        DiagnosticFinding(code: "mcp.{host}.{state}", ok: false, recovery: …)
 
-문제 호스트 복구
+문제 에이전트 복구
   → MenuBarController.repairProblemMcpHosts()
        → RuntimeInstaller.install(hosts: problemHosts, repair: true)
        → refresh()
@@ -239,7 +239,7 @@ TDD: failing tests first.
 ## 10. Docs / product strings
 
 - User-facing menu strings: Korean 경어체.
-- Optional one-line ONBOARDING / DEVELOPER mention: “메뉴바 → MCP에서 호스트 배선 확인·복구”.
+- Optional one-line ONBOARDING / DEVELOPER mention: “메뉴바 → MCP에서 에이전트 배선 확인·복구”.
 - No change to MCP tool schemas.
 
 ---
@@ -257,4 +257,4 @@ TDD: failing tests first.
 
 ## 12. Non-goals reminder
 
-Chorus does **not** claim the host has reloaded tools (`/mcps`, Claude restart). After successful repair, menu shows on-disk wiring OK; host refresh remains the user’s/host’s step. Menu recovery text may note: “호스트에서 MCP 목록을 새로고침하세요.”
+Chorus does **not** claim the agent host has reloaded tools (`/mcps`, Claude restart). After successful repair, menu shows on-disk wiring OK; agent-side refresh remains the user’s step. Menu recovery text may note: “에이전트에서 MCP 목록을 새로고침하세요.”

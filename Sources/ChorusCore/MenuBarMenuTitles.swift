@@ -7,7 +7,7 @@ public enum MenuBarMenuTitles {
         hasProblems ? "🔌 MCP (문제 있음)" : "🔌 MCP"
     }
 
-    public static let repairMcp = "🔧 문제 호스트 복구"
+    public static let repairMcp = "🔧 문제 에이전트 복구"
 
     public static func doctorRoot(hasProblems: Bool) -> String {
         hasProblems ? "🩺 진단 (문제 있음)" : "🩺 진단"

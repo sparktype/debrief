@@ -1,4 +1,4 @@
-// 호스트별 MCP 배선 상태 probe (메뉴바 · 진단)
+// 에이전트별 MCP 배선 상태 probe (메뉴바 · 진단)
 import Foundation
 
 /// On-disk chorus MCP registration state for one agent host.
@@ -72,9 +72,9 @@ public struct HostMcpStatus: Equatable, Sendable {
         }
         switch state {
         case .unreadable:
-            return "호스트 설정을 수정한 뒤 메뉴에서 복구하거나 chorus install \(flag) --repair"
+            return "에이전트 설정을 수정한 뒤 메뉴에서 복구하거나 chorus install \(flag) --repair"
         case .missing, .stalePath:
-            return "메뉴 「문제 호스트 복구」 또는 chorus install \(flag) --repair"
+            return "메뉴 「문제 에이전트 복구」 또는 chorus install \(flag) --repair"
         case .ok, .absent:
             return nil
         }
