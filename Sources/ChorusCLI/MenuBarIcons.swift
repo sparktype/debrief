@@ -6,12 +6,12 @@ import Foundation
 /// Shared drawing helpers for the status-item badge (voice ID / transport).
 @MainActor
 enum MenuBarBadgeDrawing {
-    /// Slightly narrower than a full square so the status item uses less menu-bar real estate.
-    static let badgeSize = NSSize(width: 22, height: 16)
+    /// Compact menubar badge — wider than the first narrow pass so voice IDs read clearly.
+    static let badgeSize = NSSize(width: 25, height: 16)
 
     static func drawBorder(in bounds: NSRect) {
         let inset = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: inset, xRadius: 3, yRadius: 3)
+        let path = NSBezierPath(roundedRect: inset, xRadius: 3.25, yRadius: 3.25)
         NSColor.black.setStroke()
         path.lineWidth = 1.25
         path.stroke()
@@ -19,7 +19,7 @@ enum MenuBarBadgeDrawing {
 
     static func drawLabel(_ text: String, in bounds: NSRect) {
         let label = text as NSString
-        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .bold)
+        let font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .bold)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: NSColor.black,
