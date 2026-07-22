@@ -9,7 +9,7 @@
 
 ## 1. Outcome
 
-Users can open the Chorus menu bar and **see whether Claude, Codex, and Grok have `chorus` MCP wired correctly**, and can **repair problem hosts** without leaving the menu.
+Users can open the Chorus menu bar and **see whether Claude, Codex, and Grok have `chorus` MCP wired correctly** (status lines with emoji), and can **repair problem hosts** without leaving the menu. The wider menubar also uses **leading Unicode emoji** on action titles so states and controls scan faster.
 
 Agents and chat hosts still own tool discovery; Chorus only reports **on-disk host configuration** and re-runs the existing install/repair path.
 
@@ -35,6 +35,7 @@ Today the menu bar shows service / mute / companion / mode and a generic **진�
 
 - Per-host MCP registration probe (present / absent / unreadable / path mismatch)
 - Menu **MCP** submenu with one line per host (Korean, 경어체)
+- **Menu emoji (이모티콘)** on MCP submenu and the rest of the menubar action titles for scannability
 - Doctor findings for problem states (copyable with 진단 요약 복사)
 - **문제 호스트 복구** menu action → install/repair for hosts that fail the probe
 - Unit/integration tests for probe + status + doctor codes
@@ -45,6 +46,7 @@ Today the menu bar shows service / mute / companion / mode and a generic **진�
 - Last `speak` / `install` activity log
 - Repair that only patches config without `RuntimeInstaller` (reuse install pipeline)
 - New CLI surface for mute/mode (menu remains the control plane)
+- Custom SF Symbol assets or animated menu icons (Unicode emoji only)
 
 ---
 
@@ -59,13 +61,13 @@ HostMcpState =
   | stalePath     — chorus MCP present; command ≠ expected installed executable
 ```
 
-| State | Doctor problem? | Menu tone |
-|-------|-----------------|-----------|
-| `ok` | No | 등록됨 |
-| `absent` | No | 설정 없음 |
-| `missing` | Yes | 미등록 |
-| `unreadable` | Yes | 설정 읽기 실패 |
-| `stalePath` | Yes | 경로 불일치 |
+| State | Doctor problem? | Menu tone | Leading emoji |
+|-------|-----------------|-----------|---------------|
+| `ok` | No | 등록됨 | ✅ |
+| `absent` | No | 설정 없음 | ⚪ |
+| `missing` | Yes | 미등록 | ⚠️ |
+| `unreadable` | Yes | 설정 읽기 실패 | ❌ |
+| `stalePath` | Yes | 경로 불일치 | 🔄 |
 
 **Expected executable:** the installed application binary used for host registration (`ChorusPaths` application executable, same target `HostInstaller` / `EmbeddedTemplates.mcpRegistration` write). Compare resolved paths when possible.
 
@@ -95,21 +97,26 @@ Owned markers (`# BEGIN chorus-mcp` … `# END chorus-mcp`) remain the install o
 
 ## 6. Menu UX
 
+### 6.1 MCP submenu (with emoji)
+
 ```text
 [헤더 요약]
-[오류: …]                         # existing
-MCP | MCP (문제 있음)  ▸
-    Claude: 등록됨
-    Codex: 미등록
-    Grok: 경로 불일치
+[❌ 오류: …]                      # existing error row, emoji prefix when present
+🔌 MCP | 🔌 MCP (문제 있음)  ▸
+    ✅ Claude: 등록됨
+    ⚠️ Codex: 미등록
+    🔄 Grok: 경로 불일치
     ────────
-    문제 호스트 복구              # enabled only if any problem host
-진단 | 진단 (문제 있음)  ▸       # existing; gains mcp.* findings
+    🔧 문제 호스트 복구           # enabled only if any problem host
+🩺 진단 | 🩺 진단 (문제 있음)  ▸  # existing; gains mcp.* findings
 …
 ```
 
-- Host lines: disabled (display only), titles use host display name + Korean state.
+- Host lines: disabled (display only). Format:  
+  `{stateEmoji} {HostDisplayName}: {KoreanState}`  
+  e.g. `✅ Claude: 등록됨`, `⚠️ Codex: 미등록`, `⚪ Grok: 설정 없음`
 - **문제 호스트 복구**:
+  - Title: `🔧 문제 호스트 복구`
   - Disabled when every host is `ok` or `absent`.
   - Enabled when any host is `missing` / `unreadable` / `stalePath`.
   - Runs repair only for **problem** hosts (not `absent` / `ok`).
@@ -117,7 +124,37 @@ MCP | MCP (문제 있음)  ▸
 - On failure: surface via existing `lastError` + `Diagnostics.recordError` (`component: "mcp"` or `"app"` consistent with install tool).
 - No second “전체 재배선” item in v1 (YAGNI).
 
-Root title: `MCP (문제 있음)` iff any host has `isProblem == true`.
+Root title: `🔌 MCP` when healthy; `🔌 MCP (문제 있음)` iff any host has `isProblem == true`.
+
+### 6.2 Menubar emoji map (full menu)
+
+Unicode emoji **prefix** on menu titles (space after emoji). Status-item badge remains custom drawing (no change).  
+Doctor **finding body text** and pasteboard report stay code-oriented (no required emoji there) so logs stay greppable; only **menu chrome** uses emoji.
+
+| Menu item | Emoji | Title examples |
+|-----------|-------|----------------|
+| MCP root | 🔌 | `🔌 MCP` / `🔌 MCP (문제 있음)` |
+| Host line | per state (§4 table) | `✅ Claude: 등록됨` |
+| MCP repair | 🔧 | `🔧 문제 호스트 복구` |
+| Error row | ❌ | `❌ 오류: …` |
+| Doctor root | 🩺 | `🩺 진단` / `🩺 진단 (문제 있음)` |
+| Doctor OK leaf | ✅ | `✅ 문제 없음` |
+| Doctor problem leaf | ⚠️ | optional prefix on problem lines in submenu only |
+| Copy doctor | 📋 | `📋 진단 요약 복사` |
+| Mute | 🔇 / 🔊 | `🔇 음소거` / `🔊 음소거 해제` |
+| Companion | 🗣️ | `🗣️ 도우미 음성 끄기` / `🗣️ 도우미 음성 켜기` |
+| Mode root | 🎚️ | `🎚️ 모드` |
+| Mode items | (none or ·) | keep `normal — 기본` text; optional leading `•` only if needed for alignment—**no per-mode emoji required** |
+| Service start | ▶️ | `▶️ 서비스 시작` |
+| Service stop | ⏹ | `⏹ 서비스 중지` |
+| Quit | ⏻ | `⏻ Chorus 종료` |
+
+**Rules**
+
+- One leading emoji + space + Korean/English title; do not stack multiple emoji.
+- Prefer emoji that render in default macOS menu fonts (avoid obscure ZWJ sequences).
+- Summary **header** line stays text-only (already dense: service · mute · companion · mode · voice).
+- Tests assert substring of Korean labels and, where useful, the fixed emoji constant (e.g. host line starts with `✅`).
 
 ---
 
@@ -142,7 +179,8 @@ doctor()
 | Type / API | Responsibility |
 |------------|----------------|
 | `HostMcpState` | Closed enum |
-| `HostMcpStatus` | `host`, `state`, `menuLine`, `isProblem`, optional recovery string |
+| `HostMcpStatus` | `host`, `state`, `menuLine` (includes state emoji), `isProblem`, optional recovery string |
+| Menu title helpers | Small pure functions or static maps for emoji prefixes (testable without AppKit) |
 | `Diagnostics.hostMcpStatuses()` | Probe all `HostSource.allCases` |
 | `Diagnostics.doctor()` | Append `mcp.*` findings for problems |
 | `MenuBarStatus` | Carry `mcpLines: [String]`, `hasMcpProblems: Bool` |
@@ -178,8 +216,9 @@ Avoid duplicate doctor noise: if a host is `unreadable`, emit **one** finding. P
    - path match vs mismatch
    - Codex ignores hooks.json for MCP presence
 2. **doctor**: problem hosts appear as `mcp.*`; `absent`/`ok` do not
-3. **MenuBarStatus**: `hasMcpProblems`, `mcpLines` count/content
-4. **Repair** (integration or controller with mock installer if already injectable): problem hosts passed with `repair: true`; ok/absent omitted
+3. **MenuBarStatus**: `hasMcpProblems`, `mcpLines` count/content; each line includes the §4 state emoji
+4. **Menu title map**: mute/companion/doctor/MCP root strings match the emoji table (unit-test pure helpers)
+5. **Repair** (integration or controller with mock installer if already injectable): problem hosts passed with `repair: true`; ok/absent omitted
 
 TDD: failing tests first.
 
@@ -195,9 +234,9 @@ TDD: failing tests first.
 
 ## 11. Implementation plan (PR-sized)
 
-1. `HostMcpState` / `HostMcpStatus` + probe + tests  
+1. `HostMcpState` / `HostMcpStatus` + probe + tests (emoji in `menuLine`)  
 2. Wire `doctor()` + `MenuBarStatus` / controller refresh  
-3. Menu submenu UI  
+3. Menu submenu UI + full menubar emoji title map  
 4. Repair action via installer  
 5. Light doc touch + full `swift test`
 
