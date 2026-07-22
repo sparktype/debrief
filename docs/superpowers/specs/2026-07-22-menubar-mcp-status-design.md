@@ -128,8 +128,20 @@ Root title: `🔌 MCP` when healthy; `🔌 MCP (문제 있음)` iff any host has
 
 ### 6.2 Menubar emoji map (full menu)
 
-Unicode emoji **prefix** on menu titles (space after emoji). Status-item badge remains custom drawing (no change).  
+Unicode emoji **prefix** on menu titles (space after emoji). Status-item badge remains custom drawing.  
 Doctor **finding body text** and pasteboard report stay code-oriented (no required emoji there) so logs stay greppable; only **menu chrome** uses emoji.
+
+### 6.3 Status-item badge width
+
+Keep the existing voice/transport badge drawing, but **narrow the image slightly** so the menu-bar slot is less wide:
+
+| Constant | Previous | Target |
+|----------|----------|--------|
+| `MenuBarBadgeDrawing.badgeSize` | 28×16 | **22×16** |
+| Voice label font | monospaced 10 bold | monospaced **9** bold |
+| App silhouette template side | 18 | **16** (standard menubar glyph size) |
+
+Height stays 16 (menu-bar convention). No change to `NSStatusItem.variableLength` policy—the button sizes to the image.
 
 | Menu item | Emoji | Title examples |
 |-----------|-------|----------------|
@@ -237,8 +249,9 @@ TDD: failing tests first.
 1. `HostMcpState` / `HostMcpStatus` + probe + tests (emoji in `menuLine`)  
 2. Wire `doctor()` + `MenuBarStatus` / controller refresh  
 3. Menu submenu UI + full menubar emoji title map  
-4. Repair action via installer  
-5. Light doc touch + full `swift test`
+4. Narrow status-item badge (`badgeSize` 22×16, silhouette 16)  
+5. Repair action via installer  
+6. Light doc touch + full `swift test`
 
 ---
 
