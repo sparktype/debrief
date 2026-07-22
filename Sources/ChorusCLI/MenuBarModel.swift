@@ -9,6 +9,8 @@ final class MenuBarController {
     private let home: URL
     /// Retained for process lifetime — menu stop does not release the service.
     private let service: ResidentService
+    /// Install/repair runner for MCP host rewiring (injectable in tests).
+    private let installRunner: any McpInstallRunning
     var onStatusChange: (() -> Void)?
 
     /// Serializes start/stop/mute/mode so concurrent menu clicks do not race.
@@ -16,9 +18,16 @@ final class MenuBarController {
     /// Polls active voice while the menu bar is up.
     private var voicePollTask: Task<Void, Never>?
 
-    init(home: URL, service: ResidentService) {
+    init(
+        home: URL,
+        service: ResidentService,
+        installRunner: (any McpInstallRunning)? = nil
+    ) {
         self.home = home
         self.service = service
+        let source = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+        self.installRunner = installRunner
+            ?? LiveMcpInstallRunner(home: home, sourceExecutable: source)
         self.status = MenuBarStatus(
             serviceRunning: false,
             muted: false,
@@ -26,7 +35,9 @@ final class MenuBarController {
             mode: .normal,
             activeVoice: nil,
             lastError: nil,
-            doctorLines: []
+            doctorLines: [],
+            mcpLines: [],
+            hasMcpProblems: false
         )
     }
 
@@ -58,6 +69,7 @@ final class MenuBarController {
             // Surface hook delivery / daemon failures recorded outside the UI process.
             lastError = persisted
         }
+        let mcp = diagnostics.hostMcpStatuses()
         let next = MenuBarStatus(
             serviceRunning: running,
             muted: snapshot.muted,
@@ -65,12 +77,43 @@ final class MenuBarController {
             mode: snapshot.mode,
             activeVoice: voice,
             lastError: lastError,
-            doctorLines: diagnostics.doctorProblemLines()
+            doctorLines: diagnostics.doctorProblemLines(),
+            mcpLines: mcp.map(\.menuLine),
+            hasMcpProblems: mcp.contains(where: \.isProblem)
         )
         // Avoid rebuilding the menu on every poll tick when nothing visible changed.
         if next != status {
             status = next
             onStatusChange?()
+        }
+    }
+
+    /// Re-runs install --repair for hosts whose MCP wiring is broken (not absent/ok).
+    func repairProblemMcpHosts() async {
+        await enqueue {
+            let paths = ChorusPaths.forHome(self.home)
+            let problems = HostMcpProbe.problemHosts(
+                home: self.home,
+                expectedExecutable: paths.executableURL
+            )
+            guard !problems.isEmpty else {
+                await self.refresh()
+                return
+            }
+            do {
+                _ = try await self.installRunner.install(hosts: problems, repair: true)
+                try? Diagnostics(home: self.home).clearCurrentError()
+                self.status.lastError = nil
+            } catch {
+                let detail = String(describing: error)
+                try? Diagnostics(home: self.home).recordError(
+                    component: "mcp",
+                    code: "menu_repair_failed",
+                    message: detail
+                )
+                self.status.lastError = Self.describe(error)
+            }
+            await self.refresh()
         }
     }
 

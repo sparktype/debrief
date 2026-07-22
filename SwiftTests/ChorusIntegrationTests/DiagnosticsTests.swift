@@ -81,11 +81,23 @@ struct DiagnosticsTests {
         try Data([0xFF, 0xFE, 0xFD]).write(to: grok)
 
         let findings = Diagnostics(home: home, processExists: { _ in false }).doctor()
-        #expect(findings.contains { $0.code == "host.grok.invalid_toml" && !$0.ok })
+        // MCP probe collapses unreadable host config into a single mcp.* finding.
+        #expect(findings.contains { $0.code == "mcp.grok.unreadable" && !$0.ok })
+        #expect(!findings.contains { $0.code == "host.grok.invalid_toml" })
         #expect(!findings.contains { $0.code == "host.grok.invalid_json" })
-        let grokFinding = try #require(findings.first { $0.code == "host.grok.invalid_toml" })
-        #expect(grokFinding.recovery?.localizedCaseInsensitiveContains("toml") == true)
-        #expect(grokFinding.recovery?.localizedCaseInsensitiveContains("json") != true)
+        let grokFinding = try #require(findings.first { $0.code == "mcp.grok.unreadable" })
+        #expect(grokFinding.recovery != nil)
+    }
+
+    @Test func doctorReportsMissingClaudeMcpWhenSettingsExist() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeJSON(["mcpServers": [:]], to: home.appending(path: ".claude/settings.json"))
+
+        let findings = Diagnostics(home: home, processExists: { _ in false }).doctor()
+        #expect(findings.contains { $0.code == "mcp.claude.missing" && !$0.ok })
+        let statuses = Diagnostics(home: home).hostMcpStatuses()
+        #expect(statuses.contains { $0.host == .claude && $0.state == .missing })
     }
 
     @Test func doctorIncludesLastErrorAndProblemLines() throws {

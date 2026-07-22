@@ -12,6 +12,10 @@ public struct MenuBarStatus: Equatable, Sendable {
     public var lastError: String?
     /// Failed doctor findings for the diagnostics submenu (empty when healthy).
     public var doctorLines: [String]
+    /// Per-host MCP menu lines (emoji + label), always one per `HostSource`.
+    public var mcpLines: [String]
+    /// True when any host MCP wiring is a repairable problem.
+    public var hasMcpProblems: Bool
 
     public init(
         serviceRunning: Bool,
@@ -20,7 +24,9 @@ public struct MenuBarStatus: Equatable, Sendable {
         mode: ChorusMode,
         activeVoice: String? = nil,
         lastError: String? = nil,
-        doctorLines: [String] = []
+        doctorLines: [String] = [],
+        mcpLines: [String] = [],
+        hasMcpProblems: Bool = false
     ) {
         self.serviceRunning = serviceRunning
         self.muted = muted
@@ -29,6 +35,8 @@ public struct MenuBarStatus: Equatable, Sendable {
         self.activeVoice = activeVoice
         self.lastError = lastError
         self.doctorLines = doctorLines
+        self.mcpLines = mcpLines
+        self.hasMcpProblems = hasMcpProblems
     }
 
     /// 메뉴 헤더용 한 줄 요약 (한국어).

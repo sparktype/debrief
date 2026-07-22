@@ -100,8 +100,19 @@ public struct Diagnostics: Sendable {
         } else {
             findings.append(.init(code: "model.valid", ok: true, recovery: nil))
         }
+        let mcpStatuses = hostMcpStatuses()
+        let unreadableMcpHosts = Set(mcpStatuses.filter { $0.state == .unreadable }.map(\.host))
         for host in HostSource.allCases where snapshot.hostSettingsReadable[host.rawValue] == false {
+            // Prefer single mcp.*.unreadable when the MCP probe already covers it.
+            if unreadableMcpHosts.contains(host) { continue }
             findings.append(hostSettingsFinding(for: host))
+        }
+        for mcp in mcpStatuses where mcp.isProblem {
+            findings.append(.init(
+                code: mcp.doctorCode,
+                ok: false,
+                recovery: mcp.recovery
+            ))
         }
         let socketRecovery: String?
         if snapshot.socketPresent {
@@ -147,6 +158,11 @@ public struct Diagnostics: Sendable {
             body += "(결과 없음)"
         }
         return body
+    }
+
+    /// Per-host chorus MCP wiring (Claude / Codex / Grok).
+    public func hostMcpStatuses() -> [HostMcpStatus] {
+        HostMcpProbe.statuses(home: paths.home, expectedExecutable: paths.executableURL)
     }
 
     public func recordError(component: String, code: String, message: String) throws {

@@ -76,4 +76,26 @@ struct MenuBarStatusTests {
         ).summaryLine
         #expect(line.contains("도우미 꺼짐"))
     }
+
+    @Test func mcpLinesAndProblemsSurfaceInStatus() {
+        let healthy = MenuBarStatus(
+            serviceRunning: true,
+            muted: false,
+            mode: .normal,
+            mcpLines: ["✅ Claude: 등록됨", "⚪ Codex: 설정 없음", "⚪ Grok: 설정 없음"],
+            hasMcpProblems: false
+        )
+        #expect(!healthy.hasMcpProblems)
+        #expect(healthy.mcpLines.count == 3)
+
+        let sick = MenuBarStatus(
+            serviceRunning: true,
+            muted: false,
+            mode: .normal,
+            mcpLines: ["⚠️ Claude: 미등록"],
+            hasMcpProblems: true
+        )
+        #expect(sick.hasMcpProblems)
+        #expect(sick.mcpLines.first?.hasPrefix("⚠️") == true)
+    }
 }

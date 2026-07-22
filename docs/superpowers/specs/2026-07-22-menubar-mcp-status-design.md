@@ -1,7 +1,7 @@
 # Menu Bar MCP Host Status Design
 
 **Date:** 2026-07-22  
-**Status:** Approved for implementation  
+**Status:** Implemented  
 **Target:** macOS 14+ Apple Silicon, Chorus 2.x  
 **Depends on:** MCP speak + install (`2026-07-19-mcp-speak-tool-design.md`), menubar resident (`2026-07-17-menubar-resident-tts-design.md`)
 

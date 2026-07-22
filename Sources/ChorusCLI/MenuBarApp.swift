@@ -171,7 +171,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if let error = controller.status.lastError {
             let errorItem = NSMenuItem(
-                title: "오류: \(error)",
+                title: MenuBarMenuTitles.error(error),
                 action: nil,
                 keyEquivalent: ""
             )
@@ -179,10 +179,42 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(errorItem)
         }
 
+        // MCP host wiring submenu
+        let mcpMenu = NSMenu()
+        let mcpLines = controller.status.mcpLines
+        if mcpLines.isEmpty {
+            let placeholder = NSMenuItem(title: "⚪ 상태 확인 중…", action: nil, keyEquivalent: "")
+            placeholder.isEnabled = false
+            mcpMenu.addItem(placeholder)
+        } else {
+            for line in mcpLines {
+                let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                mcpMenu.addItem(item)
+            }
+        }
+        mcpMenu.addItem(.separator())
+        let repairItem = NSMenuItem(
+            title: MenuBarMenuTitles.repairMcp,
+            action: #selector(repairMcpHosts),
+            keyEquivalent: ""
+        )
+        repairItem.target = self
+        repairItem.isEnabled = controller.status.hasMcpProblems
+        mcpMenu.addItem(repairItem)
+        let mcpRoot = NSMenuItem(
+            title: MenuBarMenuTitles.mcpRoot(hasProblems: controller.status.hasMcpProblems),
+            action: nil,
+            keyEquivalent: ""
+        )
+        mcpRoot.submenu = mcpMenu
+        mcpRoot.isEnabled = true
+        menu.addItem(mcpRoot)
+
         let doctorMenu = NSMenu()
         let problems = controller.status.doctorLines
         if problems.isEmpty {
-            let okItem = NSMenuItem(title: "문제 없음", action: nil, keyEquivalent: "")
+            let okItem = NSMenuItem(title: MenuBarMenuTitles.doctorOK, action: nil, keyEquivalent: "")
             okItem.isEnabled = false
             doctorMenu.addItem(okItem)
         } else {
@@ -194,7 +226,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         doctorMenu.addItem(.separator())
         let copyItem = NSMenuItem(
-            title: "진단 요약 복사",
+            title: MenuBarMenuTitles.copyDoctor,
             action: #selector(copyDoctorReport),
             keyEquivalent: ""
         )
@@ -202,7 +234,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         copyItem.isEnabled = true
         doctorMenu.addItem(copyItem)
         let doctorRoot = NSMenuItem(
-            title: controller.status.hasDoctorProblems ? "진단 (문제 있음)" : "진단",
+            title: MenuBarMenuTitles.doctorRoot(hasProblems: controller.status.hasDoctorProblems),
             action: nil,
             keyEquivalent: ""
         )
@@ -212,9 +244,8 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let muteTitle = controller.status.muted ? "음소거 해제" : "음소거"
         let muteItem = NSMenuItem(
-            title: muteTitle,
+            title: MenuBarMenuTitles.mute(isMuted: controller.status.muted),
             action: #selector(toggleMute),
             keyEquivalent: ""
         )
@@ -222,9 +253,8 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         muteItem.isEnabled = true
         menu.addItem(muteItem)
 
-        let companionTitle = controller.status.companionEnabled ? "도우미 음성 끄기" : "도우미 음성 켜기"
         let companionItem = NSMenuItem(
-            title: companionTitle,
+            title: MenuBarMenuTitles.companion(enabled: controller.status.companionEnabled),
             action: #selector(toggleCompanion),
             keyEquivalent: ""
         )
@@ -246,7 +276,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             modeItem.isEnabled = true
             modeMenu.addItem(modeItem)
         }
-        let modeRoot = NSMenuItem(title: "모드", action: nil, keyEquivalent: "")
+        let modeRoot = NSMenuItem(title: MenuBarMenuTitles.modeRoot, action: nil, keyEquivalent: "")
         modeRoot.submenu = modeMenu
         modeRoot.isEnabled = true
         menu.addItem(modeRoot)
@@ -255,7 +285,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if controller.status.serviceRunning {
             let stopItem = NSMenuItem(
-                title: "서비스 중지",
+                title: MenuBarMenuTitles.serviceStop,
                 action: #selector(stopService),
                 keyEquivalent: ""
             )
@@ -264,7 +294,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(stopItem)
         } else {
             let startItem = NSMenuItem(
-                title: "서비스 시작",
+                title: MenuBarMenuTitles.serviceStart,
                 action: #selector(startService),
                 keyEquivalent: ""
             )
@@ -276,7 +306,7 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
-            title: "Chorus 종료",
+            title: MenuBarMenuTitles.quit,
             action: #selector(quitChorus),
             keyEquivalent: "q"
         )
@@ -330,6 +360,10 @@ final class MenuBarHost: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleCompanion() {
         Task { @MainActor in await controller.toggleCompanion() }
+    }
+
+    @objc private func repairMcpHosts() {
+        Task { @MainActor in await controller.repairProblemMcpHosts() }
     }
 
     @objc private func selectMode(_ sender: NSMenuItem) {
