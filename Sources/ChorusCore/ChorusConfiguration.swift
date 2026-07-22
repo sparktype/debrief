@@ -17,10 +17,16 @@ public struct ChorusConfiguration: Codable, Equatable, Sendable {
         ChorusMode.verbose.rawValue: 1.0,
         ChorusMode.night.rawValue: 0.20,
     ]
-    public static let `default` = ChorusConfiguration(mode: .normal, muted: false)
+    public static let `default` = ChorusConfiguration(
+        mode: .normal,
+        muted: false,
+        companionEnabled: true
+    )
 
     public var mode: ChorusMode
     public var muted: Bool
+    /// When false, companion-lane speech is rejected (P2 도우미 음성).
+    public var companionEnabled: Bool
     public var volumeCeilings: [String: Double]
     public var categoryVoices: [String: String]
     public var voiceSpeeds: [String: Double]
@@ -28,25 +34,28 @@ public struct ChorusConfiguration: Codable, Equatable, Sendable {
     public init(
         mode: ChorusMode,
         muted: Bool,
+        companionEnabled: Bool = true,
         volumeCeilings: [String: Double] = defaultVolumeCeilings,
         categoryVoices: [String: String] = [:],
         voiceSpeeds: [String: Double] = [:]
     ) {
         self.mode = mode
         self.muted = muted
+        self.companionEnabled = companionEnabled
         self.volumeCeilings = volumeCeilings
         self.categoryVoices = categoryVoices
         self.voiceSpeeds = voiceSpeeds
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, muted, volumeCeilings, categoryVoices, voiceSpeeds
+        case mode, muted, companionEnabled, volumeCeilings, categoryVoices, voiceSpeeds
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         mode = try container.decodeIfPresent(ChorusMode.self, forKey: .mode) ?? .normal
         muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+        companionEnabled = try container.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? true
         volumeCeilings = try container.decodeIfPresent([String: Double].self, forKey: .volumeCeilings)
             ?? Self.defaultVolumeCeilings
         categoryVoices = try container.decodeIfPresent([String: String].self, forKey: .categoryVoices) ?? [:]
@@ -99,6 +108,7 @@ public struct ChorusConfiguration: Codable, Equatable, Sendable {
 public enum ConfigurationCommandError: Error, Equatable, Sendable {
     case invalidMode(String)
     case invalidMuteAction(String)
+    case invalidCompanionAction(String)
 }
 
 public enum ConfigurationCommands {
@@ -122,6 +132,20 @@ public enum ConfigurationCommands {
         case "off": configuration.muted = false
         case "toggle": configuration.muted.toggle()
         case let invalid: throw ConfigurationCommandError.invalidMuteAction(invalid)
+        }
+        try configuration.save(to: url)
+        return configuration
+    }
+
+    /// Toggle or set companion-lane speech (`도우미 음성`).
+    public static func applyCompanion(_ rawValue: String?, home: URL) throws -> ChorusConfiguration {
+        let url = ChorusPaths.forHome(home).configURL
+        var configuration = ChorusConfiguration.load(from: url)
+        switch rawValue ?? "toggle" {
+        case "on": configuration.companionEnabled = true
+        case "off": configuration.companionEnabled = false
+        case "toggle": configuration.companionEnabled.toggle()
+        case let invalid: throw ConfigurationCommandError.invalidCompanionAction(invalid)
         }
         try configuration.save(to: url)
         return configuration

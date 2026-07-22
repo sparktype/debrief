@@ -11,6 +11,7 @@ public enum DaemonProcessState: String, Codable, Equatable, Sendable {
 public struct StatusSnapshot: Codable, Equatable, Sendable {
     public let mode: ChorusMode
     public let muted: Bool
+    public let companionEnabled: Bool
     public let process: DaemonProcessState
     public let socketPresent: Bool
     public let modelRevision: String?
@@ -25,6 +26,15 @@ public struct DiagnosticFinding: Codable, Equatable, Sendable {
     public let code: String
     public let ok: Bool
     public let recovery: String?
+
+    /// Short Korean line for the menu bar diagnostics submenu.
+    public var summaryLine: String {
+        let status = ok ? "정상" : "문제"
+        if let recovery, !ok {
+            return "[\(status)] \(code) — \(recovery)"
+        }
+        return "[\(status)] \(code)"
+    }
 }
 
 public struct CurrentError: Codable, Equatable, Sendable {
@@ -52,6 +62,7 @@ public struct Diagnostics: Sendable {
         return StatusSnapshot(
             mode: configuration.mode,
             muted: configuration.muted,
+            companionEnabled: configuration.companionEnabled,
             process: process,
             socketPresent: FileManager.default.fileExists(atPath: paths.socketURL.path),
             modelRevision: model.revision,
@@ -111,7 +122,31 @@ public struct Diagnostics: Sendable {
             ok: snapshot.launchAgentInstalled,
             recovery: snapshot.launchAgentInstalled ? nil : "chorus install --repair"
         ))
+        if let error = currentError() {
+            findings.append(.init(
+                code: "last_error.\(error.code)",
+                ok: false,
+                recovery: error.message
+            ))
+        }
         return findings
+    }
+
+    /// Failed findings only, newest last-error first when present, for menu display.
+    public func doctorProblemLines(limit: Int = 8) -> [String] {
+        let problems = doctor().filter { !$0.ok }
+        return Array(problems.prefix(limit).map(\.summaryLine))
+    }
+
+    /// Full plain-text doctor report for pasteboard copy.
+    public func doctorReportText() -> String {
+        let lines = doctor().map(\.summaryLine)
+        var body = "Chorus 진단 (\(ChorusVersion.current))\n"
+        body += lines.joined(separator: "\n")
+        if lines.isEmpty {
+            body += "(결과 없음)"
+        }
+        return body
     }
 
     public func recordError(component: String, code: String, message: String) throws {

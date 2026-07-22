@@ -4,10 +4,10 @@
   "plugins": [{
     "name": "chorus",
     "source": "../plugins/chorus",
-    "description": "Private-by-default local voice feedback for coding agents on macOS Apple Silicon.",
+    "description": "Local TTS-only companion for Claude Code, Codex, and Grok on Apple Silicon Macs via MCP speak.",
     "category": "developer-tools",
-    "installation": "Install the plugin, then run /chorus:setup.",
-    "authentication": "No credentials for local mode; optional external summary provider credentials for standard or detailed mode.",
-    "privacy": "Local audio by default. Listen mode needs microphone permission. Standard and detailed modes can transmit selected text after explicit setup consent."
+    "installation": "Build and run `chorus install --claude` (or full install). Restart Claude Code so MCP tool speak / mcp__chorus__speak appears. Use skill chorus-speak at turn end.",
+    "authentication": "No credentials required.",
+    "privacy": "Speaks only agent-provided text through the local menu-bar daemon. No STT, no cloud summarization, no transcript upload."
   }]
 }

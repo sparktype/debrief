@@ -57,4 +57,16 @@ struct HookAdapterTests {
         <!-- chorus:speak {"v":1,"text":"Codex 보존 검증을 완료했습니다.","voice":"F1","speed":0.93,"volume":0.6} -->
         """)
     }
+
+    @Test func claudeSubagentTypeAliasMapsToAgentType() throws {
+        let payload: [String: Any] = [
+            "hook_event_name": "SubagentStart",
+            "session_id": "claude-s1",
+            "subagent_type": "Explore",
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        let event = try HookAdapter.decode(data, source: .claude)
+        #expect(event.name == .subagentStart)
+        #expect(event.agentType == "Explore")
+    }
 }

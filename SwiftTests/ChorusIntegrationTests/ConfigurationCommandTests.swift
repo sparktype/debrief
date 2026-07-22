@@ -23,6 +23,11 @@ struct ConfigurationCommandTests {
         #expect(try !ConfigurationCommands.applyMute("off", home: home).muted)
         #expect(try ConfigurationCommands.applyMute("toggle", home: home).muted)
         #expect(try !ConfigurationCommands.applyMute(nil, home: home).muted)
+
+        #expect(try ConfigurationCommands.applyCompanion("off", home: home).companionEnabled == false)
+        #expect(try ConfigurationCommands.applyCompanion("on", home: home).companionEnabled == true)
+        #expect(try ConfigurationCommands.applyCompanion("toggle", home: home).companionEnabled == false)
+        #expect(try ConfigurationCommands.applyCompanion(nil, home: home).companionEnabled == true)
     }
 
     @Test func invalidModeAndMuteAreRejectedWithoutWriting() {

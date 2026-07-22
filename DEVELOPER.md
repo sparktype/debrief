@@ -5,44 +5,54 @@
 Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executable. Its responsibilities are deliberately narrow:
 
 1. install and verify the pinned Supertonic 3 model;
-2. install the executable, LaunchAgent, start-family host hooks, setup skill, and MCP registration (plus Grok speak skill);
-3. accept strict agent-provided MCP `speak` arguments;
+2. install the executable, LaunchAgent, host MCP registration, skills (`setup` / `install` / `speak`), and start-family hooks (Claude/Codex only);
+3. accept agent MCP tools:
+   - **`speak`**: `text`, `voice`, `speed`, `volume`; optional `priority`, `lane` (`companion`|`work`), `emotion`;
+   - **`install`**: optional `hosts`, optional `repair` (default `true`);
 4. synthesize with the local ONNX Runtime backend and play audio;
-5. expose current-state `status` and `doctor` diagnostics.
+5. expose diagnostics on the menu bar (**진단**, **도우미 음성** toggle, `last-error.json`).
 
-The coding agent owns summarization and selects text, voice, speed, and volume via the MCP tool.
+The coding agent owns summarization and selects spoken text and voice parameters.
 
 ## Source layout
 
 ```text
 Package.swift
 Sources/
-├── ChorusCLI/                 command parsing and process entry point
-│   ├── main.swift             subcommand dispatch (menubar / daemon / mcp / CLI)
+├── ChorusCLI/
+│   ├── main.swift             subcommand dispatch (menubar / mcp / hook / install)
 │   ├── MenuBarApp.swift       LSUIElement NSStatusItem + NSMenu host
+│   ├── MenuBarIcons.swift     badge / silhouette icon rendering
 │   └── MenuBarModel.swift     menu actions against ResidentService
 └── ChorusCore/
     ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
     ├── ChorusDaemon.swift     speech accept loop over Unix socket
     ├── SpeechEnvelope.swift   internal wire model and validation
-    ├── McpServer.swift        stdio JSON-RPC MCP (tools only)
+    ├── SpeechRequest.swift    envelope + SpeechPriority + lane + emotion
+    ├── SpeechLane.swift       companion | work
+    ├── SpeechEmotion.swift    closed emotion enum + EmotionProsody bias
+    ├── McpServer.swift        stdio JSON-RPC MCP (tools: speak, install)
     ├── McpSpeakTool.swift     speak arg parse + UDS submit
+    ├── McpInstallTool.swift   install/repair via RuntimeInstaller
+    ├── McpTomlConfig.swift    Codex/Grok TOML MCP ownership markers
     ├── HookAdapters.swift     Codex and Claude event adaptation
-    ├── ModePolicy.swift       suppression and effective-volume policy
+    ├── ModePolicy.swift       mute / companionEnabled / subagent suppress / volume ceiling
     ├── SpeechQueue.swift      bounded serialized speech queue
     ├── SupertonicEngine.swift local ONNX TTS backend
     ├── UnixSocket.swift       local resident transport
     ├── MenuBarStatus.swift    pure status snapshot for menu header
     ├── ModelInstaller.swift   pinned download, checksum, and atomic swap
     ├── RuntimeInstaller.swift executable and LaunchAgent lifecycle
-    ├── EmbeddedTemplates.swift hooks, skills, LaunchAgent (args: menubar)
-    ├── HostInstaller.swift    safe hook/skill/MCP merge/uninstall (incl. Grok)
+    ├── EmbeddedTemplates.swift hooks, skills (Claude/Codex + Grok variants)
+    ├── HostInstaller.swift    safe hook/skill/MCP merge/uninstall
     ├── LegacyMigration.swift  one-time allowlisted configuration import
-    └── Diagnostics.swift      bounded current-state diagnostics
+    └── Diagnostics.swift      status, doctor findings, last-error
 SwiftTests/
 ├── ChorusCoreTests/
 └── ChorusIntegrationTests/
-plugins/chorus/               marketplace metadata, start-family hooks, setup skill
+plugins/chorus/               marketplace metadata, hooks, skills
+docs/archive/                 superseded Python-era designs (not product truth)
+.github/workflows/ci.yml      macos-15 swift test + release build
 ```
 
 ## Process model
@@ -54,8 +64,8 @@ Login / chorus install
 LaunchAgent (com.chorus.tts)
         │ ProgramArguments: [Chorus.app/Contents/MacOS/chorus, "menubar"]
         ▼
-Chorus.app (LSUIElement menu bar; also launched from Applications)
-        ├── Menu: status · mute · mode · start · stop · quit
+Chorus.app (LSUIElement menu bar)
+        ├── Menu: status · 진단 · mute · 도우미 음성 · mode · start · stop · quit
         └── ResidentService (in-process)
               ├── pid file
               ├── Unix socket server
@@ -64,29 +74,26 @@ Chorus.app (LSUIElement menu bar; also launched from Applications)
               └── AudioPlayer
 
 Codex / Claude / Grok
-  │ spawn: …/chorus mcp   (stdio MCP; tool speak)
+  │ spawn: …/chorus mcp   (stdio MCP)
   ▼
-chorus mcp ──► validate ──► Unix socket ──► ResidentService
-
-Codex / Claude (start hooks only)
-  │ SessionStart / UserPromptSubmit / SubagentStart
-  ▼
-…/chorus hook ──► inject MCP speak contract context
+chorus mcp
+  ├── tools/call speak   → validate → UDS → ResidentService
+  └── tools/call install → RuntimeInstaller (same as CLI install)
 ```
 
 ## Host install paths
 
 | Host | Settings / MCP | Skills | Hooks |
 | --- | --- | --- | --- |
-| Codex | `~/.codex/config.toml` → `[mcp_servers.chorus]` | `~/.agents/skills` | start-family in `~/.codex/hooks.json` |
-| Claude | `~/.claude/settings.json` → `mcpServers.chorus` | `~/.claude/skills` | start-family in settings |
-| Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-speak` | none (skill + MCP carry contract) |
+| Codex | `~/.codex/config.toml` → `[mcp_servers.chorus]` | `~/.agents/skills/chorus-*` | start-family in `~/.codex/hooks.json` |
+| Claude | `~/.claude/settings.json` → `mcpServers.chorus` | `~/.claude/skills/chorus-*` | start-family in settings |
+| Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-*` | **none** (SessionStart stdout ignored) |
 
-MCP registration always points at the app absolute path with `args: ["mcp"]`.
+Skills installed for every host: **`chorus-setup`**, **`chorus-install`**, **`chorus-speak`**. Grok skill bodies use Grok tool names (`chorus__speak` / `chorus__install`) and `/mcps`.
 
-## Speech contract (MCP)
+MCP registration always points at the app absolute path with `args: ["mcp"]`. TOML hosts use ownership markers `# BEGIN chorus-mcp` / `# END chorus-mcp`. `tool_timeout_sec = 120` (install may run longer than speak).
 
-Agents call tool `speak` on server `chorus` once per turn. Required arguments:
+## Speech contract (MCP `speak`)
 
 | Field | Constraints |
 | --- | --- |
@@ -94,29 +101,75 @@ Agents call tool `speak` on server `chorus` once per turn. Required arguments:
 | voice | F1…F5, M1…M5 |
 | speed | 0.7–2.0 finite |
 | volume | 0.0–1.0 finite |
+| priority | optional: `main` (default) or `subagent` |
+| lane | optional: `companion` (default) or `work` |
+| emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); prosody bias only |
 
-No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (no envelope fallback). Internal `SpeechEnvelope` validation still backs UDS frames after MCP parse.
+No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (preferred when speech would only restate the screen). Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
+
+Policy (`ModePolicy.admit`):
+
+- **mute** rejects all speech
+- **`companionEnabled == false`** (menu 도우미 음성) rejects `lane=companion`; work lane still plays
+- **focus / quiet / night** reject `priority=subagent`
+- **quiet / night** apply volume ceilings (0.45 / 0.20)
+- **work** lane forces neutral emotion for prosody
+
+`SpeechRequest.priority` / `lane` / `emotion` are request fields (not host hook event names).
+
+Host tool display names:
+
+| Host | speak | install |
+| --- | --- | --- |
+| Claude Code | `mcp__chorus__speak` | `mcp__chorus__install` |
+| Grok | `chorus__speak` | `chorus__install` |
+| Codex | `speak` | `install` |
+
+## MCP tool `install`
+
+| Field | Constraints |
+| --- | --- |
+| hosts | optional array of `codex` / `claude` / `grok` (omit = all) |
+| repair | optional boolean (default `true`) |
+
+Uses the MCP process executable as the source binary for `RuntimeInstaller` (same path as CLI `chorus install`). Prefer shell install for first-time model download if the host tool timeout is short.
 
 ## Runtime lifecycle
 
-`chorus install` installs `Chorus.app` (MacOS binary + Info.plist + optional AppIcon.icns), pinned model, host hooks (start-family), MCP registration, a single setup skill (and Grok speak skill), LaunchAgent replacement, and a health-gated legacy cutover. There is no user CLI and no `~/.local/bin/chorus` symlink; hooks and MCP invoke the app executable directly. Owned-file digests prevent uninstall or repair from overwriting user modifications. LaunchAgent `ProgramArguments` are `[appExecutable, "menubar"]`. Finder opens the app with no arguments (menu bar).
+`chorus install` installs `Chorus.app`, pinned model, host MCP, skills, Claude/Codex start-family hooks, LaunchAgent, and health-gated legacy cutover. There is no user CLI symlink under `~/.local/bin`. Owned-file digests prevent uninstall/repair from overwriting user-modified files.
 
-The menu bar resident starts `ResidentService`, which writes its PID and serves the local Unix domain socket under the Chorus home. Speech requests are bounded, deduplicated, serialized, and played through the system audio framework. Menu Stop ends the in-process service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. It must not await `launchctl bootout` from inside the job — launchd waits for the process to exit and that deadlocks. `install --repair` re-enables and bootstraps the agent.
+Menu Stop ends the in-process TTS service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. Do not await `launchctl bootout` from inside the job — that deadlocks. `install --repair` re-enables and bootstraps the agent.
+
+Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/last-error.json` and appear under the menu **진단** submenu.
 
 ## Build and verification
 
 ```sh
-swift test
-swift build -c release
+./scripts/with-xcode.sh swift test
+./scripts/with-xcode.sh swift build -c release
 ```
 
-On the Command Line Tools 27 toolchain, the local environment may require the Testing plugin and runtime search-path flags documented in the implementation plan. Release verification must also inspect the executable architecture and linked libraries, then run installation and offline speech smoke tests from a clean temporary home.
+GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`. Local development prefers Xcode 27 beta via `./scripts/with-xcode.sh` or `.envrc` `DEVELOPER_DIR`.
+
+Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`CHORUS_TEST_MODEL_DIR` for the real-model smoke test).
 
 ## Change rules
 
 - Add a focused failing test before behavior changes.
-- Run impact analysis before editing an existing symbol.
-- Keep the hook set and skill set exact; additions are product-scope changes.
+- Run impact analysis before editing an existing symbol (GitNexus when available).
+- Keep the hook set exact (start-family only on Claude/Codex). Skills are `setup` + `install` + `speak` (Grok via `grokSkills`). MCP tools are `speak` + `install`.
 - Do not persist hook payload text or synthesized audio.
 - Preserve unrelated host settings and modified installed files.
+- Do not reintroduce Python, Node, HTTP TTS servers, STT, or HTML speech envelopes.
 - Run the full Swift suite and release build before claiming completion.
+
+## Active specs
+
+| Spec | Topic |
+| --- | --- |
+| `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` | Single-binary Swift TTS (envelope contract superseded) |
+| `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` | Menu bar resident process |
+| `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` | MCP speak + install + Grok (see errata for product truth) |
+| `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` | Companion lane, silence, emotion, 도우미 음성 (P0–P2 shipped) |
+
+Older material lives under `docs/archive/` and is not product truth.

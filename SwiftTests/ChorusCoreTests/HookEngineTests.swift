@@ -13,7 +13,10 @@ struct HookEngineTests {
             lastAssistantMessage: nil
         )
         let result = await HookEngine(sink: RecordingSink()).handle(event, source: .claude)
-        #expect(String(decoding: result.stdout, as: UTF8.self).contains("M1"))
+        let text = String(decoding: result.stdout, as: UTF8.self)
+        #expect(text.contains("M1"))
+        #expect(text.contains("subagent"))
+        #expect(text.contains("mcp__chorus__speak") || text.contains("speak"))
         #expect(!result.submitted)
         #expect(result.deliveryError == nil)
     }

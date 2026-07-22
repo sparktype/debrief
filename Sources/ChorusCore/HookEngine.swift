@@ -25,8 +25,8 @@ public struct HookEngine: Sendable {
         _ = sink
         switch event.name {
         case .sessionStart, .userPromptSubmit, .subagentStart:
-            // Prefer host-provided agent type (Claude --agent / SubagentStart) when present.
-            let context = VoiceCatalog.context(for: event.agentType)
+            // Host- and event-aware speak contract (Claude tool name + subagent priority).
+            let context = VoiceCatalog.context(for: event, source: source)
             let stdout = (try? HookAdapter.contextOutput(context, source: source, event: event))
                 ?? Data("{}".utf8)
             return HookResult(stdout: stdout, submitted: false)

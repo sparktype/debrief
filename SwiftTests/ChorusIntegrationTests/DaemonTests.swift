@@ -10,22 +10,72 @@ struct DaemonTests {
         var configured = ChorusConfiguration.default
         configured.volumeCeilings[ChorusMode.normal.rawValue] = 0.4
         let configuration = configured
+        let recorder = ErrorRecorder()
         let daemon = ChorusDaemon(
             queue: SpeechQueue(capacity: 8, duplicateWindow: .zero),
             backend: backend,
             audio: audio,
-            configuration: { configuration }
+            configuration: { configuration },
+            recordError: { component, code, message in
+                recorder.append(component, code, message)
+            }
         )
 
-        await daemon.submit(request(.stop, "one", volume: 0.9))
-        await daemon.submit(request(.stop, "bad", volume: 0.8))
-        await daemon.submit(request(.stop, "three", volume: 0.7))
+        await daemon.submit(request(.main, "one", volume: 0.9))
+        await daemon.submit(request(.main, "bad", volume: 0.8))
+        await daemon.submit(request(.main, "three", volume: 0.7))
         await backend.waitUntilCount(3)
         await audio.waitUntilCount(2)
 
         #expect(await backend.texts == ["one", "bad", "three"])
         #expect(await audio.markers == [3, 5])
         #expect(await audio.gains == [0.4, 0.4])
+        #expect(recorder.entries.contains { $0.component == "tts" && $0.code == "synthesis_or_playback" })
+    }
+
+    @Test func focusModeRejectsSubagentPriority() async {
+        let backend = RecordingBackend(failingText: nil)
+        let audio = RecordingAudio(blockingMarker: nil)
+        let config = ChorusConfiguration(mode: .focus, muted: false)
+        let daemon = ChorusDaemon(
+            queue: SpeechQueue(capacity: 8, duplicateWindow: .zero),
+            backend: backend,
+            audio: audio,
+            configuration: { config }
+        )
+        let decision = await daemon.submit(request(.subagent, "skip-me", volume: 0.5))
+        #expect(decision == nil)
+        await daemon.submit(request(.main, "keep", volume: 0.5))
+        await backend.waitUntilCount(1)
+        #expect(await backend.texts == ["keep"])
+    }
+
+    @Test func companionDisabledRejectsCompanionLane() async {
+        let backend = RecordingBackend(failingText: nil)
+        let audio = RecordingAudio(blockingMarker: nil)
+        let config = ChorusConfiguration(mode: .normal, muted: false, companionEnabled: false)
+        let daemon = ChorusDaemon(
+            queue: SpeechQueue(capacity: 8, duplicateWindow: .zero),
+            backend: backend,
+            audio: audio,
+            configuration: { config }
+        )
+        let companion = SpeechRequest(
+            envelope: SpeechEnvelope(v: 1, text: "hi", voice: "F1", speed: 1, volume: 0.5),
+            priority: .main,
+            lane: .companion,
+            emotion: .warm
+        )
+        let work = SpeechRequest(
+            envelope: SpeechEnvelope(v: 1, text: "work", voice: "M1", speed: 1, volume: 0.5),
+            priority: .main,
+            lane: .work,
+            emotion: .neutral
+        )
+        #expect(await daemon.submit(companion) == nil)
+        await daemon.submit(work)
+        await backend.waitUntilCount(1)
+        #expect(await backend.texts == ["work"])
     }
 
     @Test func mainInterruptsActiveSubagentAndDropsQueuedSubagents() async {
@@ -38,10 +88,10 @@ struct DaemonTests {
             configuration: { .default }
         )
 
-        await daemon.submit(request(.subagentStop, "sub-active", volume: 0.5))
+        await daemon.submit(request(.subagent, "sub-active", volume: 0.5))
         await audio.waitUntilStarted(10)
-        await daemon.submit(request(.subagentStop, "sub-queued", volume: 0.5))
-        await daemon.submit(request(.stop, "main", volume: 0.8))
+        await daemon.submit(request(.subagent, "sub-queued", volume: 0.5))
+        await daemon.submit(request(.main, "main", volume: 0.8))
         await backend.waitUntilCount(2)
         await audio.waitUntilCount(2)
 
@@ -71,7 +121,7 @@ struct DaemonTests {
     }
 
     @Test func recoverableAcceptErrorsDoNotTerminateRunLoop() async throws {
-        let good = request(.stop, "after-bad", volume: 0.8)
+        let good = request(.main, "after-bad", volume: 0.8)
         let source = SequenceSource(results: [
             .failure(UnixSocketError.invalidFrame),
             .failure(UnixSocketError.payloadTooLarge),
@@ -100,11 +150,11 @@ struct DaemonTests {
         #expect(!ChorusDaemon.isRecoverableAcceptError(UnixSocketError.disconnected))
     }
 
-    private func request(_ event: HookEventName, _ text: String, volume: Double) -> SpeechRequest {
+    private func request(_ priority: SpeechPriority, _ text: String, volume: Double) -> SpeechRequest {
         SpeechRequest(
             envelope: SpeechEnvelope(v: 1, text: text, voice: "F1", speed: 0.93, volume: volume),
-            event: event,
-            agentType: event == .subagentStop ? "explore" : nil
+            priority: priority,
+            agentType: priority == .subagent ? "explore" : nil
         )
     }
 }
@@ -199,3 +249,21 @@ private actor SequenceSource: SpeechRequestSource {
 }
 
 private enum TestFailure: Error { case expected }
+
+/// Thread-safe recorder for `ChorusDaemon.recordError` callbacks.
+private final class ErrorRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _entries: [(component: String, code: String, message: String)] = []
+
+    var entries: [(component: String, code: String, message: String)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _entries
+    }
+
+    func append(_ component: String, _ code: String, _ message: String) {
+        lock.lock()
+        _entries.append((component, code, message))
+        lock.unlock()
+    }
+}

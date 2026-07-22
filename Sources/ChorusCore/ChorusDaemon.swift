@@ -16,6 +16,7 @@ public enum DirectSpeechCommand {
         voice: String,
         speed: Double,
         volume: Double,
+        priority: SpeechPriority = .main,
         home: URL
     ) async throws {
         let envelope = SpeechEnvelope(
@@ -26,7 +27,13 @@ public enum DirectSpeechCommand {
             volume: volume
         )
         try envelope.validate()
-        let request = SpeechRequest(envelope: envelope, event: .stop, agentType: nil)
+        let request = SpeechRequest(
+            envelope: envelope,
+            priority: priority,
+            lane: .companion,
+            emotion: .neutral,
+            agentType: nil
+        )
         try await UnixSocketClient(socketURL: ChorusPaths.forHome(home).socketURL).submit(request)
     }
 }
@@ -43,6 +50,8 @@ public actor ChorusDaemon {
     private let backend: any TTSBackend
     private let audio: any AudioPlaying
     private let configuration: @Sendable () -> ChorusConfiguration
+    /// Records bounded errors for menu diagnostics (component, code, message).
+    private let recordError: (@Sendable (String, String, String) -> Void)?
     private var worker: Task<Void, Never>?
     private var active: SpeechRequest?
     private var discardActive = false
@@ -53,13 +62,15 @@ public actor ChorusDaemon {
         queue: SpeechQueue,
         backend: any TTSBackend,
         audio: any AudioPlaying,
-        configuration: @escaping @Sendable () -> ChorusConfiguration
+        configuration: @escaping @Sendable () -> ChorusConfiguration,
+        recordError: (@Sendable (String, String, String) -> Void)? = nil
     ) {
         self.source = source
         self.queue = queue
         self.backend = backend
         self.audio = audio
         self.configuration = configuration
+        self.recordError = recordError
     }
 
     /// Voice ID of the request currently synthesizing/playing, if any (e.g. `F1`, `M3`).
@@ -101,7 +112,8 @@ public actor ChorusDaemon {
     public func submit(_ request: SpeechRequest) async -> QueueDecision? {
         guard !shuttingDown,
               ModePolicy.admit(
-                event: request.event,
+                priority: request.priority,
+                lane: request.lane,
                 requestedVolume: request.envelope.volume,
                 configuration: configuration()
               ) != nil else {
@@ -116,6 +128,10 @@ public actor ChorusDaemon {
         let decision = await queue.enqueue(request)
         if decision == .accepted, worker == nil {
             worker = Task { await self.consume() }
+        } else if decision == .rejectedCapacity {
+            recordError?("queue", "capacity", "발화 대기열이 가득 차 요청을 건너뛰었습니다")
+        } else if decision == .rejectedDuplicate {
+            recordError?("queue", "duplicate", "동일 발화가 짧은 시간 안에 중복되어 건너뛰었습니다")
         }
         return decision
     }
@@ -146,14 +162,20 @@ public actor ChorusDaemon {
                 )
                 if !discardActive,
                    let gain = ModePolicy.admit(
-                    event: request.event,
+                    priority: request.priority,
+                    lane: request.lane,
                     requestedVolume: request.envelope.volume,
                     configuration: configuration()
                    ) {
                     try await audio.play(buffer, gain: gain)
                 }
             } catch {
-                // A failed request is dropped in memory; the daemon continues with the next item.
+                // Drop the failed item and continue; surface for menu diagnostics.
+                recordError?(
+                    "tts",
+                    "synthesis_or_playback",
+                    "합성 또는 재생에 실패했습니다: \(String(describing: error).prefix(80))"
+                )
             }
             active = nil
             discardActive = false

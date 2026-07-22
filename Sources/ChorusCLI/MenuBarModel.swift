@@ -22,9 +22,11 @@ final class MenuBarController {
         self.status = MenuBarStatus(
             serviceRunning: false,
             muted: false,
+            companionEnabled: true,
             mode: .normal,
             activeVoice: nil,
-            lastError: nil
+            lastError: nil,
+            doctorLines: []
         )
     }
 
@@ -59,9 +61,11 @@ final class MenuBarController {
         let next = MenuBarStatus(
             serviceRunning: running,
             muted: snapshot.muted,
+            companionEnabled: snapshot.companionEnabled,
             mode: snapshot.mode,
             activeVoice: voice,
-            lastError: lastError
+            lastError: lastError,
+            doctorLines: diagnostics.doctorProblemLines()
         )
         // Avoid rebuilding the menu on every poll tick when nothing visible changed.
         if next != status {
@@ -116,6 +120,18 @@ final class MenuBarController {
         }
     }
 
+    func toggleCompanion() async {
+        await enqueue {
+            do {
+                _ = try ConfigurationCommands.applyCompanion("toggle", home: self.home)
+                self.status.lastError = nil
+            } catch {
+                self.status.lastError = Self.describe(error)
+            }
+            await self.refresh()
+        }
+    }
+
     /// Full teardown on process exit — removes pid so Diagnostics sees host gone.
     func shutdownService() async {
         await service.stop(removePid: true)
@@ -142,6 +158,11 @@ final class MenuBarController {
     /// Records a typed error using the Korean short-string map when applicable.
     func noteError(_ error: any Error) {
         noteError(Self.describe(error))
+    }
+
+    /// Plain-text doctor report for the pasteboard.
+    func doctorReportText() -> String {
+        Diagnostics(home: home).doctorReportText()
     }
 
     // MARK: - Serialization

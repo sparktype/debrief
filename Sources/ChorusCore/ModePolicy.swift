@@ -1,13 +1,24 @@
+/// Mute, mode, companion toggle, and volume-ceiling policy for admitted speech.
 public enum ModePolicy {
+    /// Returns effective playback gain, or `nil` when the request must be dropped.
+    ///
+    /// - `muted`: all speech rejected
+    /// - `companionEnabled == false`: reject `.companion` lane
+    /// - `focus` / `quiet` / `night`: reject `.subagent` priority only
+    /// - volume ceilings: clamp gain per mode (`quiet` 0.45, `night` 0.20 by default)
     public static func admit(
-        event: HookEventName,
+        priority: SpeechPriority,
+        lane: SpeechLane = .companion,
         requestedVolume: Double,
         configuration: ChorusConfiguration
     ) -> Double? {
         guard !configuration.muted, requestedVolume.isFinite else { return nil }
-        guard event == .stop || event == .subagentStop else { return nil }
 
-        if event == .subagentStop {
+        if lane == .companion, !configuration.companionEnabled {
+            return nil
+        }
+
+        if priority == .subagent {
             switch configuration.mode {
             case .focus, .quiet, .night:
                 return nil

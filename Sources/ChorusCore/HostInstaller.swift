@@ -11,52 +11,6 @@ public struct HostInstallResult: Equatable, Sendable {
     public let preservedModifiedFiles: [String]
 }
 
-/// Marker-wrapped TOML MCP table body for Codex / Grok `config.toml`.
-enum McpTomlConfig {
-    static let begin = "# BEGIN chorus-mcp"
-    static let end = "# END chorus-mcp"
-
-    static func upsert(existing: String, fragment: String) -> String {
-        let block = "\(begin)\n\(fragment.trimmingCharacters(in: .newlines))\n\(end)\n"
-        if let range = existing.range(of: #"\#(begin)[\s\S]*?\#(end)\n?"#, options: .regularExpression) {
-            return existing.replacingCharacters(in: range, with: block)
-        }
-        var base = existing.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !base.isEmpty { base += "\n\n" }
-        return base + block
-    }
-
-    static func removeOwned(_ existing: String) -> String {
-        existing.replacingOccurrences(
-            of: #"\#(begin)[\s\S]*?\#(end)\n?"#,
-            with: "",
-            options: .regularExpression
-        )
-    }
-
-    /// Inner fragment between ownership markers, if present.
-    static func ownedFragment(in existing: String) -> String? {
-        guard let regex = try? NSRegularExpression(
-            pattern: #"\#(begin)\n([\s\S]*?)\n\#(end)"#,
-            options: []
-        ) else { return nil }
-        let ns = existing as NSString
-        guard let match = regex.firstMatch(in: existing, options: [], range: NSRange(location: 0, length: ns.length)),
-              match.numberOfRanges >= 2,
-              let range = Range(match.range(at: 1), in: existing)
-        else { return nil }
-        return String(existing[range])
-    }
-
-    static func hasMarkers(_ existing: String) -> Bool {
-        existing.contains(begin) && existing.contains(end)
-    }
-
-    static func hasChorusTable(_ existing: String) -> Bool {
-        existing.range(of: #"\[mcp_servers\.chorus\]"#, options: .regularExpression) != nil
-    }
-}
-
 public struct HostInstaller: Sendable {
     private let home: URL
     private let executable: URL
@@ -393,7 +347,7 @@ public struct HostInstaller: Sendable {
         }
     }
 
-    // MARK: - Grok (TOML MCP + speak skill)
+    // MARK: - Grok (TOML MCP + full skill set; no hooks)
 
     private func installGrokHost(
         previousFiles: [OwnedInstalledFile],
@@ -407,17 +361,21 @@ public struct HostInstaller: Sendable {
             preserved: &preserved
         )
 
-        // chorus-speak skill (digest ownership, same as setup skills).
-        let skillText = EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable)
-        let destination = skillsDirectory(for: .grok).appending(path: "chorus-speak/SKILL.md")
-        try installSkillFile(
-            text: skillText,
-            destination: destination,
-            host: .grok,
-            previousFiles: previousFiles,
-            ownedFiles: &ownedFiles,
-            preserved: &preserved
-        )
+        // Grok SessionStart cannot inject context — setup/install/speak skills carry the contract.
+        let templates = EmbeddedTemplates.grokSkills(executable: executable)
+        for name in EmbeddedTemplates.skillNames {
+            guard let text = templates[name] else { continue }
+            let destination = skillsDirectory(for: .grok)
+                .appending(path: "chorus-\(name)/SKILL.md")
+            try installSkillFile(
+                text: text,
+                destination: destination,
+                host: .grok,
+                previousFiles: previousFiles,
+                ownedFiles: &ownedFiles,
+                preserved: &preserved
+            )
+        }
     }
 
     private func uninstallGrokHost(

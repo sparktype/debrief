@@ -44,7 +44,7 @@ public enum VoiceCatalog {
             ],
             "planner": [
                 "feature-architect", "planner", "architect", "code-architect", "a11y-architect",
-                "plan", "feature-dev", "gan-planner",
+                "plan", "feature-dev", "gan-planner", "Plan",
             ],
             "builder": [
                 "feature-builder", "build-error-resolver", "dart-build-resolver",
@@ -56,7 +56,7 @@ public enum VoiceCatalog {
             "tester": ["feature-tester", "tdd-guide", "e2e-runner", "gan-evaluator"],
             "explorer": [
                 "Explore", "code-explorer", "general-purpose", "gitnexus-exploring",
-                "claude-code-guide",
+                "claude-code-guide", "Task",
             ],
             "optimizer": ["performance-optimizer", "harness-optimizer", "type-design-analyzer"],
             "guardian": ["silent-failure-hunter", "comment-analyzer", "conversation-analyzer"],
@@ -98,15 +98,78 @@ public enum VoiceCatalog {
         return assignments[category] ?? assignments["default"]!
     }
 
+    /// MCP speak contract for start-family hooks (host- and event-aware).
+    /// Reflective companion by default: attitude + silence + optional lane/emotion.
+    public static func context(for event: HookEvent, source: HostSource) -> String {
+        let assignment = assignment(for: event.agentType)
+        let tool = toolReference(source: source)
+        let priority = recommendedPriority(for: event.name)
+
+        switch event.name {
+        case .userPromptSubmit:
+            return """
+            Chorus: speak only if this turn needs user-facing reflection. Prefer \(tool) once as lane=companion \
+            (voice F1, emotion neutral|warm|focused|concerned|relieved|tired). Text = observe + meaning + one next step — \
+            no file lists. Silence is correct when nothing new matters. No HTML/JSON speech in the body.
+            """
+
+        case .subagentStart:
+            return """
+            Subagent: if you speak, use \(tool) with priority=subagent, lane=work, voice \(assignment.voice) (\(assignment.name)). \
+            Facts only, one short line; companion lane discouraged. focus/quiet/night may suppress subagent. Silence OK. \
+            No HTML/JSON speech in the body.
+            """
+
+        case .sessionStart, .stop, .subagentStop:
+            return """
+            Chorus reflective companion TTS via \(tool). Prefer one short companion line when speech helps; silence when it does not \
+            (read-only thrash, same status as last turn, or pure lists already on screen). \
+            Companion structure: observe + meaning + one next step or rest. Prefer voice F1, speed ~0.93, volume ~0.85, \
+            lane=companion (default), emotion from neutral|warm|focused|concerned|relieved|tired (restrained). \
+            Optional work lane for pure facts with role voice \(assignment.voice) (\(assignment.name)), speed ~\(format(assignment.baselineSpeed)). \
+            Required args: text, voice, speed, volume. Optional: priority (\(priority.rawValue) default here), lane, emotion. \
+            Never inventory files or checklist completions. No HTML/JSON speech in the body. Mute/mode/companion toggle: menu bar only.
+            """
+        }
+    }
+
+    /// Back-compat helper used by older tests/callers without event metadata.
     public static func context(for agentType: String?) -> String {
-        let assignment = assignment(for: agentType)
-        return """
-        When you finish this turn, call the Chorus MCP tool `speak` once with a one- or two-sentence spoken summary. \
-        Required arguments: text, voice, speed, volume. \
-        Use voice \(assignment.voice) (\(assignment.name)); choose speed from 0.7 through 2.0 (baseline \(assignment.baselineSpeed)) \
-        and volume from 0.0 through 1.0 (typical 0.85). \
-        Keep text at 800 characters or fewer. \
-        Do not put HTML comments, JSON speech metadata, or legacy speech envelope markers in the assistant message body.
-        """
+        context(
+            for: HookEvent(
+                name: .sessionStart,
+                sessionID: "compat",
+                turnID: nil,
+                agentType: agentType,
+                lastAssistantMessage: nil
+            ),
+            source: .claude
+        )
+    }
+
+    private static func toolReference(source: HostSource) -> String {
+        switch source {
+        case .claude:
+            // Claude Code often qualifies MCP tools as mcp__<server>__<tool>.
+            return "MCP tool `speak` on server `chorus` (may appear as `mcp__chorus__speak`)"
+        case .codex:
+            return "MCP tool `speak` on server `chorus`"
+        case .grok:
+            // Grok qualifies tools as server__tool; discover via search_tool / use_tool.
+            return "MCP tool `chorus__speak` (search_tool / use_tool; server `chorus`)"
+        }
+    }
+
+    private static func recommendedPriority(for event: HookEventName) -> SpeechPriority {
+        switch event {
+        case .subagentStart, .subagentStop:
+            return .subagent
+        case .sessionStart, .userPromptSubmit, .stop:
+            return .main
+        }
+    }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.2f", value)
     }
 }

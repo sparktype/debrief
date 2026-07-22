@@ -88,6 +88,21 @@ struct DiagnosticsTests {
         #expect(grokFinding.recovery?.localizedCaseInsensitiveContains("json") != true)
     }
 
+    @Test func doctorIncludesLastErrorAndProblemLines() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let diagnostics = Diagnostics(home: home)
+        try diagnostics.recordError(component: "tts", code: "synthesis_or_playback", message: "합성 실패")
+        let findings = diagnostics.doctor()
+        #expect(findings.contains { $0.code == "last_error.synthesis_or_playback" && !$0.ok })
+        let lines = diagnostics.doctorProblemLines()
+        #expect(!lines.isEmpty)
+        #expect(lines.contains { $0.contains("synthesis_or_playback") || $0.contains("합성") })
+        let report = diagnostics.doctorReportText()
+        #expect(report.contains("Chorus 진단"))
+        #expect(report.contains("synthesis_or_playback") || report.contains("합성"))
+    }
+
     @Test func lastErrorAtomicallyReplacesAndBoundsNonContentMessage() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
