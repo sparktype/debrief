@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import ChorusCore
@@ -94,6 +95,32 @@ struct UnixSocketTests {
         await server.close()
 
         #expect(await stopped)
+    }
+
+    @Test(arguments: [false, true])
+    func frameLessClientIsRecoverable(stallOpen: Bool) async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let socketURL = directory.appending(path: "chorus.sock")
+        let server = try UnixSocketServer(socketURL: socketURL)
+
+        let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        defer { Darwin.close(descriptor) }
+        var address = try UnixSocketServer.address(for: socketURL.path)
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        #expect(connected == 0)
+        if !stallOpen { Darwin.shutdown(descriptor, SHUT_WR) }
+
+        do {
+            _ = try await server.accept()
+            Issue.record("frame-less client unexpectedly produced a request")
+        } catch {
+            #expect(ChorusDaemon.isRecoverableAcceptError(error), "\(error)")
+        }
     }
 
     private func temporaryDirectory() -> URL {

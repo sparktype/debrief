@@ -128,10 +128,10 @@ public final class UnixSocketServer: @unchecked Sendable {
             let request = try JSONDecoder().decode(SpeechRequest.self, from: payload)
             try Self.writeAll(Data([0x06]), to: descriptor)
             return request
-        } catch let error as UnixSocketError {
-            try? Self.writeAll(Data([0x15]), to: descriptor)
-            throw error
+        } catch UnixSocketError.payloadTooLarge {
+            throw UnixSocketError.payloadTooLarge
         } catch {
+            // Per-client failures (EOF, read timeout, bad JSON) must not look like listener death.
             try? Self.writeAll(Data([0x15]), to: descriptor)
             throw UnixSocketError.invalidFrame
         }
@@ -157,7 +157,7 @@ public final class UnixSocketServer: @unchecked Sendable {
         }
     }
 
-    fileprivate static func address(for path: String) throws -> sockaddr_un {
+    static func address(for path: String) throws -> sockaddr_un {
         var address = sockaddr_un()
         let bytes = path.utf8CString
         guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else {
