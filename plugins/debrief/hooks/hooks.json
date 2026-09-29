@@ -1,0 +1,8 @@
+{
+  "description": "Forward three start-family lifecycle events to the installed debrief executable. Speech is MCP tool speak (not Stop extraction). Prefer `debrief install` so HostInstaller writes the absolute path. Homebrew puts `debrief` on PATH for install; hooks call ~/.local/bin/debrief.",
+  "hooks": {
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "~/.local/bin/debrief hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 5}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "~/.local/bin/debrief hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 5}]}],
+    "SubagentStart": [{"matcher": "", "hooks": [{"type": "command", "command": "~/.local/bin/debrief hook --source $([ -n \"${CODEX_HOME:-}\" ] && echo codex || echo claude)", "timeout": 5}]}]
+  }
+}

@@ -1,4 +1,4 @@
-// 앱·훅·설치 진입 파싱 (사용자 CLI 표면 없음)
+// 설치·데몬·제어 명령 파싱
 import Foundation
 
 public enum CommandError: Error, Equatable, CustomStringConvertible {
@@ -11,34 +11,49 @@ public enum CommandError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// Process entry modes. User-facing control is the menu bar; agents use `hook` / `mcp`.
+/// Process entry modes. Agents use `hook` / `mcp`; a person uses the CLI.
 public enum ChorusCommand: Equatable, Sendable {
     case install(codex: Bool, claude: Bool, grok: Bool, repair: Bool)
     case uninstall(codex: Bool, claude: Bool, grok: Bool)
-    case menubar
+    case daemon
+    case start
+    case stop
+    case status
+    case mute(String?)
+    case mode(String?)
+    case companion(String?)
+    case doctor
     case hook(source: String)
     case mcp
     case help
 
     public static let usageText = """
-    Chorus \(ChorusVersion.current)
+    debrief \(ChorusVersion.current)
 
-    Install / repair:
-      brew install sparktype/tap/chorus
-      chorus install [--codex] [--claude] [--grok] [--repair]
-      chorus uninstall [--codex] [--claude] [--grok]
+    Install / repair (release build, then):
+      debrief install [--codex] [--claude] [--grok] [--repair]
+      debrief uninstall [--codex] [--claude] [--grok]
 
-    Runtime (Chorus.app / LaunchAgent):
-      (no args) | menubar     menu bar resident
-      mcp                 MCP stdio server (speak tool)
-      hook --source <codex|claude>
+    Service:
+      debrief daemon
+      debrief start
+      debrief stop
+      debrief status
+      debrief doctor
 
-    Mute, mode, start/stop, and quit are controlled from the menu bar only.
+    Controls (written to config.json; applied on the next utterance):
+      debrief mute [on|off|toggle]
+      debrief mode [normal|focus|quiet|verbose|night]
+      debrief companion [on|off|toggle]
+
+    Agents:
+      debrief mcp
+      debrief hook --source <codex|claude>
+      debrief help
     """
 
     public static func parse(_ arguments: [String]) throws -> ChorusCommand {
-        // Finder double-click and bare launch open the menu bar.
-        guard let name = arguments.first else { return .menubar }
+        guard let name = arguments.first else { return .help }
         let tail = Array(arguments.dropFirst())
 
         switch name {
@@ -60,9 +75,33 @@ public enum ChorusCommand: Equatable, Sendable {
                 claude: tail.contains("--claude"),
                 grok: tail.contains("--grok")
             )
-        case "menubar":
+        case "daemon":
             try requireEmpty(tail, command: name)
-            return .menubar
+            return .daemon
+        case "start":
+            try requireEmpty(tail, command: name)
+            return .start
+        case "stop":
+            try requireEmpty(tail, command: name)
+            return .stop
+        case "status":
+            try requireEmpty(tail, command: name)
+            return .status
+        case "doctor":
+            try requireEmpty(tail, command: name)
+            return .doctor
+        case "mute":
+            return .mute(try optionalChoice(tail, allowed: ["on", "off", "toggle"], command: name))
+        case "mode":
+            return .mode(
+                try optionalChoice(
+                    tail,
+                    allowed: Set(ChorusMode.allCases.map(\.rawValue)),
+                    command: name
+                )
+            )
+        case "companion":
+            return .companion(try optionalChoice(tail, allowed: ["on", "off", "toggle"], command: name))
         case "mcp":
             try requireEmpty(tail, command: name)
             return .mcp
@@ -73,13 +112,21 @@ public enum ChorusCommand: Equatable, Sendable {
             }
             try requireFlagPairs(tail, flags: ["--source"])
             return .hook(source: source)
-        case "daemon", "speak", "status", "mute", "mode", "doctor":
-            throw CommandError.usage(
-                "removed CLI command '\(name)'; use the Chorus menu bar for mute/mode/status"
-            )
         default:
             throw CommandError.usage("unknown command: \(name)")
         }
+    }
+
+    private static func optionalChoice(
+        _ arguments: [String],
+        allowed: Set<String>,
+        command: String
+    ) throws -> String? {
+        if arguments.isEmpty { return nil }
+        guard arguments.count == 1, let value = arguments.first, allowed.contains(value) else {
+            throw CommandError.usage("unsupported \(command) argument")
+        }
+        return value
     }
 
     private static func requireEmpty(_ arguments: [String], command: String) throws {
@@ -108,5 +155,39 @@ public enum ChorusCommand: Equatable, Sendable {
                 throw CommandError.usage("unsupported option")
             }
         }
+    }
+}
+
+/// Korean sentences the CLI prints. Help text stays English.
+public enum CliMessages {
+    public static let muted = "음소거했습니다."
+    public static let unmuted = "음소거를 해제했습니다."
+    public static let companionOn = "도우미 음성을 켰습니다."
+    public static let companionOff = "도우미 음성을 껐습니다."
+    public static let started = "서비스를 시작했습니다."
+    public static let stopped = "서비스를 중지했습니다."
+    public static let alreadyRunning = "이미 실행 중입니다."
+    public static let launchAgentMissing = "LaunchAgent가 없습니다. debrief install을 실행하세요."
+    public static let executablePathIsDirectory =
+        "실행 파일 경로가 디렉터리입니다. ~/.local/bin/debrief 를 비운 뒤 다시 설치하세요."
+
+    public static func currentMode(_ mode: String) -> String {
+        "현재 모드는 \(mode)입니다."
+    }
+
+    public static func modeSet(_ mode: String) -> String {
+        "모드를 \(mode)로 설정했습니다."
+    }
+
+    public static func startFailed(_ reason: String) -> String {
+        "서비스를 시작하지 못했습니다. \(reason)"
+    }
+
+    public static func stopFailed(_ reason: String) -> String {
+        "서비스를 중지하지 못했습니다. \(reason)"
+    }
+
+    public static func configSaveFailed(_ reason: String) -> String {
+        "설정을 저장하지 못했습니다. \(reason)"
     }
 }

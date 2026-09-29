@@ -1,8 +1,8 @@
-# Chorus developer guide
+# debrief developer guide
 
 ## Product boundary
 
-Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executable. Its responsibilities are deliberately narrow:
+debrief is a macOS 14+ Apple Silicon TTS service delivered as one Swift executable. Its responsibilities are deliberately narrow:
 
 1. install and verify the pinned Supertonic 3 model;
 2. install the executable, LaunchAgent, host MCP registration, skills (`setup` / `install` / `speak`), and start-family hooks (Claude/Codex only);
@@ -10,7 +10,7 @@ Chorus is a macOS 14+ Apple Silicon TTS service delivered as one Swift executabl
    - **`speak`**: `text`, `voice`, `speed`, `volume`; optional `priority`, `lane` (`companion`|`work`), `emotion`;
    - **`install`**: optional `hosts`, optional `repair` (default `true`);
 4. synthesize with the local ONNX Runtime backend and play audio;
-5. expose diagnostics on the menu bar (**진단**, **도우미 음성** toggle, `last-error.json`).
+5. expose diagnostics through `debrief status` and `debrief doctor` (`last-error.json`).
 
 The coding agent owns summarization and selects spoken text and voice parameters.
 
@@ -20,12 +20,9 @@ The coding agent owns summarization and selects spoken text and voice parameters
 Package.swift
 Sources/
 ├── ChorusCLI/
-│   ├── main.swift             subcommand dispatch (menubar / mcp / hook / install)
-│   ├── MenuBarApp.swift       LSUIElement NSStatusItem + NSMenu host
-│   ├── MenuBarIcons.swift     badge / silhouette icon rendering
-│   └── MenuBarModel.swift     menu actions against ResidentService
+│   └── EntryPoint.swift       daemon, CLI controls, mcp, hook, install
 └── ChorusCore/
-    ├── ResidentService.swift  pid + socket + in-process daemon lifecycle
+    ├── ResidentService.swift  pid + socket + daemon lifecycle
     ├── ChorusDaemon.swift     speech accept loop over Unix socket
     ├── SpeechEnvelope.swift   internal wire model and validation
     ├── SpeechRequest.swift    envelope + SpeechPriority + lane + emotion
@@ -40,7 +37,6 @@ Sources/
     ├── SpeechQueue.swift      bounded serialized speech queue
     ├── SupertonicEngine.swift local ONNX TTS backend
     ├── UnixSocket.swift       local resident transport
-    ├── MenuBarStatus.swift    pure status snapshot for menu header
     ├── ModelInstaller.swift   pinned download, checksum, and atomic swap
     ├── RuntimeInstaller.swift executable and LaunchAgent lifecycle
     ├── EmbeddedTemplates.swift hooks, skills (Claude/Codex + Grok variants)
@@ -50,7 +46,7 @@ Sources/
 SwiftTests/
 ├── ChorusCoreTests/
 └── ChorusIntegrationTests/
-plugins/chorus/               marketplace metadata, hooks, skills
+plugins/debrief/               marketplace metadata, hooks, skills
 docs/archive/                 superseded Python-era designs (not product truth)
 .github/workflows/ci.yml      macos-15 swift test + release build
 ```
@@ -58,25 +54,26 @@ docs/archive/                 superseded Python-era designs (not product truth)
 ## Process model
 
 ```text
-Login / chorus install
-        │
+debrief install
+        │ copies ~/.local/bin/debrief
         ▼
-LaunchAgent (com.chorus.tts)
-        │ ProgramArguments: [Chorus.app/Contents/MacOS/chorus, "menubar"]
+LaunchAgent (com.debrief.tts, gui/<uid>, KeepAlive)
+        │ ProgramArguments: [~/.local/bin/debrief, "daemon"]
         ▼
-Chorus.app (LSUIElement menu bar)
-        ├── Menu: status · 진단 · mute · 도우미 음성 · mode · start · stop · quit
-        └── ResidentService (in-process)
+debrief daemon
+        └── ResidentService
               ├── pid file
               ├── Unix socket server
               ├── ChorusDaemon + SpeechQueue
               ├── SupertonicEngine
               └── AudioPlayer
 
+debrief mute | mode | companion | status | doctor | start | stop
+
 Codex / Claude / Grok
-  │ spawn: …/chorus mcp   (stdio MCP)
+  │ spawn: ~/.local/bin/debrief mcp   (stdio MCP)
   ▼
-chorus mcp
+debrief mcp
   ├── tools/call speak   → validate → UDS → ResidentService
   └── tools/call install → RuntimeInstaller (same as CLI install)
 ```
@@ -85,13 +82,13 @@ chorus mcp
 
 | Host | Settings / MCP | Skills | Hooks |
 | --- | --- | --- | --- |
-| Codex | `~/.codex/config.toml` → `[mcp_servers.chorus]` | `~/.agents/skills/chorus-*` | start-family in `~/.codex/hooks.json` |
-| Claude | `~/.claude/settings.json` → `mcpServers.chorus` | `~/.claude/skills/chorus-*` | start-family in settings |
-| Grok | `~/.grok/config.toml` → `[mcp_servers.chorus]` | `~/.grok/skills/chorus-*` | **none** (SessionStart stdout ignored) |
+| Codex | `~/.codex/config.toml` → `[mcp_servers.debrief]` | `~/.agents/skills/debrief-*` | start-family in `~/.codex/hooks.json` |
+| Claude | `~/.claude/settings.json` → `mcpServers["debrief"]` | `~/.claude/skills/debrief-*` | start-family in settings |
+| Grok | `~/.grok/config.toml` → `[mcp_servers.debrief]` | `~/.grok/skills/debrief-*` | **none** (SessionStart stdout ignored) |
 
-Skills installed for every host: **`chorus-setup`**, **`chorus-install`**, **`chorus-speak`**. Grok skill bodies use Grok tool names (`chorus__speak` / `chorus__install`) and `/mcps`.
+Skills installed for every host: **`debrief-setup`**, **`debrief-install`**, **`debrief-speak`**. Grok skill bodies use Grok tool names (`debrief__speak` / `debrief__install`) and `/mcps`.
 
-MCP registration always points at the app absolute path with `args: ["mcp"]`. TOML hosts use ownership markers `# BEGIN chorus-mcp` / `# END chorus-mcp`. `tool_timeout_sec = 120` (install may run longer than speak).
+MCP registration points at `~/.local/bin/debrief` with `args: ["mcp"]`. TOML hosts use ownership markers `# BEGIN debrief-mcp` / `# END debrief-mcp`. `tool_timeout_sec = 120` (install may run longer than speak).
 
 ## Speech contract (MCP `speak`)
 
@@ -110,7 +107,7 @@ No HTML comments or speech JSON in the chat body. Each user-visible turn is one 
 Policy (`ModePolicy.admit`):
 
 - **mute** rejects all speech
-- **`companionEnabled == false`** (menu 도우미 음성) rejects `lane=companion`; work lane still plays
+- **`companionEnabled == false`** (`debrief companion off`) rejects `lane=companion`; work lane still plays
 - **focus / quiet / night** reject `priority=subagent`
 - **quiet / night** apply volume ceilings (0.45 / 0.20)
 - **work** lane forces neutral emotion for prosody
@@ -121,8 +118,8 @@ Host tool display names:
 
 | Host | speak | install |
 | --- | --- | --- |
-| Claude Code | `mcp__chorus__speak` | `mcp__chorus__install` |
-| Grok | `chorus__speak` | `chorus__install` |
+| Claude Code | `mcp__debrief__speak` | `mcp__debrief__install` |
+| Grok | `debrief__speak` | `debrief__install` |
 | Codex | `speak` | `install` |
 
 ## MCP tool `install`
@@ -132,15 +129,15 @@ Host tool display names:
 | hosts | optional array of `codex` / `claude` / `grok` (omit = all) |
 | repair | optional boolean (default `true`) |
 
-Uses the MCP process executable as the source binary for `RuntimeInstaller` (same path as CLI `chorus install`). Prefer shell install for first-time model download if the host tool timeout is short.
+Uses the MCP process executable as the source binary for `RuntimeInstaller` (same path as CLI `debrief install`). Prefer shell install for first-time model download if the host tool timeout is short.
 
 ## Runtime lifecycle
 
-`chorus install` installs `Chorus.app`, pinned model, host MCP, skills, Claude/Codex start-family hooks, LaunchAgent, and health-gated legacy cutover. There is no user CLI symlink under `~/.local/bin`. Owned-file digests prevent uninstall/repair from overwriting user-modified files.
+`debrief install` copies the executable to `~/.local/bin/debrief` (atomic write, mode 0755; a directory at that path is refused), installs the pinned model, host MCP, skills, Claude/Codex start-family hooks, and LaunchAgent `com.debrief.tts`. Bootstrap is `enable`, `bootout`, `bootstrap`, with one retry. Only after bootstrap succeeds does install remove a leftover app at `/Applications` or `~/Applications` when its bundle id matches (`debrief.app` / `com.debrief.tts`, plus earlier Chorus and prompt-recap bundles). Owned-file digests prevent uninstall from removing a binary whose contents differ from the manifest.
 
-Menu Stop ends the in-process TTS service only; the menu bar process stays up under LaunchAgent KeepAlive. Menu Quit calls `launchctl disable` on `com.chorus.tts` (so KeepAlive will not relaunch), stops the service, then `exit(0)`. Do not await `launchctl bootout` from inside the job — that deadlocks. `install --repair` re-enables and bootstraps the agent.
+`debrief start` bootstraps the existing plist and does not rewrite it. A live pid prints `이미 실행 중입니다.` and does not bootout. `debrief stop` disables and bootouts the job, keeps the plist and the binary, and prints `서비스를 중지했습니다.` `debrief daemon` parks until SIGTERM or SIGINT. A second live daemon exits 0. A missing model records `last-error.json`, skips the socket, and stays running so KeepAlive does not spin.
 
-Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/last-error.json` and appear under the menu **진단** submenu.
+Synthesis/playback failures and queue rejections write `~/Library/Caches/debrief/last-error.json`. `debrief doctor` prints them.
 
 ## Build and verification
 
@@ -149,9 +146,9 @@ Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/
 ./scripts/with-xcode.sh swift build -c release
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`. Local development uses Xcode 27 via `./scripts/with-xcode.sh` (Xcode-beta when installed, otherwise Xcode.app). Override with `CHORUS_XCODE_DEVELOPER`.
+GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`, then checks that `.build/release/debrief` is an arm64 binary. Local development uses Xcode 27 via `./scripts/with-xcode.sh` (Xcode-beta when installed, otherwise Xcode.app). Override with `CHORUS_XCODE_DEVELOPER`.
 
-User install is Homebrew: `brew install sparktype/tap/chorus`, then `chorus install`. The formula lives in [sparktype/homebrew-tap](https://github.com/sparktype/homebrew-tap) as `Formula/chorus.rb` and tracks tag `v0.0.1` (`ChorusVersion.current`). The formula builds the release binary and installs `icon.png` at the prefix so `chorus install` can find the app icon.
+The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). Current install is the release binary from that checkout, then `debrief install`. The published tap still has `Formula/chorus.rb` for tag `v0.0.1`, which builds the previous `chorus` binary. The next tag should add `Formula/debrief.rb` (`class Debrief`, `swift build --product debrief`). `ChorusVersion.current` remains `0.0.1` until that tag.
 
 Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`CHORUS_TEST_MODEL_DIR` for the real-model smoke test).
 
@@ -170,7 +167,8 @@ Release verification should also inspect architecture (`arm64`) and run install 
 | Spec | Topic |
 | --- | --- |
 | `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` | Single-binary Swift TTS (envelope contract superseded) |
-| `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` | Menu bar resident process |
+| `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` | Earlier menu-bar process (superseded for packaging) |
+| `docs/superpowers/specs/2026-09-29-daemon-single-binary-design.md` | Headless daemon and CLI controls (implemented; body still says chorus) |
 | `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` | MCP speak + install + Grok (see errata for product truth) |
 | `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` | Lane, emotion, 도우미 음성 (attitude/timing superseded 2026-09-29 by the turn briefing) |
 

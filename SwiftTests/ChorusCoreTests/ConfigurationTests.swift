@@ -8,17 +8,19 @@ struct ConfigurationTests {
         let home = URL(fileURLWithPath: "/Users/example")
         let paths = ChorusPaths.forHome(home)
 
-        #expect(paths.dataDirectory.path == "/Users/example/Library/Application Support/Chorus")
-        #expect(paths.cacheDirectory.path == "/Users/example/Library/Caches/Chorus")
-        #expect(paths.configURL.path == "/Users/example/Library/Application Support/Chorus/config.json")
-        #expect(paths.socketURL.path == "/Users/example/Library/Caches/Chorus/chorus.sock")
-        #expect(paths.launchAgentURL.path == "/Users/example/Library/LaunchAgents/com.chorus.tts.plist")
-        #expect(paths.pidURL.path == "/Users/example/Library/Caches/Chorus/daemon.pid")
-        #expect(paths.lastErrorURL.path == "/Users/example/Library/Caches/Chorus/last-error.json")
-        #expect(paths.legacyCLISymlinkURL.path == "/Users/example/.local/bin/chorus")
-        // Fake homes always use home/Applications (not real /Applications).
-        #expect(paths.applicationBundleURL.path == "/Users/example/Applications/Chorus.app")
-        #expect(paths.executableURL.path == "/Users/example/Applications/Chorus.app/Contents/MacOS/chorus")
+        #expect(paths.dataDirectory.path == "/Users/example/Library/Application Support/debrief")
+        #expect(paths.cacheDirectory.path == "/Users/example/Library/Caches/debrief")
+        #expect(paths.configURL.path == "/Users/example/Library/Application Support/debrief/config.json")
+        #expect(paths.socketURL.path == "/Users/example/Library/Caches/debrief/debrief.sock")
+        #expect(paths.launchAgentURL.path == "/Users/example/Library/LaunchAgents/com.debrief.tts.plist")
+        #expect(paths.pidURL.path == "/Users/example/Library/Caches/debrief/daemon.pid")
+        #expect(paths.lastErrorURL.path == "/Users/example/Library/Caches/debrief/last-error.json")
+        #expect(paths.executableURL.path == "/Users/example/.local/bin/debrief")
+        let bundles = ChorusPaths.removableApplicationBundles(home: home).map(\.url.path)
+        #expect(bundles.contains("/Users/example/Applications/debrief.app"))
+        #expect(bundles.contains("/Users/example/Applications/Chorus.app"))
+        #expect(bundles.contains("/Users/example/Applications/prompt-recap.app"))
+        #expect(!bundles.contains("/Applications/debrief.app"))
     }
 
     @Test func missingAndCorruptFilesRecoverToDefaults() throws {

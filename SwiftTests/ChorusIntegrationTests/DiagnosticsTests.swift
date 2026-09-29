@@ -54,22 +54,59 @@ struct DiagnosticsTests {
         #expect(findings.contains { $0.code == "model.invalid_marker" && !$0.ok })
     }
 
-    @Test func doctorSocketMissingWhileProcessRunningSuggestsStartNotRepair() throws {
+    @Test func statusTextUsesCliLines() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = ChorusPaths.forHome(home)
+        try ChorusConfiguration(mode: .night, muted: true, companionEnabled: false).save(to: paths.configURL)
+        try installModelMarker(paths: paths, corrupt: true)
+        try FileManager.default.createDirectory(at: paths.launchAgentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("plist".utf8).write(to: paths.launchAgentURL)
+
+        let text = Diagnostics(home: home, processExists: { _ in false }).statusText()
+        #expect(text.contains("프로세스: 없음"))
+        #expect(text.contains("음소거: 켜짐"))
+        #expect(text.contains("모드: night"))
+        #expect(text.contains("도우미 음성: 꺼짐"))
+        #expect(text.contains("모델: \(ModelManifest.supertonic3.revision) (사용할 수 없음)"))
+        #expect(text.contains("소켓: 없음"))
+        #expect(text.contains("LaunchAgent: 설치됨"))
+        #expect(!text.localizedCaseInsensitiveContains("menu"))
+    }
+
+    @Test func doctorParkedDaemonSuggestsRepairNotTheMenu() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
         let paths = ChorusPaths.forHome(home)
         try FileManager.default.createDirectory(at: paths.pidURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("123".utf8).write(to: paths.pidURL)
-        // No socket — intentional menu Stop while host still alive.
+        try FileManager.default.createDirectory(at: paths.launchAgentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("plist".utf8).write(to: paths.launchAgentURL)
         try installModelMarker(paths: paths)
 
-        let findings = Diagnostics(home: home, processExists: { $0 == 123 }).doctor()
+        let diagnostics = Diagnostics(home: home, processExists: { $0 == 123 })
+        let findings = diagnostics.doctor()
         #expect(findings.contains { $0.code == "daemon.running" && $0.ok })
         let socket = findings.first { $0.code == "socket.missing" }
-        #expect(socket != nil)
         #expect(socket?.ok == false)
-        #expect(socket?.recovery?.contains("Start service") == true)
-        #expect(socket?.recovery?.contains("install --repair") != true)
+        #expect(socket?.recovery == "debrief install --repair")
+        let report = diagnostics.doctorReportText()
+        #expect(!report.localizedCaseInsensitiveContains("menu"))
+        #expect(!report.contains("menubar"))
+    }
+
+    @Test func doctorStoppedDaemonWithPlistSuggestsStart() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = ChorusPaths.forHome(home)
+        try FileManager.default.createDirectory(at: paths.launchAgentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("plist".utf8).write(to: paths.launchAgentURL)
+        try installModelMarker(paths: paths)
+
+        let findings = Diagnostics(home: home, processExists: { _ in false }).doctor()
+        let daemon = findings.first { $0.code == "daemon.missing" }
+        #expect(daemon?.recovery == "debrief start")
+        #expect(findings.contains { $0.code == "socket.missing" && $0.recovery == "debrief start" })
     }
 
     @Test func doctorUsesHostAwareCodeForUnreadableGrokToml() throws {
@@ -111,7 +148,7 @@ struct DiagnosticsTests {
         #expect(!lines.isEmpty)
         #expect(lines.contains { $0.contains("synthesis_or_playback") || $0.contains("합성") })
         let report = diagnostics.doctorReportText()
-        #expect(report.contains("Chorus 진단"))
+        #expect(report.contains("debrief 진단"))
         #expect(report.contains("synthesis_or_playback") || report.contains("합성"))
     }
 

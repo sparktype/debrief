@@ -27,7 +27,7 @@ public struct DiagnosticFinding: Codable, Equatable, Sendable {
     public let ok: Bool
     public let recovery: String?
 
-    /// Short Korean line for the menu bar diagnostics submenu.
+    /// Short Korean line for `debrief doctor`.
     public var summaryLine: String {
         let status = ok ? "정상" : "문제"
         if let recovery, !ok {
@@ -59,7 +59,7 @@ public struct Diagnostics: Sendable {
         let process = processState()
         let model = modelState()
         let manifest = (try? InstallManifest.load(from: paths.installManifestURL)) ?? InstallManifest()
-        return StatusSnapshot(
+        let snapshot = StatusSnapshot(
             mode: configuration.mode,
             muted: configuration.muted,
             companionEnabled: configuration.companionEnabled,
@@ -78,25 +78,54 @@ public struct Diagnostics: Sendable {
             ownedHookCount: manifest.hooks.count,
             ownedSkillCount: manifest.files.count
         )
+        return snapshot
+    }
+
+    /// CLI `debrief status` lines. Exits 0 even when the daemon is down.
+    public func statusText() -> String {
+        let snapshot = status()
+        let process: String
+        switch snapshot.process {
+        case .running: process = "실행 중"
+        case .missing: process = "없음"
+        case .stale: process = "오래된 pid"
+        case .invalid: process = "잘못된 pid"
+        }
+        let model: String
+        if let revision = snapshot.modelRevision {
+            model = snapshot.modelValid ? revision : "\(revision) (사용할 수 없음)"
+        } else {
+            model = "없음"
+        }
+        return """
+        프로세스: \(process)
+        음소거: \(snapshot.muted ? "켜짐" : "꺼짐")
+        모드: \(snapshot.mode.rawValue)
+        도우미 음성: \(snapshot.companionEnabled ? "켜짐" : "꺼짐")
+        모델: \(model)
+        소켓: \(snapshot.socketPresent ? "있음" : "없음")
+        LaunchAgent: \(snapshot.launchAgentInstalled ? "설치됨" : "없음")
+        """
     }
 
     public func doctor() -> [DiagnosticFinding] {
         let snapshot = status()
+        let recovery = operationalRecovery(for: snapshot)
         var findings: [DiagnosticFinding] = []
         switch snapshot.process {
         case .running:
             findings.append(.init(code: "daemon.running", ok: true, recovery: nil))
         case .stale:
-            findings.append(.init(code: "daemon.stale_pid", ok: false, recovery: "chorus install --repair"))
+            findings.append(.init(code: "daemon.stale_pid", ok: false, recovery: recovery))
         case .invalid:
-            findings.append(.init(code: "daemon.invalid_pid", ok: false, recovery: "chorus install --repair"))
+            findings.append(.init(code: "daemon.invalid_pid", ok: false, recovery: recovery))
         case .missing:
-            findings.append(.init(code: "daemon.missing", ok: false, recovery: "chorus install --repair"))
+            findings.append(.init(code: "daemon.missing", ok: false, recovery: recovery))
         }
         if snapshot.modelRevision == nil {
-            findings.append(.init(code: "model.missing", ok: false, recovery: "chorus install --repair"))
+            findings.append(.init(code: "model.missing", ok: false, recovery: recovery))
         } else if !snapshot.modelValid {
-            findings.append(.init(code: "model.invalid_marker", ok: false, recovery: "chorus install --repair"))
+            findings.append(.init(code: "model.invalid_marker", ok: false, recovery: recovery))
         } else {
             findings.append(.init(code: "model.valid", ok: true, recovery: nil))
         }
@@ -114,24 +143,15 @@ public struct Diagnostics: Sendable {
                 recovery: mcp.recovery
             ))
         }
-        let socketRecovery: String?
-        if snapshot.socketPresent {
-            socketRecovery = nil
-        } else if snapshot.process == .running {
-            // Host alive (e.g. menu Stop) — restart service, not full install repair.
-            socketRecovery = "Start service from menu, or run chorus menubar"
-        } else {
-            socketRecovery = "chorus install --repair"
-        }
         findings.append(.init(
             code: snapshot.socketPresent ? "socket.present" : "socket.missing",
             ok: snapshot.socketPresent,
-            recovery: socketRecovery
+            recovery: snapshot.socketPresent ? nil : recovery
         ))
         findings.append(.init(
             code: snapshot.launchAgentInstalled ? "launch_agent.installed" : "launch_agent.missing",
             ok: snapshot.launchAgentInstalled,
-            recovery: snapshot.launchAgentInstalled ? nil : "chorus install --repair"
+            recovery: snapshot.launchAgentInstalled ? nil : recovery
         ))
         if let error = currentError() {
             findings.append(.init(
@@ -143,7 +163,22 @@ public struct Diagnostics: Sendable {
         return findings
     }
 
-    /// Failed findings only, newest last-error first when present, for menu display.
+    /// First matching operational problem chooses the recovery command.
+    private func operationalRecovery(for snapshot: StatusSnapshot) -> String {
+        let modelBad = snapshot.modelRevision == nil || !snapshot.modelValid
+        if !snapshot.launchAgentInstalled || modelBad {
+            return "debrief install --repair"
+        }
+        if snapshot.process == .running && !snapshot.socketPresent {
+            return "debrief install --repair"
+        }
+        if snapshot.process != .running && snapshot.launchAgentInstalled {
+            return "debrief start"
+        }
+        return "debrief install --repair"
+    }
+
+    /// Failed findings only, for `debrief doctor`.
     public func doctorProblemLines(limit: Int = 8) -> [String] {
         let problems = doctor().filter { !$0.ok }
         return Array(problems.prefix(limit).map(\.summaryLine))
@@ -152,7 +187,7 @@ public struct Diagnostics: Sendable {
     /// Full plain-text doctor report for pasteboard copy.
     public func doctorReportText() -> String {
         let lines = doctor().map(\.summaryLine)
-        var body = "Chorus 진단 (\(ChorusVersion.current))\n"
+        var body = "debrief 진단 (\(ChorusVersion.current))\n"
         body += lines.joined(separator: "\n")
         if lines.isEmpty {
             body += "(결과 없음)"
@@ -245,7 +280,7 @@ public struct Diagnostics: Sendable {
             return .init(
                 code: "host.grok.invalid_toml",
                 ok: false,
-                recovery: "repair ~/.grok/config.toml as UTF-8 TOML, then run chorus install --grok --repair"
+                recovery: "repair ~/.grok/config.toml as UTF-8 TOML, then run debrief install --grok --repair"
             )
         case .codex:
             // Prefer specific code: hooks.json JSON vs config.toml UTF-8.
@@ -254,19 +289,19 @@ public struct Diagnostics: Sendable {
                 return .init(
                     code: "host.codex.invalid_json",
                     ok: false,
-                    recovery: "repair ~/.codex/hooks.json, then run chorus install --codex --repair"
+                    recovery: "repair ~/.codex/hooks.json, then run debrief install --codex --repair"
                 )
             }
             return .init(
                 code: "host.codex.invalid_toml",
                 ok: false,
-                recovery: "repair ~/.codex/config.toml as UTF-8 TOML, then run chorus install --codex --repair"
+                recovery: "repair ~/.codex/config.toml as UTF-8 TOML, then run debrief install --codex --repair"
             )
         case .claude:
             return .init(
                 code: "host.claude.invalid_json",
                 ok: false,
-                recovery: "repair the host JSON, then run chorus install --claude --repair"
+                recovery: "repair the host JSON, then run debrief install --claude --repair"
             )
         }
     }

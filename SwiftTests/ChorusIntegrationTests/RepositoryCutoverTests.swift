@@ -11,15 +11,15 @@ struct RepositoryCutoverTests {
     ])
 
     @Test func legacyRuntimeIsAbsent() {
-        for path in ["hook_voice", "tts_server", "plugins/chorus/runtime"] {
+        for path in ["hook_voice", "tts_server", "plugins/debrief/runtime"] {
             #expect(!FileManager.default.fileExists(atPath: repositoryRoot.appending(path: path).path))
         }
     }
 
     @Test func pluginHooksUseOnlyTheSwiftExecutable() throws {
         for path in [
-            "plugins/chorus/hooks/hooks.json",
-            "plugins/chorus/hooks/claude-hooks.json",
+            "plugins/debrief/hooks/hooks.json",
+            "plugins/debrief/hooks/claude-hooks.json",
         ] {
             let manifest = try jsonObject(path)
             let hooks = try #require(manifest["hooks"] as? [String: Any])
@@ -29,9 +29,10 @@ struct RepositoryCutoverTests {
                 for group in try #require(groups as? [[String: Any]]) {
                     for hook in try #require(group["hooks"] as? [[String: Any]]) {
                         let command = try #require(hook["command"] as? String)
-                        // Production path is the app binary (quoted absolute path); bare PATH `chorus` is gone.
+                        // Sample hooks name the installed executable. HostInstaller rewrites the absolute path.
                         #expect(command.contains("hook --source"))
-                        #expect(command.contains("Chorus.app/Contents/MacOS/chorus"))
+                        #expect(command.contains(".local/bin/debrief"))
+                        #expect(!command.contains("debrief.app"))
                         #expect(!command.contains("python"))
                         #expect(!command.contains("hook_voice"))
                     }
@@ -43,10 +44,10 @@ struct RepositoryCutoverTests {
     @Test func activePluginAndCurrentDocsDoNotAdvertiseRemovedRuntime() throws {
         let paths = [
             ".agents/plugins/marketplace.json",
-            "plugins/chorus/.codex-plugin/plugin.json",
-            "plugins/chorus/.claude-plugin/plugin.json",
-            "plugins/chorus/hooks/hooks.json",
-            "plugins/chorus/hooks/claude-hooks.json",
+            "plugins/debrief/.codex-plugin/plugin.json",
+            "plugins/debrief/.claude-plugin/plugin.json",
+            "plugins/debrief/hooks/hooks.json",
+            "plugins/debrief/hooks/claude-hooks.json",
             "README.md",
             "ONBOARDING.md",
             "DEVELOPER.md",
@@ -68,11 +69,11 @@ struct RepositoryCutoverTests {
     }
 
     private var skillFiles: [String] {
-        let skills = repositoryRoot.appending(path: "plugins/chorus/skills")
+        let skills = repositoryRoot.appending(path: "plugins/debrief/skills")
         return ((try? FileManager.default.contentsOfDirectory(
             at: skills,
             includingPropertiesForKeys: nil
-        )) ?? []).map { "plugins/chorus/skills/\($0.lastPathComponent)/SKILL.md" }
+        )) ?? []).map { "plugins/debrief/skills/\($0.lastPathComponent)/SKILL.md" }
     }
 
     private func jsonObject(_ path: String) throws -> [String: Any] {

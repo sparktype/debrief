@@ -28,7 +28,7 @@ public enum McpJSONRPC {
                 "protocolVersion": protocolVersion,
                 "capabilities": ["tools": [:] as [String: Any]],
                 "serverInfo": [
-                    "name": "chorus",
+                    "name": "debrief",
                     "version": ChorusVersion.current,
                 ] as [String: Any],
             ] as [String: Any])
@@ -88,7 +88,7 @@ public enum McpJSONRPC {
                 "At the end of each user-visible turn, speak once: two short sentences — what changed, then the one next action. "
                 + "The agent writes the line. Silence only if nothing new. "
                 + "lane=companion (default, prefer voice F1) or work; emotion biases prosody only. "
-                + "On Claude Code: mcp__chorus__speak; on Grok: chorus__speak (search_tool/use_tool). "
+                + "On Claude Code: mcp__debrief__speak; on Grok: debrief__speak (search_tool/use_tool). "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",
             "inputSchema": [
                 "type": "object",
@@ -123,8 +123,8 @@ public enum McpJSONRPC {
         [
             "name": "install",
             "description":
-                "Install or repair Chorus.app host integration (MCP registration, start-family hooks, skills, LaunchAgent). "
-                + "On Claude Code this may appear as mcp__chorus__install; on Grok as chorus__install "
+                "Install or repair the debrief daemon (MCP registration, start-family hooks, skills, LaunchAgent). "
+                + "On Claude Code this may appear as mcp__debrief__install; on Grok as debrief__install "
                 + "(search_tool / use_tool). "
                 + "Prefer repair=true for fixes. First-time model download can be slow — use shell install if the tool times out. "
                 + "After install: Claude restart; Grok run /mcps to refresh tools.",

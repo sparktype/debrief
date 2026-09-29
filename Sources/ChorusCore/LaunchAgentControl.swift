@@ -2,14 +2,14 @@
 import Darwin
 import Foundation
 
-/// Controls the installed Chorus LaunchAgent (`com.chorus.tts`).
+/// Controls the installed Chorus LaunchAgent (`com.debrief.tts`).
 ///
 /// **Quit must not wait on `bootout` from inside the job.** `launchctl bootout`
 /// waits for the target process to exit; if that process is us, we deadlock.
 /// Disable first (non-blocking for the running job), stop the service, exit;
 /// KeepAlive will not relaunch a disabled service. Install re-enables.
 public enum LaunchAgentControl: Sendable {
-    public static let label = "com.chorus.tts"
+    public static let label = "com.debrief.tts"
 
     public static func domain(userID: UInt32 = getuid()) -> String {
         "gui/\(userID)"

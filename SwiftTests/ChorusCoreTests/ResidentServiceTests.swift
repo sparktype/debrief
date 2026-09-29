@@ -63,6 +63,30 @@ struct ResidentServiceTests {
         #expect(!FileManager.default.fileExists(atPath: paths.pidURL.path))
     }
 
+    @Test func parkWithoutSocketRecordsTheErrorAndSkipsTheSocket() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let paths = ChorusPaths.forHome(home)
+        let service = ResidentService(
+            home: home,
+            modelDirectoryProvider: { _ in throw CocoaError(.fileNoSuchFile) },
+            backendFactory: { _ in RecordingBackend() },
+            audioFactory: { RecordingAudio() }
+        )
+
+        await #expect(throws: ResidentServiceError.modelUnavailable) {
+            try await service.start()
+        }
+        #expect(!FileManager.default.fileExists(atPath: paths.socketURL.path))
+        try await service.parkWithoutSocket(message: "모델을 사용할 수 없습니다.")
+        #expect(await service.isRunning)
+        #expect(FileManager.default.fileExists(atPath: paths.pidURL.path))
+        #expect(!FileManager.default.fileExists(atPath: paths.socketURL.path))
+        #expect(Diagnostics(home: home).currentError()?.code == "model_unavailable")
+        await service.stop()
+        #expect(!FileManager.default.fileExists(atPath: paths.pidURL.path))
+    }
+
     @Test func doubleStartThrowsAlreadyRunning() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }

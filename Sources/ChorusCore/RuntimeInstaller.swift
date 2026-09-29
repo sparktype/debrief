@@ -26,9 +26,29 @@ public struct ProcessLaunchctlRunner: LaunchctlRunning {
     }
 }
 
-public enum RuntimeInstallerError: Error, Equatable, Sendable {
+public enum ServiceStartResult: Equatable, Sendable {
+    case started
+    case alreadyRunning
+}
+
+public enum RuntimeInstallerError: Error, Equatable, Sendable, CustomStringConvertible {
     case launchctlFailed(Int32)
     case atomicExecutableReplacementFailed
+    case executablePathIsDirectory
+    case launchAgentMissing
+
+    public var description: String {
+        switch self {
+        case let .launchctlFailed(status):
+            return "launchctl failed (\(status))"
+        case .atomicExecutableReplacementFailed:
+            return "실행 파일을 바꾸지 못했습니다."
+        case .executablePathIsDirectory:
+            return CliMessages.executablePathIsDirectory
+        case .launchAgentMissing:
+            return CliMessages.launchAgentMissing
+        }
+    }
 }
 
 public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: LaunchctlRunning>: Sendable {
@@ -55,16 +75,13 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         self.healthCheck = healthCheck
     }
 
-    /// Optional PNG used for `Chorus.app` Finder icon (`sips` + `iconutil`).
-    public var applicationIconPNG: Data?
-
     @discardableResult
     public func install(hosts: Set<HostSource>, repair: Bool) async throws -> HostInstallResult {
         let paths = ChorusPaths.forHome(home)
-        try installApplicationBundle(paths: paths)
-        try removeLegacyCLISymlink(at: paths.legacyCLISymlinkURL)
+        await retirePreviousLaunchAgents()
+        try installExecutable(from: sourceExecutable, to: paths.executableURL)
+        removeRetiredCLIIfFile(at: home.appending(path: ".local/bin/chorus"))
         _ = try await modelInstaller.install(repair: repair)
-        // Hooks invoke the app binary directly — no CLI wrapper path.
         let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
             .install(hosts: hosts)
         try AtomicInstallerFile.write(
@@ -74,15 +91,34 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         )
         try recordRuntimeOwnership(paths: paths)
         try await bootstrapLaunchAgent(paths: paths)
-        // Legacy migration must not fail a successful app install/bootstrap.
+        removeOwnedApplicationBundles()
+        // Legacy migration must not fail a successful install/bootstrap.
         try? await migrateLegacyIfPresent(paths: paths)
         return hostResult
+    }
+
+    /// Enables an existing LaunchAgent. Does not write a plist or change config.json.
+    public func start() async throws -> ServiceStartResult {
+        let paths = ChorusPaths.forHome(home)
+        guard FileManager.default.fileExists(atPath: paths.launchAgentURL.path) else {
+            throw RuntimeInstallerError.launchAgentMissing
+        }
+        if Diagnostics(home: home).status().process == .running {
+            return .alreadyRunning
+        }
+        try await bootstrapLaunchAgent(paths: paths)
+        return .started
+    }
+
+    /// Disables and bootouts the agent. Keeps the plist and the executable.
+    public func stop() async throws {
+        try await disableAndBootout()
     }
 
     /// Enables, boots out any prior job, then bootstraps. Retries once on bootstrap I/O races.
     private func bootstrapLaunchAgent(paths: ChorusPaths) async throws {
         let domain = "gui/\(userID)"
-        let service = "\(domain)/com.chorus.tts"
+        let service = "\(domain)/com.debrief.tts"
         // Menu Quit disables the agent so KeepAlive does not relaunch; re-enable on install.
         try await launchctl.run(
             arguments: LaunchAgentControl.enableArguments(userID: userID),
@@ -119,22 +155,14 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
             .uninstall(hosts: hosts)
         var preserved = hostResult.preservedModifiedFiles
-        try await launchctl.run(
-            arguments: ["bootout", "gui/\(userID)/com.chorus.tts"],
-            allowFailure: true
-        )
-        try removeLegacyCLISymlink(at: paths.legacyCLISymlinkURL)
-        let removable = [
-            paths.launchAgentURL,
-            paths.executableURL,
-            AppBundleInstaller.infoPlistURL(appBundle: paths.applicationBundleURL),
-            AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL),
-            AppBundleInstaller.menuBarIconURL(appBundle: paths.applicationBundleURL),
-            AppBundleInstaller.menuBarIcon2xURL(appBundle: paths.applicationBundleURL),
-        ]
+        try await disableAndBootout()
+        removeRetiredCLIIfFile(at: home.appending(path: ".local/bin/chorus"))
+        let removable = [paths.launchAgentURL, paths.executableURL]
         for url in removable {
+            var isDirectory: ObjCBool = false
             guard let owned = manifest.runtimeFiles.first(where: { $0.path == url.path }),
-                  FileManager.default.fileExists(atPath: url.path) else { continue }
+                  FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else { continue }
             let digest = InstallerDigest.data(try Data(contentsOf: url))
             if digest == owned.sha256 {
                 try FileManager.default.removeItem(at: url)
@@ -142,11 +170,9 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
                 preserved.append(url.path)
             }
         }
-        // Drop empty app bundle shells after owned files are removed.
-        try? removeEmptyAppBundle(paths.applicationBundleURL)
+        removeOwnedApplicationBundles()
         manifest.runtimeFiles.removeAll { owned in
-            removable.contains { $0.path == owned.path }
-                || owned.path.hasPrefix(paths.applicationBundleURL.path + "/")
+            removable.contains { $0.path == owned.path } || Self.isRetiredAppPath(owned.path)
         }
         try manifest.save(to: paths.installManifestURL)
         return HostInstallResult(
@@ -155,27 +181,23 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         )
     }
 
-    private func installApplicationBundle(paths: ChorusPaths) throws {
-        try AppBundleInstaller.install(
-            sourceExecutable: sourceExecutable,
-            appBundle: paths.applicationBundleURL,
-            version: ChorusVersion.current,
-            iconPNG: applicationIconPNG,
-            installExecutable: installExecutable(from:to:)
+    private func disableAndBootout() async throws {
+        try await launchctl.run(
+            arguments: LaunchAgentControl.disableArguments(userID: userID),
+            allowFailure: true
+        )
+        try await launchctl.run(
+            arguments: LaunchAgentControl.bootoutArguments(userID: userID),
+            allowFailure: true
         )
     }
 
-    private func removeEmptyAppBundle(_ appBundle: URL) throws {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: appBundle.path) else { return }
-        // Remove whole app if MacOS binary is gone.
-        let executable = AppBundleInstaller.executableURL(appBundle: appBundle)
-        if !fileManager.fileExists(atPath: executable.path) {
-            try? fileManager.removeItem(at: appBundle)
-        }
-    }
-
     private func installExecutable(from source: URL, to destination: URL) throws {
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: destination.path, isDirectory: &isDirectory),
+           isDirectory.boolValue {
+            throw RuntimeInstallerError.executablePathIsDirectory
+        }
         if source.standardizedFileURL == destination.standardizedFileURL {
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
             return
@@ -205,27 +227,9 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
 
     private func recordRuntimeOwnership(paths: ChorusPaths) throws {
         var manifest = try InstallManifest.load(from: paths.installManifestURL)
-        var urls = [
-            paths.executableURL,
-            paths.launchAgentURL,
-            AppBundleInstaller.infoPlistURL(appBundle: paths.applicationBundleURL),
-        ]
-        let icon = AppBundleInstaller.iconURL(appBundle: paths.applicationBundleURL)
-        if FileManager.default.fileExists(atPath: icon.path) {
-            urls.append(icon)
-        }
-        let menuBarIcon = AppBundleInstaller.menuBarIconURL(appBundle: paths.applicationBundleURL)
-        if FileManager.default.fileExists(atPath: menuBarIcon.path) {
-            urls.append(menuBarIcon)
-        }
-        let menuBarIcon2x = AppBundleInstaller.menuBarIcon2xURL(appBundle: paths.applicationBundleURL)
-        if FileManager.default.fileExists(atPath: menuBarIcon2x.path) {
-            urls.append(menuBarIcon2x)
-        }
+        let urls = [paths.executableURL, paths.launchAgentURL]
         manifest.runtimeFiles.removeAll { owned in
-            urls.contains { $0.path == owned.path }
-                || owned.path.hasPrefix(paths.applicationBundleURL.path + "/")
-                || owned.path == paths.legacyCLISymlinkURL.path
+            urls.contains { $0.path == owned.path } || Self.isRetiredAppPath(owned.path)
         }
         for url in urls {
             manifest.runtimeFiles.append(
@@ -238,11 +242,47 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         try manifest.save(to: paths.installManifestURL)
     }
 
-    /// Removes the retired `~/.local/bin/chorus` symlink or bare binary from older installs.
-    private func removeLegacyCLISymlink(at url: URL) throws {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: url.path) else { return }
-        try fileManager.removeItem(at: url)
+    /// Stops earlier agents and removes their plists. App bundles stay until bootstrap succeeds.
+    private func retirePreviousLaunchAgents() async {
+        for label in ["com.chorus.tts", "com.prompt-recap.tts"] {
+            let previousPlist = home.appending(path: "Library/LaunchAgents/\(label).plist")
+            guard FileManager.default.fileExists(atPath: previousPlist.path) else { continue }
+            try? await launchctl.run(
+                arguments: ["bootout", "gui/\(userID)/\(label)"],
+                allowFailure: true
+            )
+            try? FileManager.default.removeItem(at: previousPlist)
+        }
+    }
+
+    /// Deletes a leftover app only when its bundle id matches, and only at the fixed paths.
+    private func removeOwnedApplicationBundles() {
+        for bundle in ChorusPaths.removableApplicationBundles(home: home) {
+            guard bundleIdentifier(at: bundle.url) == bundle.bundleIdentifier else { continue }
+            try? FileManager.default.removeItem(at: bundle.url)
+        }
+    }
+
+    private func bundleIdentifier(at app: URL) -> String? {
+        let infoURL = app.appending(path: "Contents/Info.plist")
+        guard let data = try? Data(contentsOf: infoURL),
+              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return nil }
+        return info["CFBundleIdentifier"] as? String
+    }
+
+    /// Removes the retired `~/.local/bin/chorus` file. A directory is left in place.
+    private func removeRetiredCLIIfFile(at url: URL) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private static func isRetiredAppPath(_ path: String) -> Bool {
+        path.contains("/debrief.app/")
+            || path.contains("/Chorus.app/")
+            || path.contains("/prompt-recap.app/")
     }
 
     private func migrateLegacyIfPresent(paths: ChorusPaths) async throws {

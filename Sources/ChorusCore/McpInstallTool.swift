@@ -20,17 +20,15 @@ public protocol McpInstallRunning: Sendable {
 public struct LiveMcpInstallRunner: McpInstallRunning {
     private let home: URL
     private let sourceExecutable: URL
-    private let applicationIconPNG: Data?
 
-    public init(home: URL, sourceExecutable: URL, applicationIconPNG: Data? = nil) {
+    public init(home: URL, sourceExecutable: URL) {
         self.home = home
         self.sourceExecutable = sourceExecutable
-        self.applicationIconPNG = applicationIconPNG
     }
 
     public func install(hosts: Set<HostSource>, repair: Bool) async throws -> HostInstallResult {
         let paths = ChorusPaths.forHome(home)
-        var runtime = RuntimeInstaller(
+        let runtime = RuntimeInstaller(
             home: home,
             sourceExecutable: sourceExecutable,
             modelInstaller: ModelInstaller(
@@ -40,7 +38,6 @@ public struct LiveMcpInstallRunner: McpInstallRunning {
             ),
             launchctl: ProcessLaunchctlRunner()
         )
-        runtime.applicationIconPNG = applicationIconPNG
         return try await runtime.install(hosts: hosts, repair: repair)
     }
 }

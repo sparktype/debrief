@@ -90,7 +90,7 @@ struct HostMcpStatusTests {
         let expected = ChorusPaths.forHome(home).executableURL
         // hooks.json has chorus MCP but config.toml does not — must be missing.
         try writeJSON(
-            ["mcpServers": ["chorus": ["command": expected.path, "args": ["mcp"]]]],
+            ["mcpServers": ["debrief": ["command": expected.path, "args": ["mcp"]]]],
             to: home.appending(path: ".codex/hooks.json")
         )
         try FileManager.default.createDirectory(
@@ -149,7 +149,7 @@ struct HostMcpStatusTests {
         try writeJSON(
             [
                 "mcpServers": [
-                    "chorus": [
+                    "debrief": [
                         "command": command,
                         "args": ["mcp"],
                     ],
@@ -166,11 +166,11 @@ struct HostMcpStatusTests {
             withIntermediateDirectories: true
         )
         let body = """
-        # BEGIN chorus-mcp
-        [mcp_servers.chorus]
+        # BEGIN debrief-mcp
+        [mcp_servers.debrief]
         command = "\(command)"
         args = ["mcp"]
-        # END chorus-mcp
+        # END debrief-mcp
         """
         try Data(body.utf8).write(to: url)
     }
@@ -182,7 +182,7 @@ struct HostMcpStatusTests {
             withIntermediateDirectories: true
         )
         let body = """
-        [mcp_servers.chorus]
+        [mcp_servers.debrief]
         command = "\(command)"
         args = ["mcp"]
         """

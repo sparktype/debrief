@@ -1,4 +1,4 @@
-// 에이전트별 MCP 배선 상태 probe (메뉴바 · 진단)
+// 에이전트별 MCP 배선 상태 probe (debrief doctor)
 import Foundation
 
 /// On-disk chorus MCP registration state for one agent host.
@@ -72,9 +72,9 @@ public struct HostMcpStatus: Equatable, Sendable {
         }
         switch state {
         case .unreadable:
-            return "에이전트 설정을 수정한 뒤 메뉴에서 복구하거나 chorus install \(flag) --repair"
+            return "에이전트 설정을 수정한 뒤 debrief install \(flag) --repair"
         case .missing, .stalePath:
-            return "메뉴 「문제 에이전트 복구」 또는 chorus install \(flag) --repair"
+            return "debrief install \(flag) --repair"
         case .ok, .absent:
             return nil
         }
@@ -132,7 +132,7 @@ public enum HostMcpProbe {
         else { return .unreadable }
 
         guard let mcpServers = root["mcpServers"] as? [String: Any],
-              let chorus = mcpServers["chorus"] as? [String: Any]
+              let chorus = mcpServers["debrief"] as? [String: Any]
         else { return .missing }
 
         guard let command = chorus["command"] as? String, !command.isEmpty else {
@@ -151,7 +151,7 @@ public enum HostMcpProbe {
 
         let tableBody: String?
         if let owned = McpTomlConfig.ownedFragment(in: text),
-           McpTomlConfig.hasChorusTable(owned) || owned.contains("mcp_servers.chorus") {
+           McpTomlConfig.hasChorusTable(owned) || owned.contains("[mcp_servers.debrief]") {
             tableBody = owned
         } else if McpTomlConfig.hasChorusTable(text) {
             tableBody = text
@@ -167,9 +167,9 @@ public enum HostMcpProbe {
 
     /// Best-effort `command = "..."` from a TOML fragment.
     private static func extractTomlCommand(from text: String) -> String? {
-        // Prefer the value under [mcp_servers.chorus] when the whole file is scanned.
+        // Prefer the value under [mcp_servers.debrief] when the whole file is scanned.
         let section: String
-        if let range = text.range(of: #"[mcp_servers\.chorus]"#, options: .regularExpression) {
+        if let range = text.range(of: #"[mcp_servers\.debrief]"#, options: .regularExpression) {
             section = String(text[range.lowerBound...])
         } else {
             section = text

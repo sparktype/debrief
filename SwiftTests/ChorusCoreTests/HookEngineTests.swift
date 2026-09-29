@@ -16,7 +16,7 @@ struct HookEngineTests {
         let text = String(decoding: result.stdout, as: UTF8.self)
         #expect(text.contains("M1"))
         #expect(text.contains("subagent"))
-        #expect(text.contains("mcp__chorus__speak") || text.contains("speak"))
+        #expect(text.contains("mcp__debrief__speak") || text.contains("speak"))
         #expect(!result.submitted)
         #expect(result.deliveryError == nil)
     }

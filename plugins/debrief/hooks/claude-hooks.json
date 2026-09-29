@@ -1,0 +1,8 @@
+{
+  "description": "Claude Code start-family hooks for the installed debrief executable. Speech is MCP tool speak / mcp__debrief__speak (not Stop extraction). Prefer `debrief install --claude` so HostInstaller merges the absolute path. Homebrew puts `debrief` on PATH for install; hooks call ~/.local/bin/debrief.",
+  "hooks": {
+    "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "~/.local/bin/debrief hook --source claude", "timeout": 5}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "~/.local/bin/debrief hook --source claude", "timeout": 5}]}],
+    "SubagentStart": [{"matcher": "", "hooks": [{"type": "command", "command": "~/.local/bin/debrief hook --source claude", "timeout": 5}]}]
+  }
+}

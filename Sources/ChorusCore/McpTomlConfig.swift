@@ -2,17 +2,29 @@ import Foundation
 
 /// Marker-wrapped TOML MCP table body for Codex / Grok `config.toml`.
 enum McpTomlConfig {
-    static let begin = "# BEGIN chorus-mcp"
-    static let end = "# END chorus-mcp"
+    static let begin = "# BEGIN debrief-mcp"
+    static let end = "# END debrief-mcp"
 
     static func upsert(existing: String, fragment: String) -> String {
+        let stripped = stripLegacyBlocks(existing)
         let block = "\(begin)\n\(fragment.trimmingCharacters(in: .newlines))\n\(end)\n"
-        if let range = existing.range(of: #"\#(begin)[\s\S]*?\#(end)\n?"#, options: .regularExpression) {
-            return existing.replacingCharacters(in: range, with: block)
+        if let range = stripped.range(of: #"\#(begin)[\s\S]*?\#(end)\n?"#, options: .regularExpression) {
+            return stripped.replacingCharacters(in: range, with: block)
         }
-        var base = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+        var base = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
         if !base.isEmpty { base += "\n\n" }
         return base + block
+    }
+
+    /// Drops ownership blocks from earlier product names so install does not leave a second MCP server.
+    static func stripLegacyBlocks(_ existing: String) -> String {
+        let patterns = [
+            #"# BEGIN chorus-mcp[\s\S]*?# END chorus-mcp\n?"#,
+            #"# BEGIN prompt-recap-mcp[\s\S]*?# END prompt-recap-mcp\n?"#,
+        ]
+        return patterns.reduce(existing) { text, pattern in
+            text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+        }
     }
 
     static func removeOwned(_ existing: String) -> String {
@@ -42,6 +54,6 @@ enum McpTomlConfig {
     }
 
     static func hasChorusTable(_ existing: String) -> Bool {
-        existing.range(of: #"\[mcp_servers\.chorus\]"#, options: .regularExpression) != nil
+        existing.range(of: #"\[mcp_servers\.debrief\]"#, options: .regularExpression) != nil
     }
 }

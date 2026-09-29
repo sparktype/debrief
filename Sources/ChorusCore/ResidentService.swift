@@ -147,10 +147,37 @@ public actor ResidentService {
         }
     }
 
+    /// Model is missing or invalid. Records last-error.json, writes the pid, and does not open the socket.
+    public func parkWithoutSocket(message: String) throws {
+        guard !running else { throw ResidentServiceError.alreadyRunning }
+        let paths = ChorusPaths.forHome(home)
+        if ResidentService.isForeignHostRunning(home: home, processExists: processExists) {
+            throw ResidentServiceError.alreadyRunning
+        }
+        try FileManager.default.createDirectory(
+            at: paths.pidURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let pid = "\(getpid())"
+        try Data(pid.utf8).write(to: paths.pidURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: paths.pidURL.path)
+        try Diagnostics(home: home).recordError(
+            component: "daemon",
+            code: "model_unavailable",
+            message: message
+        )
+        ownedPID = pid
+        running = true
+        intentionalStop = false
+        removePidOnClear = true
+        server = nil
+        daemon = nil
+    }
+
     /// Stops the in-process daemon and closes the socket.
     /// - Parameter removePid: When `true` (default), removes the host pid file (full teardown /
     ///   headless daemon exit). When `false`, leaves the pid so Diagnostics still sees a live host
-    ///   (menu bar Stop — process continues).
+    ///   (process continues and keeps the pid file).
     public func stop(removePid: Bool = true) async {
         guard running else { return }
         intentionalStop = true

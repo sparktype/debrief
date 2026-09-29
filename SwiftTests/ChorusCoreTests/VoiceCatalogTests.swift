@@ -65,7 +65,7 @@ struct VoiceCatalogTests {
 
     @Test func contextMentionsSpeakToolNotHtmlEnvelope() {
         let text = VoiceCatalog.context(for: "planner")
-        #expect(text.contains("speak") || text.contains("mcp__chorus__speak"))
+        #expect(text.contains("speak") || text.contains("mcp__debrief__speak"))
         #expect(text.contains("companion") || text.contains("F1"))
         #expect(text.contains("emotion") || text.contains("neutral"))
         #expect(!text.contains("chorus:speak"))
@@ -82,7 +82,7 @@ struct VoiceCatalogTests {
             lastAssistantMessage: nil
         )
         let text = VoiceCatalog.context(for: event, source: .claude)
-        #expect(text.contains("mcp__chorus__speak"))
+        #expect(text.contains("mcp__debrief__speak"))
         #expect(text.contains("F1"))
         #expect(text.localizedCaseInsensitiveContains("silence") || text.contains("침묵") || text.contains("does not"))
     }
@@ -131,7 +131,9 @@ struct VoiceCatalogTests {
         #expect(text.contains("next action"))
         #expect(text.contains("agent writes"))
         #expect(text.contains("Silence only"))
-        #expect(text.localizedCaseInsensitiveContains("menu bar"))
+        #expect(text.contains("debrief mute"))
+        #expect(!text.localizedCaseInsensitiveContains("menu bar"))
+        #expect(!text.contains("menubar"))
         #expect(!text.localizedCaseInsensitiveContains("Chorus summarizes"))
     }
 }

@@ -6,11 +6,11 @@ import Testing
 @Suite("LaunchAgentControlTests")
 struct LaunchAgentControlTests {
     @Test func serviceTargetAndBootoutArguments() {
-        #expect(LaunchAgentControl.label == "com.chorus.tts")
-        #expect(LaunchAgentControl.serviceTarget(userID: 501) == "gui/501/com.chorus.tts")
-        #expect(LaunchAgentControl.bootoutArguments(userID: 501) == ["bootout", "gui/501/com.chorus.tts"])
-        #expect(LaunchAgentControl.disableArguments(userID: 501) == ["disable", "gui/501/com.chorus.tts"])
-        #expect(LaunchAgentControl.enableArguments(userID: 501) == ["enable", "gui/501/com.chorus.tts"])
+        #expect(LaunchAgentControl.label == "com.debrief.tts")
+        #expect(LaunchAgentControl.serviceTarget(userID: 501) == "gui/501/com.debrief.tts")
+        #expect(LaunchAgentControl.bootoutArguments(userID: 501) == ["bootout", "gui/501/com.debrief.tts"])
+        #expect(LaunchAgentControl.disableArguments(userID: 501) == ["disable", "gui/501/com.debrief.tts"])
+        #expect(LaunchAgentControl.enableArguments(userID: 501) == ["enable", "gui/501/com.debrief.tts"])
     }
 
     @Test func disableInvokesLaunchctlWithAllowFailure() async throws {
@@ -18,7 +18,7 @@ struct LaunchAgentControlTests {
         try await LaunchAgentControl.disable(userID: 42, launchctl: runner)
         let calls = await runner.calls
         #expect(calls.count == 1)
-        #expect(calls[0].arguments == ["disable", "gui/42/com.chorus.tts"])
+        #expect(calls[0].arguments == ["disable", "gui/42/com.debrief.tts"])
         #expect(calls[0].allowFailure == true)
     }
 
@@ -27,7 +27,7 @@ struct LaunchAgentControlTests {
         try await LaunchAgentControl.enable(userID: 42, launchctl: runner)
         let calls = await runner.calls
         #expect(calls.count == 1)
-        #expect(calls[0].arguments == ["enable", "gui/42/com.chorus.tts"])
+        #expect(calls[0].arguments == ["enable", "gui/42/com.debrief.tts"])
         #expect(calls[0].allowFailure == true)
     }
 }

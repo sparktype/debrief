@@ -23,7 +23,7 @@ public enum EmbeddedTemplates {
             EmbeddedHookHandler(
                 type: "command",
                 command: "\(shellQuote(executable.path)) hook --source \(source.rawValue)",
-                // Cold launch of the app binary can exceed 2s on first use.
+                // Cold launch of the executable can exceed 2s on first use.
                 timeout: 5
             ),
         ])
@@ -39,7 +39,7 @@ public enum EmbeddedTemplates {
     /// Shared TOML MCP fragment for Codex (`~/.codex/config.toml`) and Grok (`~/.grok/config.toml`).
     public static func mcpTomlFragment(executable: URL) -> String {
         """
-        [mcp_servers.chorus]
+        [mcp_servers.debrief]
         command = "\(tomlString(executable.path))"
         args = ["mcp"]
         enabled = true
@@ -53,30 +53,30 @@ public enum EmbeddedTemplates {
         let command = shellQuote(executable.path)
         return [
             "setup": skill(
-                name: "chorus-setup",
+                name: "debrief-setup",
                 description:
-                    "Guide local Chorus TTS setup for Grok Build. Prefer skill chorus-install / MCP chorus__install; then chorus-speak at turn end.",
+                    "Guide local debrief TTS setup for Grok Build. Prefer skill debrief-install / MCP debrief__install; then debrief-speak at turn end.",
                 body: """
                 Grok does **not** use SessionStart hook context for speech — durable skills + MCP tools carry the contract.
 
-                1. Run skill **chorus-install** (or shell `\(command) install --grok --repair`).
-                2. Refresh MCP with `/mcps` until `chorus__speak` and `chorus__install` appear.
-                3. At turn end, use skill **chorus-speak** → MCP `chorus__speak` once: what changed, then one next action.
-                4. Mute/mode/diagnostics: Chorus menu bar only.
+                1. Run skill **debrief-install** (or shell `\(command) install --grok --repair`).
+                2. Refresh MCP with `/mcps` until `debrief__speak` and `debrief__install` appear.
+                3. At turn end, use skill **debrief-speak** → MCP `debrief__speak` once: what changed, then one next action.
+                4. Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`.
 
-                Config: `~/.grok/config.toml` section `[mcp_servers.chorus]`.
-                Skills dir: `~/.grok/skills/chorus-{setup,install,speak}/`.
+                Config: `~/.grok/config.toml` section `[mcp_servers.debrief]`.
+                Skills dir: `~/.grok/skills/debrief-{setup,install,speak}/`.
                 """
             ),
             "install": skill(
-                name: "chorus-install",
+                name: "debrief-install",
                 description:
-                    "Install or repair Chorus.app and Grok MCP registration. Prefer MCP tool chorus__install (search_tool/use_tool); else shell install --grok --repair.",
+                    "Install or repair the debrief daemon and Grok MCP registration. Prefer MCP tool debrief__install (search_tool/use_tool); else shell install --grok --repair.",
                 body: """
-                ## Preferred — MCP (when chorus is already registered)
+                ## Preferred — MCP (when debrief is already registered)
 
-                1. `search_tool` query: `chorus install` (or `chorus speak`)
-                2. `use_tool` tool_name: `chorus__install` with:
+                1. `search_tool` query: `debrief install` (or `debrief speak`)
+                2. `use_tool` tool_name: `debrief__install` with:
 
                 ```json
                 { "hosts": ["grok"], "repair": true }
@@ -90,11 +90,10 @@ public enum EmbeddedTemplates {
                 ## Shell — first install or MCP timeout
 
                 ```bash
-                brew install sparktype/tap/chorus
-                chorus install --grok --repair
+                debrief install --grok --repair
                 ```
 
-                Or from the app binary:
+                Or the installed executable:
 
                 ```bash
                 \(command) install --grok --repair
@@ -102,10 +101,10 @@ public enum EmbeddedTemplates {
 
                 ## After success
 
-                - Menu bar Chorus running
-                - `~/.grok/config.toml` has `# BEGIN chorus-mcp` … `[mcp_servers.chorus]`
-                - Skills: chorus-setup, chorus-install, chorus-speak
-                - Tools: `chorus__speak`, `chorus__install`
+                - LaunchAgent running `debrief daemon`
+                - `~/.grok/config.toml` has `# BEGIN debrief-mcp` … `[mcp_servers.debrief]`
+                - Skills: debrief-setup, debrief-install, debrief-speak
+                - Tools: `debrief__speak`, `debrief__install`
                 """
             ),
             "speak": grokSpeakSkillMarkdown(executable: executable),
@@ -114,12 +113,12 @@ public enum EmbeddedTemplates {
 
     public static func grokSpeakSkillMarkdown(executable: URL) -> String {
         companionSpeakSkillMarkdown(
-            title: "Chorus speak (Grok)",
+            title: "debrief speak (Grok)",
             toolIntro: """
             Grok has **no SessionStart speech context** — this skill is the durable contract.
 
-            1. `search_tool` query `chorus speak` if needed
-            2. `use_tool` **`chorus__speak`** with JSON below
+            1. `search_tool` query `debrief speak` if needed
+            2. `use_tool` **`debrief__speak`** with JSON below
             """,
             executable: executable
         )
@@ -128,13 +127,13 @@ public enum EmbeddedTemplates {
     /// Durable speak contract for Claude Code / Codex skill directories.
     public static func claudeCodexSpeakSkillMarkdown(executable: URL) -> String {
         companionSpeakSkillMarkdown(
-            title: "Chorus speak",
+            title: "debrief speak",
             toolIntro: """
             | Host | Tool |
             | --- | --- |
-            | Claude Code | `mcp__chorus__speak` |
-            | Codex | `speak` on server `chorus` |
-            | Grok | `chorus__speak` (`search_tool` / `use_tool`) |
+            | Claude Code | `mcp__debrief__speak` |
+            | Codex | `speak` on server `debrief` |
+            | Grok | `debrief__speak` (`search_tool` / `use_tool`) |
             """,
             executable: executable
         )
@@ -147,8 +146,8 @@ public enum EmbeddedTemplates {
     ) -> String {
         """
         ---
-        name: chorus-speak
-        description: Turn-end spoken briefing via MCP speak (Claude: mcp__chorus__speak; Grok: chorus__speak). Use when a user-visible turn ends.
+        name: debrief-speak
+        description: Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Grok: debrief__speak). Use when a user-visible turn ends.
         ---
 
         # \(title)
@@ -187,24 +186,24 @@ public enum EmbeddedTemplates {
 
         Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user. If they speak: `priority=subagent`, `lane=work`, one fact.
 
-        Menu: mute · mode · **도우미 음성** · 진단. Binary: `\(executable.path)`.
+        Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. Binary: `\(executable.path)`.
         """
     }
 
     public static func skills(executable: URL) -> [String: String] {
         let command = shellQuote(executable.path)
         let installSkill = skill(
-            name: "chorus-install",
+            name: "debrief-install",
             description:
-                "Install or repair Chorus.app, MCP tools (speak/install), and Claude/Codex/Grok host wiring. Prefer MCP install tool when available.",
+                "Install or repair the debrief daemon, MCP tools (speak/install), and Claude/Codex/Grok host wiring. Prefer MCP install tool when available.",
             body: """
             ## Preferred (when MCP already works)
 
-            Call MCP tool `install` on server `chorus`:
+            Call MCP tool `install` on server `debrief`:
 
-            - Claude: `mcp__chorus__install`
-            - Grok: `chorus__install` (`search_tool` / `use_tool`)
-            - Codex: tool `install` on server `chorus`
+            - Claude: `mcp__debrief__install`
+            - Grok: `debrief__install` (`search_tool` / `use_tool`)
+            - Codex: tool `install` on server `debrief`
 
             Arguments:
 
@@ -220,8 +219,7 @@ public enum EmbeddedTemplates {
             ## Shell (first install or MCP timeout)
 
             ```bash
-            brew install sparktype/tap/chorus
-            chorus install --repair
+            debrief install --repair
             # single host: --claude | --codex | --grok
             ```
 
@@ -229,20 +227,20 @@ public enum EmbeddedTemplates {
 
             ## After install
 
-            1. Host MCP registration for `chorus`
-            2. Skills: chorus-setup, chorus-install, chorus-speak
-            3. Tools: speak + install (Grok: `chorus__speak` / `chorus__install`)
+            1. Host MCP registration for `debrief`
+            2. Skills: debrief-setup, debrief-install, debrief-speak
+            3. Tools: speak + install (Grok: `debrief__speak` / `debrief__install`)
             """
         )
         return [
             "setup": skill(
-                name: "chorus-setup",
-                description: "Guide Chorus TTS setup for Claude Code / Codex / Grok (points to install skill and MCP install tool).",
+                name: "debrief-setup",
+                description: "Guide debrief TTS setup for Claude Code / Codex / Grok (points to install skill and MCP install tool).",
                 body: """
-                Use skill **chorus-install** or MCP tool `install` \
-                (Claude: `mcp__chorus__install`, Grok: `chorus__install`) to install/repair. \
-                After wiring, use **chorus-speak** at turn end: what changed, then one next action. \
-                Grok: refresh with `/mcps`. Mute/mode/diagnostics are menu bar only. Binary: `\(command)`.
+                Use skill **debrief-install** or MCP tool `install` \
+                (Claude: `mcp__debrief__install`, Grok: `debrief__install`) to install/repair. \
+                After wiring, use **debrief-speak** at turn end: what changed, then one next action. \
+                Grok: refresh with `/mcps`. Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. Binary: `\(command)`.
                 """
             ),
             "install": installSkill,
@@ -253,42 +251,11 @@ public enum EmbeddedTemplates {
     public static func launchAgent(executable: URL) throws -> Data {
         try PropertyListSerialization.data(
             fromPropertyList: [
-                "Label": "com.chorus.tts",
-                "ProgramArguments": [executable.path, "menubar"],
+                "Label": "com.debrief.tts",
+                "ProgramArguments": [executable.path, "daemon"],
                 "RunAtLoad": true,
                 "KeepAlive": true,
-                // macOS BTM / "Allow in the Background" uses this to show the app icon.
-                "AssociatedBundleIdentifiers": [AppBundleInstaller.bundleIdentifier],
             ],
-            format: .xml,
-            options: 0
-        )
-    }
-
-    /// Finder / LaunchServices metadata for `Chorus.app`.
-    public static func appInfoPlist(version: String) throws -> Data {
-        try PropertyListSerialization.data(
-            fromPropertyList: [
-                "CFBundleDevelopmentRegion": "en",
-                "CFBundleDisplayName": "Chorus",
-                "CFBundleExecutable": AppBundleInstaller.executableName,
-                "CFBundleIconFile": AppBundleInstaller.iconFileName,
-                // Modern System Settings / BTM prefer IconName alongside IconFile.
-                "CFBundleIconName": AppBundleInstaller.iconFileName,
-                "CFBundleIdentifier": AppBundleInstaller.bundleIdentifier,
-                "CFBundleInfoDictionaryVersion": "6.0",
-                "CFBundleName": "Chorus",
-                "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": version,
-                "CFBundleVersion": version,
-                "LSMinimumSystemVersion": "14.0",
-                // Menu bar agent: no Dock tile; Applications icon still launches the app.
-                "LSUIElement": true,
-                // Prefer a single running instance when the user re-clicks the app icon.
-                "LSMultipleInstancesProhibited": true,
-                "NSHighResolutionCapable": true,
-                "NSPrincipalClass": "NSApplication",
-            ] as [String: Any],
             format: .xml,
             options: 0
         )

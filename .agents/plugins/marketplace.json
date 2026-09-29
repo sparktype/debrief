@@ -1,14 +1,14 @@
 {
-  "name": "chorus-local",
+  "name": "debrief-local",
   "interface": {
-    "displayName": "Chorus Local"
+    "displayName": "debrief"
   },
   "plugins": [
     {
-      "name": "chorus",
+      "name": "debrief",
       "source": {
         "source": "local",
-        "path": "./plugins/chorus"
+        "path": "./plugins/debrief"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -16,9 +16,9 @@
       },
       "category": "Developer Tools",
       "description": "Local TTS-only companion via MCP speak for Claude Code, Codex, and Grok on Apple Silicon.",
-      "installation": "Build, then run chorus install (or --claude). Restart the host so MCP tool speak appears. Use skill chorus-speak at turn end.",
+      "installation": "Build, then run debrief install (or --claude). Restart the host so MCP tool speak appears. Use skill debrief-speak at turn end.",
       "authentication": "No credentials required.",
-      "privacy": "Speaks only agent-provided text through the local menu-bar daemon. No STT or cloud summarization."
+      "privacy": "Speaks only agent-provided text through the local headless daemon. No STT or cloud summarization."
     }
   ]
 }

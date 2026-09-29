@@ -24,11 +24,12 @@ public struct HostInstaller: Sendable {
 
     /// Synthetic ownership path for JSON/TOML MCP registration digests.
     static func mcpOwnershipPath(for host: HostSource) -> String {
-        "mcp:\(host.rawValue):chorus"
+        "mcp:\(host.rawValue):debrief"
     }
 
     @discardableResult
     public func install(hosts: Set<HostSource>) throws -> HostInstallResult {
+        removeRetiredSkillDirectories()
         var manifest = try InstallManifest.load(from: manifestURL)
         var preserved: [String] = []
 
@@ -193,8 +194,9 @@ public struct HostInstaller: Sendable {
         let registration = EmbeddedTemplates.mcpRegistration(executable: executable)
         let digest = try InstallerDigest.json(registration)
         var mcpServers = root["mcpServers"] as? [String: Any] ?? [:]
+        _ = removeRetiredChorusJSONServer(&mcpServers)
 
-        if let existing = mcpServers["chorus"] {
+        if let existing = mcpServers["debrief"] {
             let current = try InstallerDigest.json(existing)
             let previouslyOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
             if current != digest, !previouslyOwned {
@@ -203,33 +205,66 @@ public struct HostInstaller: Sendable {
                     ownedFiles.append(previous)
                 }
             } else {
-                mcpServers["chorus"] = registration
+                mcpServers["debrief"] = registration
                 ownedFiles.append(OwnedInstalledFile(host: host, path: mcpPath, sha256: digest))
             }
         } else {
-            mcpServers["chorus"] = registration
+            mcpServers["debrief"] = registration
             ownedFiles.append(OwnedInstalledFile(host: host, path: mcpPath, sha256: digest))
         }
         root["mcpServers"] = mcpServers
     }
 
-    /// Remove owned JSON `mcpServers.chorus` left in Codex hooks.json by older installs.
+    /// Remove owned JSON MCP left in Codex hooks.json, including the pre-rename `chorus` key.
     private func stripLegacyJSONMcpIfOwned(
         from root: inout [String: Any],
         host: HostSource,
         previousFiles: [OwnedInstalledFile]
     ) throws {
-        guard var mcpServers = root["mcpServers"] as? [String: Any],
-              let existing = mcpServers["chorus"] else { return }
-        let mcpPath = Self.mcpOwnershipPath(for: host)
-        let current = try InstallerDigest.json(existing)
-        let registrationDigest = try InstallerDigest.json(
-            EmbeddedTemplates.mcpRegistration(executable: executable)
-        )
-        let wasOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
-        if current == registrationDigest || wasOwned {
-            mcpServers.removeValue(forKey: "chorus")
-            root["mcpServers"] = mcpServers
+        guard var mcpServers = root["mcpServers"] as? [String: Any] else { return }
+        var changed = removeRetiredChorusJSONServer(&mcpServers)
+        if let existing = mcpServers["debrief"] {
+            let mcpPath = Self.mcpOwnershipPath(for: host)
+            let current = try InstallerDigest.json(existing)
+            let registrationDigest = try InstallerDigest.json(
+                EmbeddedTemplates.mcpRegistration(executable: executable)
+            )
+            let wasOwned = previousFiles.contains { $0.path == mcpPath && $0.sha256 == current }
+            if current == registrationDigest || wasOwned {
+                mcpServers.removeValue(forKey: "debrief")
+                changed = true
+            }
+        }
+        if changed { root["mcpServers"] = mcpServers }
+    }
+
+    /// Drops earlier product MCP keys when they still point at that product's app bundle.
+    private func removeRetiredChorusJSONServer(_ mcpServers: inout [String: Any]) -> Bool {
+        let retired = [("chorus", "Chorus.app"), ("prompt-recap", "prompt-recap.app")]
+        var removed = false
+        for (key, marker) in retired {
+            guard let existing = mcpServers[key] as? [String: Any],
+                  let command = existing["command"] as? String,
+                  command.contains(marker) else { continue }
+            mcpServers.removeValue(forKey: key)
+            removed = true
+        }
+        return removed
+    }
+
+    /// Removes skill directories installed under earlier product names.
+    private func removeRetiredSkillDirectories() {
+        let names = ["setup", "install", "speak"]
+        for host in HostSource.allCases {
+            let root = skillsDirectory(for: host)
+            for prefix in ["chorus", "prompt-recap"] {
+                for name in names {
+                    let directory = root.appending(path: "\(prefix)-\(name)", directoryHint: .isDirectory)
+                    if FileManager.default.fileExists(atPath: directory.path) {
+                        try? FileManager.default.removeItem(at: directory)
+                    }
+                }
+            }
         }
     }
 
@@ -258,11 +293,11 @@ public struct HostInstaller: Sendable {
             if removeJSONMcp,
                let owned = manifest.files.first(where: { $0.host == host && $0.path == mcpPath }),
                var mcpServers = root["mcpServers"] as? [String: Any] {
-                if let existing = mcpServers["chorus"],
+                if let existing = mcpServers["debrief"],
                    (try? InstallerDigest.json(existing)) == owned.sha256 {
-                    mcpServers.removeValue(forKey: "chorus")
+                    mcpServers.removeValue(forKey: "debrief")
                     root["mcpServers"] = mcpServers
-                } else if mcpServers["chorus"] != nil {
+                } else if mcpServers["debrief"] != nil {
                     preserved.append(mcpPath)
                 }
             } else if stripLegacyJSONMcp {
@@ -366,7 +401,7 @@ public struct HostInstaller: Sendable {
         for name in EmbeddedTemplates.skillNames {
             guard let text = templates[name] else { continue }
             let destination = skillsDirectory(for: .grok)
-                .appending(path: "chorus-\(name)/SKILL.md")
+                .appending(path: "debrief-\(name)/SKILL.md")
             try installSkillFile(
                 text: text,
                 destination: destination,
@@ -402,7 +437,7 @@ public struct HostInstaller: Sendable {
         for name in EmbeddedTemplates.skillNames {
             guard let text = templates[name] else { continue }
             let destination = skillsDirectory(for: host)
-                .appending(path: "chorus-\(name)/SKILL.md")
+                .appending(path: "debrief-\(name)/SKILL.md")
             try installSkillFile(
                 text: text,
                 destination: destination,
@@ -503,7 +538,7 @@ public struct HostInstaller: Sendable {
     }
 
     private func backupIfNeeded(_ url: URL) throws {
-        let backup = URL(fileURLWithPath: url.path + ".chorus-backup")
+        let backup = URL(fileURLWithPath: url.path + ".debrief-backup")
         guard FileManager.default.fileExists(atPath: url.path),
               !FileManager.default.fileExists(atPath: backup.path) else { return }
         try AtomicInstallerFile.write(try Data(contentsOf: url), to: backup, permissions: 0o600)

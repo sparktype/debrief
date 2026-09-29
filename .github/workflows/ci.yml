@@ -32,5 +32,5 @@ jobs:
 
       - name: Architecture check
         run: |
-          file .build/release/chorus
-          lipo -info .build/release/chorus || true
+          file .build/release/debrief
+          lipo -info .build/release/debrief || true

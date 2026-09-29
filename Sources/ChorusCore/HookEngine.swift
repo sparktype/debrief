@@ -3,7 +3,7 @@ import Foundation
 public struct HookResult: Sendable {
     public let stdout: Data
     public let submitted: Bool
-    /// Human-readable delivery problem for diagnostics / menu bar (nil when healthy).
+    /// Human-readable delivery problem for diagnostics (nil when healthy).
     public let deliveryError: String?
 
     public init(stdout: Data, submitted: Bool, deliveryError: String? = nil) {

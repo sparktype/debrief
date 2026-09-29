@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "Chorus",
+    name: "debrief",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "chorus", targets: ["ChorusCLI"])],
+    products: [.executable(name: "debrief", targets: ["ChorusCLI"])],
     dependencies: [
         .package(
             url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",

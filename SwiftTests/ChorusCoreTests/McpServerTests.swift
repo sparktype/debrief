@@ -17,7 +17,7 @@ struct McpServerTests {
         let result = res?["result"] as? [String: Any]
         #expect(result?["protocolVersion"] as? String != nil)
         let serverInfo = result?["serverInfo"] as? [String: Any]
-        #expect(serverInfo?["name"] as? String == "chorus")
+        #expect(serverInfo?["name"] as? String == "debrief")
     }
 
     @Test func toolsListContainsSpeakAndInstall() async {
@@ -114,7 +114,7 @@ struct McpServerTests {
         #expect(response["id"] as? Int == 1)
         let result = response["result"] as? [String: Any]
         let serverInfo = result?["serverInfo"] as? [String: Any]
-        #expect(serverInfo?["name"] as? String == "chorus")
+        #expect(serverInfo?["name"] as? String == "debrief")
     }
 
     /// Grok (and some other hosts) speak newline-delimited JSON-RPC on stdio,
@@ -130,7 +130,7 @@ struct McpServerTests {
         #expect(response["id"] as? Int == 0)
         let result = response["result"] as? [String: Any]
         let serverInfo = result?["serverInfo"] as? [String: Any]
-        #expect(serverInfo?["name"] as? String == "chorus")
+        #expect(serverInfo?["name"] as? String == "debrief")
     }
 }
 

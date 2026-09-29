@@ -2,7 +2,9 @@
 
 **Date:** 2026-09-29
 
-**Status:** Pending review
+**Status:** Implemented 2026-09-29
+
+**Errata (2026-09-29, name):** 제품 이름은 debrief입니다. 아래 본문의 `chorus` 실행 파일, `Chorus.app`, `com.chorus.tts`, Application Support/Caches 경로는 검토 전 초안입니다. 구현은 실행 파일 `~/.local/bin/debrief`, LaunchAgent `com.debrief.tts`, 명령 `daemon`으로 되어 있습니다. 메뉴바 앱은 제거했습니다.
 
 **Target:** macOS 14+ Apple Silicon
 

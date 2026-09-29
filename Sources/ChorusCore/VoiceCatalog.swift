@@ -108,7 +108,7 @@ public enum VoiceCatalog {
         switch event.name {
         case .userPromptSubmit:
             return """
-            Chorus: once at turn end, \(tool), lane=companion, voice F1. Two short sentences in the user's language: \
+            debrief: once at turn end, \(tool), lane=companion, voice F1. Two short sentences in the user's language: \
             what changed, then the one next action or wait. Silence only if nothing new. No file lists or checklists. \
             No HTML/JSON in the body.
             """
@@ -122,13 +122,13 @@ public enum VoiceCatalog {
 
         case .sessionStart, .stop, .subagentStop:
             return """
-            Chorus turn briefing via \(tool). At the end of each user-visible turn, speak once: two short sentences \
+            debrief turn briefing via \(tool). At the end of each user-visible turn, speak once: two short sentences \
             in the user's language — what changed, then the one next action or wait. The agent writes the line. \
             Silence only if nothing new and no next action. Voice F1, speed ~0.93, volume ~0.85, lane=companion, \
             emotion from neutral|warm|focused|concerned|relieved|tired (prosody only). \
             Optional work lane for pure facts with role voice \(assignment.voice) (\(assignment.name)), speed ~\(format(assignment.baselineSpeed)). \
             Required args: text, voice, speed, volume. Optional: priority (\(priority.rawValue) default here), lane, emotion. \
-            No file lists or checklists. No HTML/JSON speech in the body. Mute/mode/companion toggle: menu bar only.
+            No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and companion: debrief mute, debrief mode, debrief companion.
             """
         }
     }
@@ -151,12 +151,12 @@ public enum VoiceCatalog {
         switch source {
         case .claude:
             // Claude Code often qualifies MCP tools as mcp__<server>__<tool>.
-            return "MCP tool `speak` on server `chorus` (may appear as `mcp__chorus__speak`)"
+            return "MCP tool `speak` on server `debrief` (may appear as `mcp__debrief__speak`)"
         case .codex:
-            return "MCP tool `speak` on server `chorus`"
+            return "MCP tool `speak` on server `debrief`"
         case .grok:
             // Grok qualifies tools as server__tool; discover via search_tool / use_tool.
-            return "MCP tool `chorus__speak` (search_tool / use_tool; server `chorus`)"
+            return "MCP tool `debrief__speak` (search_tool / use_tool; server `debrief`)"
         }
     }
 

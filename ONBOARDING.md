@@ -1,55 +1,61 @@
-# Chorus onboarding
+# debrief onboarding
 
-Chorus speaks text prepared by Codex, Claude Code, or Grok through **Chorus.app** (menu bar) via the MCP tool `speak`. Repair and host wiring can use MCP `install` or the shell install command.
+debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon plays the audio. Agents call MCP `speak`. Repair and host wiring can use MCP `install` or the shell install command.
 
 ## First installation
 
-1. Install the CLI with Homebrew:
+1. Build the executable from a checkout of [github.com/sparktype/debrief](https://github.com/sparktype/debrief):
 
    ```sh
-   brew install sparktype/tap/chorus
+   ./scripts/with-xcode.sh swift build -c release
    ```
 
-   From a source checkout instead: `./scripts/with-xcode.sh swift build -c release` (Xcode 27), then use `.build/release/chorus` in the next step.
+   Xcode 27 is required. The Homebrew formula `sparktype/tap/debrief` is not published yet. Tag `v0.0.1` on the tap still builds the previous `chorus` binary.
 
-2. Install the app, model, and host wiring (all hosts, or limit with flags):
+2. Install the daemon, model, and host wiring (all hosts, or limit with flags):
 
    ```sh
-   chorus install
-   # chorus install --claude
-   # chorus install --grok --repair
+   debrief install
+   # debrief install --claude
+   # debrief install --grok --repair
    ```
 
 3. Wait for the pinned Supertonic 3 model download and checksum verification.
-4. Open **Chorus** from Applications (or wait for LaunchAgent at login).
-5. Confirm MCP server `chorus` is registered for your host(s).
-6. **Claude Code:** restart the app so `mcp__chorus__speak` and `mcp__chorus__install` appear. Skills: `~/.claude/skills/chorus-{setup,install,speak}`.
-7. **Grok:** run **`/mcps`** so `chorus__speak` and `chorus__install` appear. Skills: `~/.grok/skills/chorus-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
+4. LaunchAgent starts `debrief daemon` (or run `debrief start`).
+5. Confirm MCP server `debrief` is registered for your host(s).
+6. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{setup,install,speak}`.
+7. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
 8. **Codex:** review start-family hooks in `/hooks`; MCP lives in `~/.codex/config.toml`.
 9. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
 
 Repair without wiping unrelated host settings:
 
 ```sh
-chorus install --repair
+debrief install --repair
 # or, when MCP already works:
-#   Claude: mcp__chorus__install  { "hosts": ["claude"], "repair": true }
-#   Grok:   chorus__install       { "hosts": ["grok"], "repair": true }
+#   Claude: mcp__debrief__install  { "hosts": ["claude"], "repair": true }
+#   Grok:   debrief__install       { "hosts": ["grok"], "repair": true }
 ```
 
 ## Daily use
 
-Control everything from the **menu bar**:
+```sh
+debrief status
+debrief mode [normal|focus|quiet|verbose|night]
+debrief mute [on|off|toggle]
+debrief companion [on|off|toggle]
+debrief doctor
+debrief start
+debrief stop
+```
 
 - **Mode** — `normal` (default); `focus` / `quiet` / `night` suppress `priority=subagent`; quiet/night also lower volume ceilings; `verbose` includes subagent speech
 - **Mute** — pause or restore speech
-- **도우미 음성** — companion-lane on/off (work lane still allowed when on mute off)
-- **MCP** — Claude / Codex / Grok wiring status; **문제 에이전트 복구** re-runs install repair for broken agents
-- **진단** — doctor findings (includes MCP problems); copy full report
-- **Start / Stop service** — TTS service only
-- **Chorus 종료** — quit (disables auto-start until reinstall)
+- **도우미 음성** — `debrief companion` turns companion-lane speech on or off (work lane still plays when mute is off)
+- **doctor** — findings, including MCP wiring. The first matching recovery is `debrief install --repair` or `debrief start`
+- **start / stop** — bootstrap an existing LaunchAgent, or disable and bootout it. Stop keeps the binary and the plist
 
-There is no user CLI for mute/mode/status/speak. Agents call MCP `speak`; hosts spawn `…/chorus mcp` after install.
+Agents call MCP `speak`. Hosts spawn `~/.local/bin/debrief mcp` after install. `debrief speak` is not a command.
 
 ## Agent rules (all hosts)
 
@@ -58,4 +64,4 @@ There is no user CLI for mute/mode/status/speak. Agents call MCP `speak`; hosts 
 - Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum; prosody only).
 - Companion prefers voice **F1**, speed ~0.93, volume ~0.85. Subagents do not brief the user; if they speak, `priority=subagent` and `lane=work`, one fact.
 - Do not put speech JSON or HTML comments in the chat body.
-- Mute / mode / **도우미 음성** / diagnostics: menu bar only.
+- Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`.

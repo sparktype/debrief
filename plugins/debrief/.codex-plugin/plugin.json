@@ -1,0 +1,35 @@
+{
+  "id": "debrief",
+  "name": "debrief",
+  "version": "1.0.0+codex.20260716070111",
+  "description": "Single-binary local TTS for Codex and Claude Code on Apple Silicon.",
+  "author": {
+    "name": "debrief contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "voice",
+    "tts",
+    "codex",
+    "claude",
+    "accessibility"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "debrief",
+    "shortDescription": "Local voice feedback for coding agents",
+    "longDescription": "Speak only explicit text selected by Codex or Claude Code through a local Swift TTS daemon.",
+    "developerName": "debrief contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Local TTS",
+      "Agent-selected voice, speed, and volume"
+    ],
+    "defaultPrompt": [
+      "Run debrief install",
+      "Use skill debrief-speak at turn end"
+    ],
+    "brandColor": "#6D5BD0",
+    "screenshots": []
+  }
+}
