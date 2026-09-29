@@ -61,7 +61,7 @@ That is **report mode**. The desired product is **companion mode**: step back, n
 | --- | --- |
 | Who writes text | **Agent only** |
 | Default lane | **companion** (omit `lane` → companion) |
-| Companion voice | Prefer **F1** (연아), speed ~0.90–0.93, volume ~0.80–0.85 |
+| Companion voice | Rotates **F1–M5** per session (same session id keeps one voice). Speed ~0.90–0.93, volume ~0.80–0.85. Work lane keeps the role voice. |
 | Work voice | Role map (M3/M4/…); may use existing `priority` for subagent suppression |
 | Silence | Valid; preferred over empty report |
 | Emotion ownership | Agent selects affective stance; text must carry it; optional enum for playback bias |
@@ -322,7 +322,7 @@ No requirement to golden-file audio.
 | --- | --- |
 | Axes | **1 + 2 + optional 3** (lanes) |
 | Emotion | **In scope** as §8 |
-| Companion voice | **F1 preferred** |
+| Companion voice | **Rotates F1–M5 per session** |
 | quiet/night | Lower volume ceilings remain; emotion prefers calm/tired; no full companion ban by mode |
 | First ship | **P0 → P1 → P2** in order; all three shipped |
 | Work + emotion | Prosody forced to `neutral` for `lane=work` |

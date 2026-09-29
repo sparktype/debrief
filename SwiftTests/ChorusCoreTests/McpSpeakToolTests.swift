@@ -46,6 +46,51 @@ struct McpSpeakToolTests {
         }
     }
 
+    @Test func companionPlaybackUsesTheSessionVoice() async throws {
+        let diagnostics = Diagnostics(home: URL(fileURLWithPath: "/tmp/chorus-speak-unused"))
+        let sink = RecordingSink()
+        let arguments = McpSpeakArguments(text: "안녕", voice: "F1", speed: 0.93, volume: 0.85)
+        let result = await McpSpeakTool.execute(
+            arguments: arguments,
+            sink: sink,
+            diagnostics: diagnostics,
+            companionVoice: "M4"
+        )
+        #expect(result.isError == false)
+        #expect(await sink.recorded().last?.envelope.voice == "M4")
+    }
+
+    @Test func workLaneKeepsTheRequestedVoice() async throws {
+        let diagnostics = Diagnostics(home: URL(fileURLWithPath: "/tmp/chorus-speak-unused"))
+        let sink = RecordingSink()
+        let arguments = McpSpeakArguments(
+            text: "사실",
+            voice: "M1",
+            speed: 1.0,
+            volume: 0.8,
+            lane: .work
+        )
+        let result = await McpSpeakTool.execute(
+            arguments: arguments,
+            sink: sink,
+            diagnostics: diagnostics,
+            companionVoice: "M4"
+        )
+        #expect(result.isError == false)
+        #expect(await sink.recorded().last?.envelope.voice == "M1")
+    }
+
+    @Test func parseReadsSession() throws {
+        let parsed = try McpSpeakTool.parseArguments([
+            "text": "안녕",
+            "voice": "F1",
+            "speed": 0.93,
+            "volume": 0.85,
+            "session": " alpha ",
+        ])
+        #expect(parsed.session == "alpha")
+    }
+
     @Test func executeSubmitsValidRequest() async throws {
         let home = FileManager.default.temporaryDirectory
             .appending(path: "chorus-mcp-speak-\(UUID().uuidString)")

@@ -13,16 +13,17 @@ At the end of each user-visible turn, call speak **once**. Two short sentences i
 | Grok | `debrief__speak` |
 | Codex | `speak` |
 
-## Shape (`lane=companion`, voice **F1**)
+## Shape (`lane=companion`)
 
-Speed ~0.93, volume ~0.85. No file lists, checklists, or chat paste.
+The server rotates the companion voice across F1–M5, one voice per session, and keeps it. Pass `session` when the hook names a host session id. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. No file lists, checklists, or chat paste.
 
 ## Args
 
 | Field | Required | Notes |
 | --- | --- | --- |
 | text | yes | ≤ 800 chars. Sentence one: what changed. Sentence two: next action. |
-| voice | yes | F1…M5 |
+| voice | yes | F1…M5. Companion playback uses the session rotation. Work lane uses this value. |
+| session | no | Host session id. The same id keeps the same companion voice. |
 | speed | yes | 0.7–2.0 |
 | volume | yes | 0.0–1.0 |
 | priority | no | main / subagent |

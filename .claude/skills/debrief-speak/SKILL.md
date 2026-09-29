@@ -19,7 +19,7 @@ description: "사용자에게 보이는 턴이 끝날 때 debrief로 한 줄 브
 
 ## 문장
 
-파일 목록, A/B/C 체크리스트, 채팅 본문 복붙 금지. `lane=companion`, voice **F1**, speed ~0.93, volume ~0.85.
+파일 목록, A/B/C 체크리스트, 채팅 본문 복붙 금지. `lane=companion`. 도우미 목소리는 세션마다 F1–M5를 돌고, 훅이 알려 준 `session`을 넘기면 그 목소리를 유지합니다. speed ~0.93, volume ~0.85.
 
 ## 인자
 
@@ -30,7 +30,8 @@ description: "사용자에게 보이는 턴이 끝날 때 debrief로 한 줄 브
   "speed": 0.93,
   "volume": 0.85,
   "lane": "companion",
-  "emotion": "neutral"
+  "emotion": "neutral",
+  "session": "host-session-id"
 }
 ```
 

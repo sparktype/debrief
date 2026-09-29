@@ -9,6 +9,8 @@ public struct McpSpeakArguments: Equatable, Sendable {
     public let priority: SpeechPriority
     public let lane: SpeechLane
     public let emotion: SpeechEmotion
+    /// Host session id. Companion playback uses the rotated voice for this id.
+    public let session: String?
 
     public init(
         text: String,
@@ -17,7 +19,8 @@ public struct McpSpeakArguments: Equatable, Sendable {
         volume: Double,
         priority: SpeechPriority = .main,
         lane: SpeechLane = .companion,
-        emotion: SpeechEmotion = .neutral
+        emotion: SpeechEmotion = .neutral,
+        session: String? = nil
     ) {
         self.text = text
         self.voice = voice
@@ -26,6 +29,7 @@ public struct McpSpeakArguments: Equatable, Sendable {
         self.priority = priority
         self.lane = lane
         self.emotion = emotion
+        self.session = session
     }
 }
 
@@ -52,6 +56,7 @@ public enum McpSpeakTool {
         let priority = try optionalPriority(object["priority"])
         let lane = try optionalLane(object["lane"])
         let emotion = try optionalEmotion(object["emotion"])
+        let session = try optionalSession(object["session"])
         return McpSpeakArguments(
             text: text,
             voice: voice,
@@ -59,14 +64,16 @@ public enum McpSpeakTool {
             volume: volume,
             priority: priority,
             lane: lane,
-            emotion: emotion
+            emotion: emotion,
+            session: session
         )
     }
 
     public static func execute(
         arguments: McpSpeakArguments,
         sink: any SpeechSink,
-        diagnostics: Diagnostics
+        diagnostics: Diagnostics,
+        companionVoice: String? = nil
     ) async -> McpToolCallResult {
         // Work lane prefers neutral affect for prosody (design §8.3).
         let emotionForProsody: SpeechEmotion =
@@ -76,10 +83,11 @@ public enum McpSpeakTool {
             speed: arguments.speed,
             volume: arguments.volume
         )
+        let voice = resolvedVoice(arguments: arguments, companionVoice: companionVoice)
         let envelope = SpeechEnvelope(
             v: 1,
             text: arguments.text,
-            voice: arguments.voice,
+            voice: voice,
             speed: biased.speed,
             volume: biased.volume
         )
@@ -108,6 +116,26 @@ public enum McpSpeakTool {
             )
             return McpToolCallResult(isError: true, message: message)
         }
+    }
+
+    /// Companion lane plays the session rotation. Work lane keeps the requested role voice.
+    static func resolvedVoice(arguments: McpSpeakArguments, companionVoice: String?) -> String {
+        guard arguments.lane == .companion,
+              let companionVoice,
+              VoiceCatalog.allowedVoiceIDs.contains(companionVoice)
+        else {
+            return arguments.voice
+        }
+        return companionVoice
+    }
+
+    private static func optionalSession(_ value: Any?) throws -> String? {
+        guard let value else { return nil }
+        guard let raw = value as? String else {
+            throw CommandError.usage("speak session must be a string")
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func optionalPriority(_ value: Any?) throws -> SpeechPriority {

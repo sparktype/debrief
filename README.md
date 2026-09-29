@@ -27,9 +27,16 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 - Codex, Claude Code, Grok 중 하나 이상
 - 소스 설치에는 Xcode 27
 
-버전은 `0.0.1`입니다. Homebrew 탭의 공개 포뮬러는 아직 `Formula/chorus.rb`이고 이전 `chorus` 바이너리를 빌드합니다. `brew install sparktype/tap/debrief`는 다음 태그의 목표이며, 지금은 소스 빌드로 설치합니다.
+버전은 `0.0.2`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
+
+```sh
+brew install sparktype/tap/debrief
+debrief install
+```
+
+저장소가 비공개이면 Homebrew가 태그 아카이브를 받도록 GitHub 토큰이 필요합니다. 소스에서 빌드할 때는 Xcode 27이 필요합니다.
 
 ```sh
 git clone https://github.com/sparktype/debrief.git
@@ -202,12 +209,13 @@ tool_timeout_sec = 120
 | 필드 | 필수 | 설명 |
 | --- | --- | --- |
 | `text` | 예 | 800자 이하 |
-| `voice` | 예 | `F1`–`F5`, `M1`–`M5`. 도우미 기본은 `F1` |
+| `voice` | 예 | `F1`–`F5`, `M1`–`M5`. 도우미는 세션마다 이 목록을 돌고, 작업 레인은 역할표를 씁니다 |
 | `speed` | 예 | 0.7–2.0. 도우미는 약 0.93 |
 | `volume` | 예 | 0.0–1.0. 도우미는 약 0.85 |
 | `priority` | 아니오 | `main` (기본) 또는 `subagent` |
 | `lane` | 아니오 | `companion` (기본, 관찰) 또는 `work` (사실) |
 | `emotion` | 아니오 | `neutral` `warm` `focused` `concerned` `relieved` `tired`. 재생 성향만 바꿉니다 |
+| `session` | 아니오 | 호스트 세션 아이디. 같으면 도우미 목소리가 유지됩니다. 없으면 이 MCP 프로세스가 받은 목소리를 씁니다 |
 
 서브에이전트는 사용자를 브리핑하지 않습니다. 말해야 하면 `priority=subagent`, `lane=work`, 사실 한 줄입니다.
 
@@ -222,7 +230,9 @@ Codex 도구 이름은 서버 `debrief`의 `speak`와 `install`입니다. Grok�
 
 `install` 인자 `hosts`는 `codex`, `claude`, `grok` 배열이고 생략하면 전체입니다. `repair` 기본값은 `true`입니다. 첫 모델 다운로드는 MCP 시간 제한을 넘길 수 있으니 그때는 셸 `debrief install`을 씁니다.
 
-역할별 기본 목소리는 reviewer/optimizer `M3`, planner `M1`, builder `M4`, tester `F2`, explorer `F3`, guardian `M5`, ops `F4`, specialist `F5`, 그 외 `F1`입니다.
+역할별 기본 목소리는 reviewer `M2`, planner `M1`, builder `M4`, tester `F2`, explorer `F3`, optimizer `M3`, guardian `M5`, ops `F4`, specialist `F5`, 그 외 `F1`입니다. 역할마다 목소리가 다릅니다.
+
+도우미 목소리는 세션마다 `F1`부터 `M5`까지 돌아갑니다. 같은 세션 아이디는 같은 목소리를 유지하고, 열 개를 넘기면 처음부터 다시 씁니다. `speak`의 `session`에 호스트 세션 아이디를 넘기면 그 목소리로 재생합니다. 아이디가 없으면 그 MCP 프로세스가 받은 목소리로 재생합니다. 작업 레인은 역할표를 그대로 씁니다.
 
 ## 디스크
 
@@ -231,6 +241,7 @@ Codex 도구 이름은 서버 `debrief`의 `speak`와 `install`입니다. Grok�
 ~/Library/Application Support/debrief/config.json
 ~/Library/Application Support/debrief/models/
 ~/Library/Application Support/debrief/install-manifest.json
+~/Library/Application Support/debrief/session-voices.json
 ~/Library/Caches/debrief/debrief.sock
 ~/Library/Caches/debrief/daemon.pid
 ~/Library/Caches/debrief/last-error.json

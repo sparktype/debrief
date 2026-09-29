@@ -290,8 +290,12 @@ public enum HookCommandRunner {
         guard let event = try? HookAdapter.decode(input, source: source) else {
             return Data("{}".utf8)
         }
-        let client = UnixSocketClient(socketURL: ChorusPaths.forHome(home).socketURL)
-        let result = await HookEngine(sink: client).handle(event, source: source)
+        let paths = ChorusPaths.forHome(home)
+        let client = UnixSocketClient(socketURL: paths.socketURL)
+        let result = await HookEngine(
+            sink: client,
+            sessionVoices: SessionVoiceStore(url: paths.sessionVoicesURL)
+        ).handle(event, source: source)
         let diagnostics = Diagnostics(home: home)
         if result.submitted {
             try? diagnostics.clearCurrentError()

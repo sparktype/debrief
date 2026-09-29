@@ -33,8 +33,8 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 | Build (검증됨) | Xcode 27.0 / 27A266a |
 | Swift | 6.4 |
 | 플랫폼 | macOS 14+, arm64 |
-| 버전 | `ChorusVersion.current` = `0.0.1` (태그 `v0.0.1`) |
-| 사용자 설치 | 소스 release 빌드 후 `debrief install`. `brew install sparktype/tap/debrief`는 아직 탭에 없음 |
+| 버전 | `ChorusVersion.current` = `0.0.2` (태그 `v0.0.2`) |
+| 사용자 설치 | `brew install sparktype/tap/debrief` 다음 `debrief install`. 소스 빌드는 `./scripts/with-xcode.sh swift build -c release` |
 
 ## 규범 문서
 
@@ -53,14 +53,14 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 **포함**
 
 - Supertonic 3 + ONNX Runtime (Swift 패키지)
-- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`) + MCP `install` (`hosts`, `repair`)
+- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
 - CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `hook` / `mcp` (`speak` CLI 없음)
 - Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
-- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`, voice F1). 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
+- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
 
 **제외**
 
@@ -76,7 +76,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 ```text
 호스트가 ~/.local/bin/debrief 절대 경로로 spawn
   → debrief mcp
-      → tools/call speak { text, voice, speed, volume, priority?, lane?, emotion? }
+      → tools/call speak { text, voice, speed, volume, priority?, lane?, emotion?, session? }
       → 검증 후 UDS enqueue (ModePolicy: mute / companionEnabled / subagent / ceiling)
       → tools/call install { hosts?, repair? }  (복구·배선)
   → debrief daemon이 합성·재생 (emotion → EmotionProsody)
@@ -97,7 +97,7 @@ Grok
 새 사실도 다음 행동도 없으면 도구를 생략합니다 (Silence only).  
 Claude Code: `mcp__debrief__speak` / `mcp__debrief__install`.  
 Grok: `debrief__speak` / `debrief__install` (`search_tool` / `use_tool`).  
-기본 lane은 `companion`, voice **F1**, speed ~0.93, volume ~0.85. `emotion`은 닫힌 enum이며 재생 바이어스만 줍니다.  
+기본 lane은 `companion`, speed ~0.93, volume ~0.85. 도우미 목소리는 세션마다 F1–M5를 돌고, `session`이 같으면 그 목소리를 유지합니다. `session`이 없으면 이 MCP 프로세스가 받은 목소리를 씁니다. `emotion`은 닫힌 enum이며 재생 바이어스만 줍니다.  
 서브에이전트는 사용자에게 브리핑하지 않습니다. 말하면 `priority: "subagent"`, `lane: "work"`, 사실 한 줄 (focus/quiet/night에서 subagent 억제).  
 본문에 speech JSON·HTML 주석을 넣지 마세요. `debrief companion off`면 companion lane은 재생되지 않습니다.
 

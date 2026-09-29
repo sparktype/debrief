@@ -141,7 +141,7 @@ The agent, not Chorus, creates `text` and emits `voice`, `speed`, and `volume`. 
 
 | Category | Voice | Name | Baseline speed |
 | --- | --- | --- | --- |
-| reviewer | `M3` | 일론 | `1.00` |
+| reviewer | `M2` | 빌 | `0.92` |
 | planner | `M1` | 스티브 | `1.10` |
 | builder | `M4` | 리누스 | `0.95` |
 | tester | `F2` | 마리 | `1.10` |

@@ -4,13 +4,14 @@ import Testing
 @Suite("VoiceCatalogTests")
 struct VoiceCatalogTests {
     @Test(arguments: [
-        ("code-reviewer", "M3"),
+        ("code-reviewer", "M2"),
         ("planner", "M1"),
         ("feature-builder", "M4"),
         ("e2e-runner", "F2"),
         ("explore", "F3"),
-        ("code-simplifier", "M3"),
-        ("security-reviewer", "M3"),
+        ("code-simplifier", "M2"),
+        ("security-reviewer", "M2"),
+        ("performance-optimizer", "M3"),
         ("dependency-expert", "F5"),
         ("unknown-agent", "F1"),
         ("Plan", "M1"),
@@ -18,6 +19,22 @@ struct VoiceCatalogTests {
     ])
     func preservesVoiceRouting(agentType: String, voice: String) {
         #expect(VoiceCatalog.assignment(for: agentType).voice == voice)
+    }
+
+    @Test func rolesUseDistinctVoices() {
+        let roles = [
+            "reviewer", "planner", "builder", "tester", "explorer",
+            "optimizer", "guardian", "ops", "specialist", "default",
+        ]
+        let assignments = roles.map { VoiceCatalog.assignment(for: $0) }
+        #expect(Set(assignments.map(\.voice)).count == roles.count)
+        #expect(Set(assignments.map(\.name)).count == roles.count)
+        let reviewer = VoiceCatalog.assignment(for: "reviewer")
+        #expect(reviewer.voice == "M2")
+        #expect(reviewer.name == "빌")
+        #expect(reviewer.baselineSpeed == 0.92)
+        #expect(VoiceCatalog.assignment(for: "optimizer").voice == "M3")
+        #expect(VoiceCatalog.assignment(for: "optimizer").name == "일론")
     }
 
     @Test func preservesEveryLegacyCategoryEntry() {

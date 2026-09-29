@@ -148,7 +148,7 @@ Synthesis/playback failures and queue rejections write `~/Library/Caches/debrief
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`, then checks that `.build/release/debrief` is an arm64 binary. Local development uses Xcode 27 via `./scripts/with-xcode.sh` (Xcode-beta when installed, otherwise Xcode.app). Override with `CHORUS_XCODE_DEVELOPER`.
 
-The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). Current install is the release binary from that checkout, then `debrief install`. The published tap still has `Formula/chorus.rb` for tag `v0.0.1`, which builds the previous `chorus` binary. The next tag should add `Formula/debrief.rb` (`class Debrief`, `swift build --product debrief`). `ChorusVersion.current` remains `0.0.1` until that tag.
+The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). `ChorusVersion.current` is `0.0.2`, tag `v0.0.2`. The tap formula is `sparktype/tap/debrief` (`class Debrief`, `swift build --product debrief`). Install with `brew install sparktype/tap/debrief`, then `debrief install`. `Formula/chorus.rb` remains on the tap for tag `v0.0.1` and builds the previous `chorus` binary. A source checkout still builds with `./scripts/with-xcode.sh swift build -c release`.
 
 Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`CHORUS_TEST_MODEL_DIR` for the real-model smoke test).
 

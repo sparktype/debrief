@@ -87,7 +87,7 @@ public enum McpJSONRPC {
             "description":
                 "At the end of each user-visible turn, speak once: two short sentences — what changed, then the one next action. "
                 + "The agent writes the line. Silence only if nothing new. "
-                + "lane=companion (default, prefer voice F1) or work; emotion biases prosody only. "
+                + "lane=companion rotates one voice per session across F1–M5 (pass session to keep it) or work uses the voice you pass; emotion biases prosody only. "
                 + "On Claude Code: mcp__debrief__speak; on Grok: debrief__speak (search_tool/use_tool). "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",
             "inputSchema": [
@@ -112,6 +112,11 @@ public enum McpJSONRPC {
                         "description":
                             "restrained affect for companion: neutral (default), warm, focused, concerned, relieved, tired",
                         "enum": ["neutral", "warm", "focused", "concerned", "relieved", "tired"],
+                    ] as [String: Any],
+                    "session": [
+                        "type": "string",
+                        "description":
+                            "Host session id. Companion voice rotates across F1–M5 and stays on this id. Omit to use this MCP process.",
                     ] as [String: Any],
                 ] as [String: Any],
                 "required": ["text", "voice", "speed", "volume"],
@@ -226,6 +231,13 @@ public struct McpServer: Sendable {
         self.installRunner = installRunner
     }
 
+    /// Companion lane uses the rotated voice. An explicit session id wins; otherwise this process keeps one voice.
+    private static func companionVoice(for arguments: McpSpeakArguments, home: URL) -> String? {
+        guard arguments.lane == .companion else { return nil }
+        let key = arguments.session ?? "mcp:\(ProcessInfo.processInfo.processIdentifier)"
+        return try? SessionVoiceStore(home: home).claim(key)
+    }
+
     public func run() async {
         let reader = FrameReader(handle: input)
         let sink = self.sink
@@ -240,10 +252,12 @@ public struct McpServer: Sendable {
             case "speak":
                 do {
                     let parsed = try McpSpeakTool.parseArguments(arguments)
+                    let companionVoice = Self.companionVoice(for: parsed, home: home)
                     return await McpSpeakTool.execute(
                         arguments: parsed,
                         sink: sink,
-                        diagnostics: diagnostics
+                        diagnostics: diagnostics,
+                        companionVoice: companionVoice
                     )
                 } catch let error as CommandError {
                     return McpToolCallResult(isError: true, message: error.description)

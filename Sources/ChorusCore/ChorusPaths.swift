@@ -13,6 +13,8 @@ public struct ChorusPaths: Equatable, Sendable {
     public let launchAgentURL: URL
     public let installManifestURL: URL
     public let lastErrorURL: URL
+    /// Session id → companion voice. Shared by hooks and the MCP server.
+    public let sessionVoicesURL: URL
 
     public static func forHome(_ home: URL) -> ChorusPaths {
         let data = home.appending(path: "Library/Application Support/debrief", directoryHint: .isDirectory)
@@ -28,7 +30,8 @@ public struct ChorusPaths: Equatable, Sendable {
             executableURL: home.appending(path: ".local/bin/debrief"),
             launchAgentURL: home.appending(path: "Library/LaunchAgents/com.debrief.tts.plist"),
             installManifestURL: data.appending(path: "install-manifest.json"),
-            lastErrorURL: cache.appending(path: "last-error.json")
+            lastErrorURL: cache.appending(path: "last-error.json"),
+            sessionVoicesURL: data.appending(path: "session-voices.json")
         )
     }
 

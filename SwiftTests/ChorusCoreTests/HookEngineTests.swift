@@ -36,6 +36,41 @@ struct HookEngineTests {
         #expect(!result.submitted)
     }
 
+    @Test func sessionVoicesRotateAndSubagentsDoNotTakeASlot() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "chorus-hook-voices-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SessionVoiceStore(url: url)
+        let engine = HookEngine(sink: RecordingSink(), sessionVoices: store)
+
+        func text(_ result: HookResult) -> String {
+            String(decoding: result.stdout, as: UTF8.self)
+        }
+        let first = await engine.handle(
+            HookEvent(name: .sessionStart, sessionID: "alpha", turnID: nil, agentType: nil, lastAssistantMessage: nil),
+            source: .claude
+        )
+        let second = await engine.handle(
+            HookEvent(name: .sessionStart, sessionID: "beta", turnID: nil, agentType: nil, lastAssistantMessage: nil),
+            source: .claude
+        )
+        let again = await engine.handle(
+            HookEvent(name: .userPromptSubmit, sessionID: "alpha", turnID: "t", agentType: nil, lastAssistantMessage: nil),
+            source: .claude
+        )
+        let subagent = await engine.handle(
+            HookEvent(name: .subagentStart, sessionID: "child", turnID: nil, agentType: "planner", lastAssistantMessage: nil),
+            source: .claude
+        )
+
+        #expect(text(first).contains("F1 (연아)"))
+        #expect(text(second).contains("F2 (마리)"))
+        #expect(text(again).contains("F1 (연아)"))
+        #expect(text(subagent).contains("M1"))
+        #expect(!text(subagent).contains("session="))
+        #expect(try store.claim("gamma") == "F3")
+    }
+
     @Test func userPromptSubmitDefaultsToMainVoiceWithoutAgentType() async {
         let event = HookEvent(
             name: .userPromptSubmit,

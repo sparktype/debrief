@@ -6,32 +6,35 @@ debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon p
 
 ## First installation
 
-1. Build the executable from a checkout of [github.com/sparktype/debrief](https://github.com/sparktype/debrief):
+Version `0.0.2`. Install from Homebrew, then finish setup with `debrief install`:
 
-   ```sh
-   ./scripts/with-xcode.sh swift build -c release
-   ```
+```sh
+brew install sparktype/tap/debrief
+debrief install
+# debrief install --claude
+# debrief install --grok --repair
+```
 
-   Xcode 27 is required. The Homebrew formula `sparktype/tap/debrief` is not published yet. Tag `v0.0.1` on the tap still builds the previous `chorus` binary.
+The repository is private. Homebrew needs a GitHub token that can read `github.com/sparktype/debrief` when it downloads the tag archive. A source build needs Xcode 27:
 
-2. Put the binary on `PATH`, then install the daemon, model, and host wiring (all hosts, or limit with flags):
+```sh
+git clone https://github.com/sparktype/debrief.git
+cd debrief
+./scripts/with-xcode.sh swift build -c release
+env -u HF_HUB_OFFLINE .build/release/debrief install
+```
 
-   ```sh
-   export PATH="$HOME/.local/bin:$PATH"
-   .build/release/debrief install
-   # debrief install --claude
-   # debrief install --grok --repair
-   ```
+`debrief install` copies the executable to `~/.local/bin/debrief`. LaunchAgent starts that path, so playback works even when the shell cannot see `debrief`. The CLI commands below need `~/.local/bin` on `PATH`. The tap still has `Formula/chorus.rb` for tag `v0.0.1`, which builds the previous `chorus` binary.
 
-   LaunchAgent starts `~/.local/bin/debrief daemon` by absolute path, so playback works even when the shell cannot see `debrief`. The CLI commands below need the `PATH` line.
+After `debrief install`:
 
-3. Wait for the pinned Supertonic 3 model download and checksum verification.
-4. LaunchAgent starts `debrief daemon` (or run `debrief start`).
-5. Confirm MCP server `debrief` is registered for your host(s).
-6. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{setup,install,speak}`.
-7. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
-8. **Codex:** review start-family hooks in `/hooks`; MCP lives in `~/.codex/config.toml`.
-9. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
+1. Wait for the pinned Supertonic 3 model download and checksum verification.
+2. LaunchAgent starts `debrief daemon` (or run `debrief start`).
+3. Confirm MCP server `debrief` is registered for your host(s).
+4. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{setup,install,speak}`.
+5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
+6. **Codex:** review start-family hooks in `/hooks`; MCP lives in `~/.codex/config.toml`.
+7. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
 
 Repair without wiping unrelated host settings:
 
@@ -78,7 +81,7 @@ debrief companion off
 | `mode` | `debrief mode [normal\|focus\|quiet\|verbose\|night]` |
 | `companionEnabled` | `debrief companion [on\|off\|toggle]` |
 
-`volumeCeilings`, `categoryVoices`, and `voiceSpeeds` are stored in the same file. The CLI does not edit those maps. Empty voice maps use the role defaults in the README.
+`volumeCeilings`, `categoryVoices`, and `voiceSpeeds` are stored in the same file. The CLI does not edit those maps. Playback uses the voice on each `speak` call. Companion playback follows the session rotation in `session-voices.json`. Work-lane role voices are the catalog in the README.
 
 Host wiring is separate. `debrief install` writes absolute paths. `debrief install --repair` rewrites owned files and leaves a file alone when its digest no longer matches the install manifest.
 
@@ -97,7 +100,7 @@ Limit a repair to one host with `--claude`, `--codex`, or `--grok`. When MCP alr
 
 - Spoken text is the agent’s job. At the end of each user-visible turn, speak once: **what changed**, then the one **next action** or wait.
 - **Silence only** if nothing new and no next action. No file lists or checklists.
-- Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum; prosody only).
-- Companion prefers voice **F1**, speed ~0.93, volume ~0.85. Subagents do not brief the user; if they speak, `priority=subagent` and `lane=work`, one fact.
+- Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum; prosody only), `session` (host session id; keeps the companion voice).
+- Companion voice rotates across F1–M5, one voice per session. Pass `session` with the host session id so that chat keeps its voice. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. Subagents do not brief the user; if they speak, `priority=subagent` and `lane=work`, one fact.
 - Do not put speech JSON or HTML comments in the chat body.
 - Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`.

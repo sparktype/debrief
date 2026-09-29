@@ -15,9 +15,11 @@ public struct HookResult: Sendable {
 
 public struct HookEngine: Sendable {
     private let sink: any SpeechSink
+    private let sessionVoices: SessionVoiceStore?
 
-    public init(sink: any SpeechSink) {
+    public init(sink: any SpeechSink, sessionVoices: SessionVoiceStore? = nil) {
         self.sink = sink
+        self.sessionVoices = sessionVoices
     }
 
     public func handle(_ event: HookEvent, source: HostSource) async -> HookResult {
@@ -26,7 +28,20 @@ public struct HookEngine: Sendable {
         switch event.name {
         case .sessionStart, .userPromptSubmit, .subagentStart:
             // Host- and event-aware speak contract (Claude tool name + subagent priority).
-            let context = VoiceCatalog.context(for: event, source: source)
+            // Subagents keep the role voice and do not take a slot in the session rotation.
+            let sessionVoice: String?
+            if event.name == .subagentStart {
+                sessionVoice = nil
+            } else if let sessionVoices {
+                sessionVoice = try? sessionVoices.claim(event.sessionID)
+            } else {
+                sessionVoice = nil
+            }
+            let context = VoiceCatalog.context(
+                for: event,
+                source: source,
+                sessionVoice: sessionVoice
+            )
             let stdout = (try? HookAdapter.contextOutput(context, source: source, event: event))
                 ?? Data("{}".utf8)
             return HookResult(stdout: stdout, submitted: false)

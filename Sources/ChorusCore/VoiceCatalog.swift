@@ -21,7 +21,7 @@ public enum VoiceCatalog {
     ]
 
     private static let assignments: [String: VoiceAssignment] = [
-        "reviewer": .init(category: "reviewer", voice: "M3", name: "일론", baselineSpeed: 1.00),
+        "reviewer": .init(category: "reviewer", voice: "M2", name: "빌", baselineSpeed: 0.92),
         "planner": .init(category: "planner", voice: "M1", name: "스티브", baselineSpeed: 1.10),
         "builder": .init(category: "builder", voice: "M4", name: "리누스", baselineSpeed: 0.95),
         "tester": .init(category: "tester", voice: "F2", name: "마리", baselineSpeed: 1.10),
@@ -98,17 +98,29 @@ public enum VoiceCatalog {
         return assignments[category] ?? assignments["default"]!
     }
 
+    /// Persona that owns this voice id. Each role voice is unique.
+    public static func persona(forVoice voice: String) -> VoiceAssignment {
+        assignments.values.first { $0.voice == voice } ?? assignments["default"]!
+    }
+
     /// MCP speak contract for start-family hooks (host- and event-aware).
     /// Each user-visible turn: what changed, then one next action. The agent writes the line.
-    public static func context(for event: HookEvent, source: HostSource) -> String {
+    /// `sessionVoice` is the companion voice reserved for this session. Nil keeps F1.
+    public static func context(
+        for event: HookEvent,
+        source: HostSource,
+        sessionVoice: String? = nil
+    ) -> String {
         let assignment = assignment(for: event.agentType)
         let tool = toolReference(source: source)
         let priority = recommendedPriority(for: event.name)
+        let companion = persona(forVoice: sessionVoice ?? "F1")
 
         switch event.name {
         case .userPromptSubmit:
             return """
-            debrief: once at turn end, \(tool), lane=companion, voice F1. Two short sentences in the user's language: \
+            debrief: once at turn end, \(tool), lane=companion, voice \(companion.voice) (\(companion.name)), \
+            session=\(event.sessionID). Two short sentences in the user's language: \
             what changed, then the one next action or wait. Silence only if nothing new. No file lists or checklists. \
             No HTML/JSON in the body.
             """
@@ -124,10 +136,12 @@ public enum VoiceCatalog {
             return """
             debrief turn briefing via \(tool). At the end of each user-visible turn, speak once: two short sentences \
             in the user's language — what changed, then the one next action or wait. The agent writes the line. \
-            Silence only if nothing new and no next action. Voice F1, speed ~0.93, volume ~0.85, lane=companion, \
+            Silence only if nothing new and no next action. Voice \(companion.voice) (\(companion.name)), \
+            speed ~\(format(companion.baselineSpeed)), volume ~0.85, lane=companion, session=\(event.sessionID). \
+            The server keeps that companion voice for this session. \
             emotion from neutral|warm|focused|concerned|relieved|tired (prosody only). \
             Optional work lane for pure facts with role voice \(assignment.voice) (\(assignment.name)), speed ~\(format(assignment.baselineSpeed)). \
-            Required args: text, voice, speed, volume. Optional: priority (\(priority.rawValue) default here), lane, emotion. \
+            Required args: text, voice, speed, volume. Optional: priority (\(priority.rawValue) default here), lane, emotion, session. \
             No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and companion: debrief mute, debrief mode, debrief companion.
             """
         }
