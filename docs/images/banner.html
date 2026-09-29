@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>debrief</title>
+<style>
+  html, body { margin: 0; width: 1600px; height: 520px; overflow: hidden; background: #14110e; }
+  body {
+    font-family: "SF Pro Text", "Apple SD Gothic Neo", sans-serif;
+    color: #f4efe6;
+  }
+  .frame {
+    display: grid;
+    grid-template-columns: 640px 1fr;
+    width: 1600px;
+    height: 520px;
+  }
+  .paper {
+    background: #f3ecdf;
+    color: #1c1712;
+    padding: 56px 56px 48px 64px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .kicker {
+    font-size: 15px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #8a5a24;
+    font-weight: 620;
+  }
+  h1 {
+    margin: 18px 0 0;
+    font-family: "New York", "Iowan Old Style", Palatino, serif;
+    font-weight: 560;
+    font-size: 108px;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+  }
+  .lead {
+    margin-top: 28px;
+    font-size: 28px;
+    line-height: 1.45;
+    font-weight: 480;
+    color: #3a322a;
+  }
+  .wave { margin-top: 8px; }
+  .meta {
+    font-size: 16px;
+    letter-spacing: 0.04em;
+    color: #6e6458;
+  }
+  .stage {
+    padding: 48px 56px 36px 48px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 36px;
+  }
+  .steps { display: flex; flex-direction: column; gap: 22px; }
+  .step { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: baseline; }
+  .num {
+    font-family: "New York", "Iowan Old Style", Palatino, serif;
+    font-size: 28px;
+    color: #e2a14a;
+  }
+  .label { font-size: 28px; font-weight: 620; letter-spacing: -0.02em; }
+  .detail { margin-top: 4px; font-size: 18px; color: #b7aea2; }
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #3a332c;
+    padding-top: 18px;
+    font-size: 16px;
+    color: #b7aea2;
+  }
+  .path { font-family: "SF Mono", ui-monospace, Menlo, monospace; color: #f4efe6; font-size: 15px; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <section class="paper">
+      <div>
+        <div class="kicker">Local TTS</div>
+        <h1>debrief</h1>
+        <p class="lead">에이전트가 고른 문장을<br />이 Mac에서 읽습니다.</p>
+      </div>
+      <svg class="wave" width="420" height="48" viewBox="0 0 420 48" fill="none" aria-hidden="true">
+        <path d="M0 24 H48 M64 24 V12 M80 24 V6 M96 24 V18 M112 24 V4 M128 24 V16 M144 24 V8 M160 24 V20 M176 24 V10 M192 24 V2 M208 24 V14 M224 24 V8 M240 24 V18 M256 24 V6 M272 24 V16 M288 24 V24 M304 24 V12 M336 24 H420" stroke="#c47a2a" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      <div class="meta">Codex · Claude Code · Grok</div>
+    </section>
+    <section class="stage">
+      <div class="steps">
+        <div class="step">
+          <div class="num">01</div>
+          <div>
+            <div class="label">호스트가 문장을 고릅니다</div>
+            <div class="detail">턴이 끝날 때 MCP speak 한 번</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">02</div>
+          <div>
+            <div class="label">소켓으로 넘깁니다</div>
+            <div class="detail">검사 뒤 Unix 소켓, GUI 세션에서 재생</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">03</div>
+          <div>
+            <div class="label">로컬 데몬이 읽습니다</div>
+            <div class="detail">Supertonic 3 · LaunchAgent</div>
+          </div>
+        </div>
+      </div>
+      <div class="foot">
+        <span>Apple Silicon · macOS 14+</span>
+        <span class="path">~/.local/bin/debrief</span>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

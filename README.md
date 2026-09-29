@@ -1,5 +1,7 @@
 # debrief
 
+![debrief. 에이전트가 고른 문장을 이 Mac에서 읽습니다. Codex, Claude Code, Grok이 speak로 넘기면 로컬 데몬이 Supertonic 3으로 재생합니다.](docs/images/banner.png)
+
 Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에서 읽어 주는 TTS입니다. 실행 파일 하나가 `LaunchAgent`로 상주하고, 에이전트는 MCP `speak`로만 말합니다.
 
 저장소: [github.com/sparktype/debrief](https://github.com/sparktype/debrief)
@@ -36,7 +38,14 @@ cd debrief
 env -u HF_HUB_OFFLINE .build/release/debrief install
 ```
 
-`HF_HUB_OFFLINE`이 켜져 있으면 모델 다운로드 전에 해제합니다. 이미 검증된 모델이 있으면 `debrief install --repair`로 다시 받지 않습니다.
+셸에서 `debrief`를 찾으려면 `~/.local/bin`이 `PATH`에 있어야 합니다. LaunchAgent는 절대 경로로 데몬을 띄우므로, 경로가 없어도 재생 자체는 됩니다.
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+debrief status
+```
+
+`HF_HUB_OFFLINE`이 켜져 있으면 모델 다운로드 전에 해제합니다. 이미 검증된 모델이 있으면 `debrief install --repair`로 다시 받지 않습니다. 설치가 끝나면 `debrief doctor`로 확인합니다.
 
 `debrief install`은 다음 순서로 진행합니다.
 
@@ -96,8 +105,6 @@ LaunchAgent: 설치됨
 | `debrief stop` | 에이전트를 끄고 bootout 합니다. 실행 파일과 plist는 남습니다. |
 | `debrief uninstall` | 배선을 제거하고, 다이제스트가 설치 기록과 같은 실행 파일만 지웁니다. |
 
-설정은 `~/Library/Application Support/debrief/config.json`입니다. 잘못된 값은 파일을 바꾸기 전에 거절됩니다. 저장에 실패하면 `설정을 저장하지 못했습니다.`이고 파일은 그대로입니다.
-
 ### 모드
 
 | 모드 | 효과 |
@@ -121,6 +128,72 @@ LaunchAgent: 설치됨
 모델이 없으면 데몬은 `last-error.json`만 남기고 소켓을 열지 않은 채 대기합니다. 이때 `debrief start`는 이미 실행 중이라 프로세스를 바꾸지 않습니다. 모델을 둔 뒤 `debrief install --repair`로 교체합니다.
 
 전송이나 합성 실패는 `~/Library/Caches/debrief/last-error.json`에 기록되고 `debrief doctor`에 나옵니다. 에이전트 턴은 막지 않습니다.
+
+## 설정
+
+재생 정책은 `~/Library/Application Support/debrief/config.json`입니다. 데몬은 발화마다 이 파일을 다시 읽으므로 재시작이 필요 없습니다. 바꾸는 방법은 CLI입니다. 잘못된 값은 파일을 쓰기 전에 거절되고, 저장에 실패하면 `설정을 저장하지 못했습니다.`이며 파일은 그대로입니다. JSON이 깨져 읽히지 않으면 그 발화는 기본값(모드 `normal`, 음소거 꺼짐, 도우미 음성 켜짐)으로 재생됩니다.
+
+```sh
+debrief mute on
+debrief mode night
+debrief companion off
+debrief status
+```
+
+처음 저장되면 이런 모양입니다. 키 순서는 저장 시 정렬됩니다.
+
+```json
+{
+  "categoryVoices": {},
+  "companionEnabled": true,
+  "mode": "normal",
+  "muted": false,
+  "voiceSpeeds": {},
+  "volumeCeilings": {
+    "focus": 1,
+    "night": 0.2,
+    "normal": 1,
+    "quiet": 0.45,
+    "verbose": 1
+  }
+}
+```
+
+| 키 | 의미 | 바꾸는 명령 |
+| --- | --- | --- |
+| `muted` | 켜면 모든 발화를 재생하지 않습니다 | `debrief mute` |
+| `mode` | `normal` `focus` `quiet` `verbose` `night` | `debrief mode` |
+| `companionEnabled` | 끄면 companion lane만 빠집니다 | `debrief companion` |
+| `volumeCeilings` | 모드별 볼륨 상한. 위 표의 기본값 | CLI는 이 맵을 바꾸지 않습니다 |
+| `categoryVoices` | 역할 이름과 목소리. 비어 있으면 아래 역할 기본값 | 설치가 비워 둡니다 |
+| `voiceSpeeds` | 역할별 속도. 비어 있으면 요청의 `speed` | 설치가 비워 둡니다 |
+
+호스트 배선은 설정 파일과 별개입니다. `debrief install`이 절대 경로로 넣고, `debrief install --repair`가 소유한 파일만 다시 맞춥니다. 직접 고친 파일은 다이제스트가 다르면 남습니다.
+
+| 호스트 | 파일 | 설치 후 |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json` | `mcpServers.debrief`와 시작 훅. Claude를 재시작 |
+| Claude Code | `~/.claude/skills/debrief-setup` `debrief-install` `debrief-speak` | 스킬 |
+| Codex | `~/.codex/config.toml` | MCP 서버 `debrief` |
+| Codex | `~/.codex/hooks.json` | 시작 훅. `/hooks`에서 신뢰 |
+| Codex | `~/.agents/skills/` | 같은 세 스킬 |
+| Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. 훅은 없음. `/mcps` |
+| Grok | `~/.grok/skills/` | 같은 세 스킬 |
+
+Grok 조각은 이 형태입니다. `command`는 설치된 실행 파일의 절대 경로입니다.
+
+```toml
+# BEGIN debrief-mcp
+[mcp_servers.debrief]
+command = "/Users/you/.local/bin/debrief"
+args = ["mcp"]
+enabled = true
+startup_timeout_sec = 15
+tool_timeout_sec = 120
+# END debrief-mcp
+```
+
+한 호스트만 다시 맞출 때는 `debrief install --claude --repair`처럼 플래그를 줍니다. MCP가 이미 되면 `install` 도구에 `{ "hosts": ["claude"], "repair": true }`를 넘깁니다.
 
 ## 에이전트가 말하는 방법
 

@@ -1,6 +1,8 @@
 # debrief onboarding
 
-debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon plays the audio. Agents call MCP `speak`. Repair and host wiring can use MCP `install` or the shell install command.
+![debrief. Agents pick a line; a local daemon speaks it.](docs/images/banner.png)
+
+debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon plays the audio. Agents call MCP `speak`. Repair and host wiring can use MCP `install` or the shell install command. The Korean usage guide is [README.md](README.md).
 
 ## First installation
 
@@ -12,13 +14,16 @@ debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon p
 
    Xcode 27 is required. The Homebrew formula `sparktype/tap/debrief` is not published yet. Tag `v0.0.1` on the tap still builds the previous `chorus` binary.
 
-2. Install the daemon, model, and host wiring (all hosts, or limit with flags):
+2. Put the binary on `PATH`, then install the daemon, model, and host wiring (all hosts, or limit with flags):
 
    ```sh
-   debrief install
+   export PATH="$HOME/.local/bin:$PATH"
+   .build/release/debrief install
    # debrief install --claude
    # debrief install --grok --repair
    ```
+
+   LaunchAgent starts `~/.local/bin/debrief daemon` by absolute path, so playback works even when the shell cannot see `debrief`. The CLI commands below need the `PATH` line.
 
 3. Wait for the pinned Supertonic 3 model download and checksum verification.
 4. LaunchAgent starts `debrief daemon` (or run `debrief start`).
@@ -56,6 +61,37 @@ debrief stop
 - **start / stop** — bootstrap an existing LaunchAgent, or disable and bootout it. Stop keeps the binary and the plist
 
 Agents call MCP `speak`. Hosts spawn `~/.local/bin/debrief mcp` after install. `debrief speak` is not a command.
+
+## Configuration
+
+Playback policy lives in `~/Library/Application Support/debrief/config.json`. The daemon reloads it on every utterance. Change it with the CLI. An invalid value is rejected before the file changes. A file that cannot be decoded falls back to defaults for that utterance: mode `normal`, mute off, companion on.
+
+```sh
+debrief mute on
+debrief mode focus
+debrief companion off
+```
+
+| Key | Command |
+| --- | --- |
+| `muted` | `debrief mute [on\|off\|toggle]` |
+| `mode` | `debrief mode [normal\|focus\|quiet\|verbose\|night]` |
+| `companionEnabled` | `debrief companion [on\|off\|toggle]` |
+
+`volumeCeilings`, `categoryVoices`, and `voiceSpeeds` are stored in the same file. The CLI does not edit those maps. Empty voice maps use the role defaults in the README.
+
+Host wiring is separate. `debrief install` writes absolute paths. `debrief install --repair` rewrites owned files and leaves a file alone when its digest no longer matches the install manifest.
+
+| Host | Where | After install |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json` | `mcpServers.debrief` and start-family hooks. Restart Claude. |
+| Claude Code | `~/.claude/skills/debrief-*` | setup, install, speak |
+| Codex | `~/.codex/config.toml` and `~/.codex/hooks.json` | MCP plus hooks. Trust them in `/hooks`. |
+| Codex | `~/.agents/skills/` | the same three skills |
+| Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. No hooks. Run `/mcps`. |
+| Grok | `~/.grok/skills/` | the same three skills |
+
+Limit a repair to one host with `--claude`, `--codex`, or `--grok`. When MCP already works, call `install` with `{ "hosts": ["claude"], "repair": true }`.
 
 ## Agent rules (all hosts)
 
