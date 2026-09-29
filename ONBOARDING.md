@@ -4,19 +4,20 @@ Chorus speaks text prepared by Codex, Claude Code, or Grok through **Chorus.app*
 
 ## First installation
 
-1. Build with Xcode 27 beta:
+1. Install the CLI with Homebrew:
 
    ```sh
-   ./scripts/with-xcode.sh swift build -c release
-   # or: export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+   brew install sparktype/tap/chorus
    ```
 
-2. Install (all hosts, or limit with flags):
+   From a source checkout instead: `./scripts/with-xcode.sh swift build -c release` (Xcode 27), then use `.build/release/chorus` in the next step.
+
+2. Install the app, model, and host wiring (all hosts, or limit with flags):
 
    ```sh
-   .build/release/chorus install
-   # .build/release/chorus install --claude
-   # .build/release/chorus install --grok --repair
+   chorus install
+   # chorus install --claude
+   # chorus install --grok --repair
    ```
 
 3. Wait for the pinned Supertonic 3 model download and checksum verification.
@@ -25,12 +26,12 @@ Chorus speaks text prepared by Codex, Claude Code, or Grok through **Chorus.app*
 6. **Claude Code:** restart the app so `mcp__chorus__speak` and `mcp__chorus__install` appear. Skills: `~/.claude/skills/chorus-{setup,install,speak}`.
 7. **Grok:** run **`/mcps`** so `chorus__speak` and `chorus__install` appear. Skills: `~/.grok/skills/chorus-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
 8. **Codex:** review start-family hooks in `/hooks`; MCP lives in `~/.codex/config.toml`.
-9. Ask the agent for a short spoken companion line via MCP `speak` (`text`, `voice`, `speed`, `volume`; optional `priority`, `lane`, `emotion`). Silence is fine when speech would only read the screen.
+9. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
 
 Repair without wiping unrelated host settings:
 
 ```sh
-.build/release/chorus install --repair
+chorus install --repair
 # or, when MCP already works:
 #   Claude: mcp__chorus__install  { "hosts": ["claude"], "repair": true }
 #   Grok:   chorus__install       { "hosts": ["grok"], "repair": true }

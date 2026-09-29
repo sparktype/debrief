@@ -149,7 +149,9 @@ Synthesis/playback failures and queue rejections write `~/Library/Caches/Chorus/
 ./scripts/with-xcode.sh swift build -c release
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`. Local development prefers Xcode 27 beta via `./scripts/with-xcode.sh` or `.envrc` `DEVELOPER_DIR`.
+GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`. Local development uses Xcode 27 via `./scripts/with-xcode.sh` (Xcode-beta when installed, otherwise Xcode.app). Override with `CHORUS_XCODE_DEVELOPER`.
+
+User install is Homebrew: `brew install sparktype/tap/chorus`, then `chorus install`. The formula lives in [sparktype/homebrew-tap](https://github.com/sparktype/homebrew-tap) as `Formula/chorus.rb` and tracks tag `v0.0.1` (`ChorusVersion.current`). The formula builds the release binary and installs `icon.png` at the prefix so `chorus install` can find the app icon.
 
 Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`CHORUS_TEST_MODEL_DIR` for the real-model smoke test).
 

@@ -25,8 +25,8 @@ Then refresh: **Claude** restart · **Grok** `/mcps`.
 ## Shell — first install or timeout
 
 ```bash
-./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --repair
+brew install sparktype/tap/chorus
+chorus install --repair
 # or --claude / --codex / --grok
 ```
 
@@ -39,4 +39,4 @@ Then refresh: **Claude** restart · **Grok** `/mcps`.
 - Menu bar Chorus running
 - MCP server `chorus` registered
 - Skills: setup, install, speak
-- Turn-end speech: skill **chorus-speak**
+- Turn-end speech: skill **chorus-speak** — what changed, then one next action.

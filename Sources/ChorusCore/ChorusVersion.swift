@@ -1,3 +1,3 @@
 public enum ChorusVersion {
-    public static let current = "2.0.0"
+    public static let current = "0.0.1"
 }

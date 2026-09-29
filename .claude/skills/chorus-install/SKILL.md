@@ -20,8 +20,8 @@ Chorus MCP가 이미 있으면 도구 **`install`** (`mcp__chorus__install`)을 
 ## 2순위 — 셸
 
 ```bash
-./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --claude --repair
+brew install sparktype/tap/chorus
+chorus install --claude --repair
 ```
 
 또는:

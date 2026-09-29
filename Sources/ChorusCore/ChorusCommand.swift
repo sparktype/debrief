@@ -23,7 +23,8 @@ public enum ChorusCommand: Equatable, Sendable {
     public static let usageText = """
     Chorus \(ChorusVersion.current)
 
-    Install / repair (from a build tree):
+    Install / repair:
+      brew install sparktype/tap/chorus
       chorus install [--codex] [--claude] [--grok] [--repair]
       chorus uninstall [--codex] [--claude] [--grok]
 

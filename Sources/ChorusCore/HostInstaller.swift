@@ -463,7 +463,8 @@ public struct HostInstaller: Sendable {
         switch host {
         case .codex: home.appending(path: ".codex/config.toml")
         case .grok: home.appending(path: ".grok/config.toml")
-        case .claude: home.appending(path: ".claude/settings.json") // unused
+        case .claude:
+            preconditionFailure("Claude MCP is JSON in settings.json")
         }
     }
 

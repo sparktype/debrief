@@ -33,19 +33,6 @@ public protocol LegacyServiceRunning: Sendable {
     func unload(label: String) async throws
 }
 
-public struct LaunchctlLegacyServiceRunner: LegacyServiceRunning {
-    private let userID: UInt32
-    public init(userID: UInt32) { self.userID = userID }
-
-    public func unload(label: String) async throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["bootout", "gui/\(userID)/\(label)"]
-        try process.run()
-        process.waitUntilExit()
-    }
-}
-
 public enum LegacyMigration {
     public static let knownLaunchAgentLabels = [
         "io.chorus.server",

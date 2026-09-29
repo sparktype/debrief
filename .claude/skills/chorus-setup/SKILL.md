@@ -16,8 +16,8 @@ description: "Chorus 설치·복구 안내. MCP install 또는 skill chorus-inst
 ## Claude Code
 
 ```bash
-./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --claude --repair
+brew install sparktype/tap/chorus
+chorus install --claude --repair
 ```
 
 1. Claude 재시작 → `mcp__chorus__speak` / `mcp__chorus__install`
@@ -26,7 +26,7 @@ description: "Chorus 설치·복구 안내. MCP install 또는 skill chorus-inst
 ## Grok
 
 ```bash
-.build/release/chorus install --grok --repair
+chorus install --grok --repair
 ```
 
 1. **`/mcps`**
@@ -35,4 +35,4 @@ description: "Chorus 설치·복구 안내. MCP install 또는 skill chorus-inst
 ## 공통
 
 - 음소거·모드·진단·시작/중지·종료는 **메뉴바만**
-- 전체 호스트: `.build/release/chorus install --repair`
+- 전체 호스트: `chorus install --repair`

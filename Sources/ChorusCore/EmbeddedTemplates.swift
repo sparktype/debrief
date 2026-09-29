@@ -90,8 +90,8 @@ public enum EmbeddedTemplates {
                 ## Shell — first install or MCP timeout
 
                 ```bash
-                ./scripts/with-xcode.sh swift build -c release
-                .build/release/chorus install --grok --repair
+                brew install sparktype/tap/chorus
+                chorus install --grok --repair
                 ```
 
                 Or from the app binary:
@@ -220,8 +220,8 @@ public enum EmbeddedTemplates {
             ## Shell (first install or MCP timeout)
 
             ```bash
-            ./scripts/with-xcode.sh swift build -c release
-            .build/release/chorus install --repair
+            brew install sparktype/tap/chorus
+            chorus install --repair
             # single host: --claude | --codex | --grok
             ```
 

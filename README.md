@@ -7,18 +7,18 @@ Chorus is a local, **TTS-only** companion for Codex, Claude Code, and Grok on Ap
 - Apple Silicon Mac
 - macOS 14 or newer
 - Codex, Claude Code, and/or Grok
-- **Xcode 27 beta** for build (`/Applications/Xcode-beta.app`)
+- [Homebrew](https://brew.sh) for the supported install
 
-## Build and install
+## Install
 
 ```sh
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-# or: ./scripts/with-xcode.sh
-swift build -c release
-.build/release/chorus install
+brew install sparktype/tap/chorus
+chorus install
 ```
 
-`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, skills, and (for Claude/Codex) start-family hooks.
+`chorus install` creates **Chorus.app** in `/Applications` when writable (otherwise `~/Applications`), installs the pinned Supertonic 3 model, LaunchAgent, MCP registration, skills, and (for Claude/Codex) start-family hooks. The Homebrew bottle is the CLI you invoke. Hooks and MCP keep the **app absolute path**.
+
+Building from source needs Xcode 27 (`./scripts/with-xcode.sh swift build -c release`, then `.build/release/chorus install`).
 
 | Host | After install |
 | --- | --- |
@@ -52,7 +52,7 @@ Grok discovers tools with `search_tool` / `use_tool` when required.
 | speed | yes | 0.7–2.0 |
 | volume | yes | 0.0–1.0 |
 | priority | no | `main` (default) or `subagent`; focus/quiet/night suppress subagent |
-| lane | no | `companion` (default reflective) or `work` (factual) |
+| lane | no | `companion` (default briefing) or `work` (factual) |
 | emotion | no | `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (prosody bias) |
 
 At the end of each user-visible turn, speak **once**: two short sentences in the user's language — **what changed**, then the one **next action** or wait. The agent writes the line. **Silence only** if nothing new and no next action. Default `lane` is `companion` (voice F1, speed ~0.93, volume ~0.85); use `work` for a factual line. Subagents do not brief the user. `emotion` only biases prosody. Do **not** put speech JSON or HTML comments in the chat body.

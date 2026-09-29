@@ -20,27 +20,21 @@ Chorus는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon 
 
 ## 툴체인 (필수)
 
-**Xcode 27 beta**를 기준으로 빌드·테스트합니다. Command Line Tools만 있으면 Swift Testing 매크로가 실패합니다.
+**Xcode 27**로 빌드·테스트합니다. Command Line Tools만 있으면 Swift Testing 매크로가 실패합니다. `./scripts/with-xcode.sh`는 Xcode-beta가 있으면 그것을, 없으면 `/Applications/Xcode.app`을 씁니다. `CHORUS_XCODE_DEVELOPER`로 덮어씁니다.
 
 ```bash
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
-# 또는
 ./scripts/with-xcode.sh swift test
 ./scripts/with-xcode.sh swift build -c release
 ```
 
 | 항목 | 값 |
 |------|-----|
-| App | `/Applications/Xcode-beta.app` |
-| Build (검증됨) | Xcode 27.0 / 27A5218g |
+| App | Xcode 27 (`Xcode-beta.app` 또는 `Xcode.app`) |
+| Build (검증됨) | Xcode 27.0 / 27A266a |
 | Swift | 6.4 |
 | 플랫폼 | macOS 14+, arm64 |
-
-`.envrc`가 `DEVELOPER_DIR`을 설정합니다. 시스템 전역 전환이 필요하면:
-
-```bash
-sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
-```
+| 버전 | `ChorusVersion.current` = `0.0.1` (태그 `v0.0.1`) |
+| 사용자 설치 | `brew install sparktype/tap/chorus` 후 `chorus install` |
 
 ## 규범 문서
 
@@ -109,9 +103,11 @@ Grok: `chorus__speak` / `chorus__install` (`search_tool` / `use_tool`).
 설치·복구:
 
 ```bash
-./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --claude --repair   # 또는 --codex / --grok / 플래그 없이 전체
+brew install sparktype/tap/chorus
+chorus install --repair   # 또는 --claude / --codex / --grok
 ```
+
+소스에서 만들 때는 `./scripts/with-xcode.sh swift build -c release` 뒤 `.build/release/chorus install`입니다.
 
 MCP가 이미 되면 `install` 도구로 repair 가능합니다. Hook·MCP command는 HostInstaller가 **앱 절대 경로**로 merge합니다.
 

@@ -18,8 +18,8 @@ Prefer skill **chorus-install** or MCP tool **`install`**:
 1. `{ "hosts": ["claude"], "repair": true }` via install tool, **or** shell:
 
 ```bash
-./scripts/with-xcode.sh swift build -c release
-.build/release/chorus install --claude --repair
+brew install sparktype/tap/chorus
+chorus install --claude --repair
 ```
 
 2. **Restart Claude Code.**
@@ -31,7 +31,7 @@ Prefer skill **chorus-install** or MCP tool **`install`**:
 1. `{ "hosts": ["grok"], "repair": true }` via `chorus__install`, **or**:
 
 ```bash
-.build/release/chorus install --grok --repair
+chorus install --grok --repair
 ```
 
 2. Run **`/mcps`**.
@@ -40,7 +40,7 @@ Prefer skill **chorus-install** or MCP tool **`install`**:
 ## All hosts
 
 ```bash
-.build/release/chorus install --repair
+chorus install --repair
 ```
 
 Mute, mode, diagnostics, start/stop, and quit are **menu bar only**.
