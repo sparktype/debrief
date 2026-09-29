@@ -60,6 +60,21 @@ struct EmbeddedTemplatesTests {
         #expect(!combined.localizedCaseInsensitiveContains("node_repl"))
     }
 
+    @Test func speakSkillsBriefWhatChangedThenNextAction() {
+        let executable = URL(fileURLWithPath: "/Applications/Chorus.app/Contents/MacOS/chorus")
+        let skills = [
+            EmbeddedTemplates.grokSpeakSkillMarkdown(executable: executable),
+            EmbeddedTemplates.claudeCodexSpeakSkillMarkdown(executable: executable),
+        ]
+        for skill in skills {
+            #expect(skill.contains("what changed"))
+            #expect(skill.contains("next action"))
+            #expect(skill.contains("Silence only"))
+            #expect(skill.contains("do not brief"))
+            #expect(!skill.localizedCaseInsensitiveContains("Chorus summarizes"))
+        }
+    }
+
     @Test func launchAgentRunsOnlyTheInstalledBinary() throws {
         let executable = URL(fileURLWithPath: "/Applications/Chorus.app/Contents/MacOS/chorus")
         let data = try EmbeddedTemplates.launchAgent(executable: executable)

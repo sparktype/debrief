@@ -21,7 +21,7 @@ description: "Chorus 설치·복구 안내. MCP install 또는 skill chorus-inst
 ```
 
 1. Claude 재시작 → `mcp__chorus__speak` / `mcp__chorus__install`
-2. 턴 종료 발화: skill **chorus-speak**
+2. 턴 종료: skill **chorus-speak** — 바뀐 점, 다음 행동 한 줄
 
 ## Grok
 
@@ -30,7 +30,7 @@ description: "Chorus 설치·복구 안내. MCP install 또는 skill chorus-inst
 ```
 
 1. **`/mcps`**
-2. skill **chorus-speak** → `chorus__speak`
+2. skill **chorus-speak** → `chorus__speak` (바뀐 점, 다음 행동 한 줄)
 
 ## 공통
 

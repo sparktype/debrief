@@ -50,7 +50,7 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 4. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계 (envelope speech contract는 2026-07-19로 대체)
 5. `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` — 메뉴바 상주
 6. `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` — MCP speak + install + Grok (승인; 상단 errata 참고)
-7. `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` — 관조 도우미 · lane · emotion · 도우미 음성 (P0–P2 실배)
+7. `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` — lane · emotion · 도우미 음성 (태도·타이밍은 2026-09-29 턴 브리핑으로 대체)
 8. `docs/archive/` — 폐기된 Python 시대 문서 (제품 진실 아님)
 
 ## 제품 경계
@@ -65,7 +65,7 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 - Skills (모든 호스트): `chorus-setup` · `chorus-install` · `chorus-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `chorus__speak` · `chorus__install`
 - 메뉴바: mute · 도우미 음성 · mode · 진단 · start/stop · quit
-- 관조 도우미 계약: companion 기본, 침묵 허용, 감정 enum (스펙 `2026-07-22-reflective-companion-design.md`)
+- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`, voice F1). 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
 
 **제외**
 
@@ -89,7 +89,7 @@ sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer
 Claude / Codex start hooks
   → …/chorus hook --source claude|codex
       → SessionStart / UserPromptSubmit / SubagentStart
-          추가 context: 관조 도우미 규약 + silence + lane/emotion + 역할 보이스
+          추가 context: 턴 브리핑(what changed, next action) + Silence only + lane/emotion + 역할 보이스
   → Stop / SubagentStop 은 설치하지 않음
 
 Grok
@@ -97,12 +97,13 @@ Grok
   → /mcps 로 도구 갱신
 ```
 
-에이전트는 턴 종료 시 채팅 본문이 아니라 MCP tool `speak`를 **필요할 때만** 호출합니다 (한 턴에 보통 0–1회).  
+에이전트는 사용자에게 보이는 턴이 끝나면 MCP tool `speak`를 **한 번** 호출합니다 (한 턴에 0–1회).  
+두 문장, 사용자 언어: 무엇이 바뀌었는지, 다음에 할 행동 하나(또는 기다림). 문장은 에이전트가 씁니다.  
+새 사실도 다음 행동도 없으면 도구를 생략합니다 (Silence only).  
 Claude Code: `mcp__chorus__speak` / `mcp__chorus__install`.  
 Grok: `chorus__speak` / `chorus__install` (`search_tool` / `use_tool`).  
-Chorus는 요약하지 않습니다. 기본은 **관조 도우미** (`lane=companion`, voice **F1**): 관찰 + 의미 + 다음 한 걸음.  
-화면 목록만 읽는 수준이면 **침묵**(도구 생략). `emotion`은 닫힌 enum이며 재생 바이어스만 줍니다.  
-서브에이전트는 `priority: "subagent"`와 `lane: "work"`를 권장합니다 (focus/quiet/night에서 subagent 억제).  
+기본 lane은 `companion`, voice **F1**, speed ~0.93, volume ~0.85. `emotion`은 닫힌 enum이며 재생 바이어스만 줍니다.  
+서브에이전트는 사용자에게 브리핑하지 않습니다. 말하면 `priority: "subagent"`, `lane: "work"`, 사실 한 줄 (focus/quiet/night에서 subagent 억제).  
 본문에 speech JSON·HTML 주석을 넣지 마세요. 메뉴 **도우미 음성** off면 companion lane은 재생되지 않습니다.
 
 설치·복구:

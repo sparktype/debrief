@@ -105,7 +105,7 @@ MCP registration always points at the app absolute path with `args: ["mcp"]`. TO
 | lane | optional: `companion` (default) or `work` |
 | emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); prosody bias only |
 
-No HTML comments or speech JSON in the chat body. Omitting the tool produces silence (preferred when speech would only restate the screen). Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
+No HTML comments or speech JSON in the chat body. Each user-visible turn is one spoken line: what changed, then one next action. Silence only if nothing new and no next action. The agent writes the line. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
 
 Policy (`ModePolicy.admit`):
 
@@ -170,6 +170,6 @@ Release verification should also inspect architecture (`arm64`) and run install 
 | `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` | Single-binary Swift TTS (envelope contract superseded) |
 | `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` | Menu bar resident process |
 | `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` | MCP speak + install + Grok (see errata for product truth) |
-| `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` | Companion lane, silence, emotion, 도우미 음성 (P0–P2 shipped) |
+| `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` | Lane, emotion, 도우미 음성 (attitude/timing superseded 2026-09-29 by the turn briefing) |
 
 Older material lives under `docs/archive/` and is not product truth.

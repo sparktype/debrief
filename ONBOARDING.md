@@ -52,10 +52,9 @@ There is no user CLI for mute/mode/status/speak. Agents call MCP `speak`; hosts 
 
 ## Agent rules (all hosts)
 
-- Spoken text is the agent’s job; Chorus does not summarize.
-- Prefer a short **reflective companion** line (observe + meaning + one next step), not a file/checklist inventory.
+- Spoken text is the agent’s job. At the end of each user-visible turn, speak once: **what changed**, then the one **next action** or wait.
+- **Silence only** if nothing new and no next action. No file lists or checklists.
 - Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum; prosody only).
-- Companion prefers voice **F1**. Subagents: prefer `priority=subagent` and `lane=work` if anything.
+- Companion prefers voice **F1**, speed ~0.93, volume ~0.85. Subagents do not brief the user; if they speak, `priority=subagent` and `lane=work`, one fact.
 - Do not put speech JSON or HTML comments in the chat body.
-- Skipping the speak tool is silence (and often correct).
 - Mute / mode / **도우미 음성** / diagnostics: menu bar only.

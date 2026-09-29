@@ -61,7 +61,7 @@ public enum EmbeddedTemplates {
 
                 1. Run skill **chorus-install** (or shell `\(command) install --grok --repair`).
                 2. Refresh MCP with `/mcps` until `chorus__speak` and `chorus__install` appear.
-                3. At turn end, use skill **chorus-speak** → MCP `chorus__speak` once.
+                3. At turn end, use skill **chorus-speak** → MCP `chorus__speak` once: what changed, then one next action.
                 4. Mute/mode/diagnostics: Chorus menu bar only.
 
                 Config: `~/.grok/config.toml` section `[mcp_servers.chorus]`.
@@ -148,30 +148,24 @@ public enum EmbeddedTemplates {
         """
         ---
         name: chorus-speak
-        description: Reflective companion TTS via MCP speak (Claude: mcp__chorus__speak; Grok: chorus__speak). Prefer short observation + next step; silence OK; optional lane/emotion.
+        description: Turn-end spoken briefing via MCP speak (Claude: mcp__chorus__speak; Grok: chorus__speak). Use when a user-visible turn ends.
         ---
 
         # \(title)
 
         \(toolIntro)
 
-        Prefer **one short companion line** when speech helps. **Silence is correct** when the turn is pure thrash, repeats the last status, or would only read on-screen lists.
+        At the end of each user-visible turn, call speak **once**. Two short sentences in the user's language: **what changed**, then the one **next action** or wait. The agent writes the line. **Silence only** if nothing new and no next action.
 
-        ## Companion text (default `lane=companion`)
+        ## Shape (`lane=companion`, voice **F1**)
 
-        Structure: **observe** + **meaning** + **one next step or rest**. Prefer voice **F1**, speed ~0.93, volume ~0.85.
-
-        Avoid: file/diff inventories, “completed A/B/C” checklists, chat paste, hype.
-
-        ## When to speak
-
-        Phase boundary, user decision needed, long-session breath, real risk/failure.
+        Speed ~0.93, volume ~0.85. No file lists, checklists, or chat paste.
 
         ## Args
 
         ```json
         {
-          "text": "관찰 한 줄. 의미와 다음 한 걸음.",
+          "text": "무엇이 바뀌었는지. 다음 행동은 이것.",
           "voice": "F1",
           "speed": 0.93,
           "volume": 0.85,
@@ -183,15 +177,15 @@ public enum EmbeddedTemplates {
 
         | Field | Required | Notes |
         |-------|----------|--------|
-        | text | yes | ≤ 800 chars |
+        | text | yes | ≤ 800 chars. Sentence one: what changed. Sentence two: next action. |
         | voice | yes | F1…M5; companion → F1 |
         | speed | yes | 0.7–2.0 |
         | volume | yes | 0.0–1.0 |
         | priority | no | `main` / `subagent` |
         | lane | no | `companion` (default) / `work` |
-        | emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (restrained; prosody bias only) |
+        | emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (prosody bias only) |
 
-        Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents: `priority=subagent`, prefer `lane=work`.
+        Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user. If they speak: `priority=subagent`, `lane=work`, one fact.
 
         Menu: mute · mode · **도우미 음성** · 진단. Binary: `\(executable.path)`.
         """
@@ -247,7 +241,7 @@ public enum EmbeddedTemplates {
                 body: """
                 Use skill **chorus-install** or MCP tool `install` \
                 (Claude: `mcp__chorus__install`, Grok: `chorus__install`) to install/repair. \
-                After wiring, use **chorus-speak** / MCP speak at turn end. \
+                After wiring, use **chorus-speak** at turn end: what changed, then one next action. \
                 Grok: refresh with `/mcps`. Mute/mode/diagnostics are menu bar only. Binary: `\(command)`.
                 """
             ),

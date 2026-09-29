@@ -28,6 +28,10 @@ struct McpServerTests {
         let tools = (res["result"] as? [String: Any])?["tools"] as? [[String: Any]]
         #expect(tools?.contains(where: { ($0["name"] as? String) == "speak" }) == true)
         #expect(tools?.contains(where: { ($0["name"] as? String) == "install" }) == true)
+        let description = tools?.first(where: { ($0["name"] as? String) == "speak" })?["description"] as? String
+        #expect(description?.contains("what changed") == true)
+        #expect(description?.contains("next action") == true)
+        #expect(description?.localizedCaseInsensitiveContains("Chorus summarizes") != true)
     }
 
     @Test func toolsCallInstallInvokesHandler() async {

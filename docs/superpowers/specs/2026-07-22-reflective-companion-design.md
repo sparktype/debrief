@@ -5,6 +5,8 @@
 **Target:** macOS 14+ Apple Silicon, Chorus 2.x  
 **Depends on:** MCP speak contract (`2026-07-19-mcp-speak-tool-design.md` + product errata)
 
+> **Errata (2026-09-29):** Attitude, timing, and the “intentional silence is success” criterion below are superseded. Each user-visible turn gets one spoken line: what changed, then one next action. Silence only when the turn adds no new fact and no next action. The agent still writes the line. Lane, emotion, and ModePolicy in this spec stay. Stop and SubagentStop hooks stay uninstalled.
+
 ---
 
 ## 1. Outcome

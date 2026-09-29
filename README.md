@@ -47,7 +47,7 @@ Grok discovers tools with `search_tool` / `use_tool` when required.
 
 | Field | Required | Notes |
 | --- | --- | --- |
-| text | yes | ≤ 800 chars; prefer observe + meaning + one next step |
+| text | yes | ≤ 800 chars; two sentences: what changed, then one next action |
 | voice | yes | F1…F5, M1…M5 (companion prefers F1) |
 | speed | yes | 0.7–2.0 |
 | volume | yes | 0.0–1.0 |
@@ -55,7 +55,7 @@ Grok discovers tools with `search_tool` / `use_tool` when required.
 | lane | no | `companion` (default reflective) or `work` (factual) |
 | emotion | no | `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (prosody bias) |
 
-Prefer a **reflective companion** line when speech helps (observe + meaning + one next step); **silence is OK** when it would only read on-screen lists. Default `lane` is `companion` (prefer voice F1); use `work` for factual reports. `emotion` only biases prosody—wording still comes from the agent. Do **not** put speech JSON or HTML comments in the chat body.
+At the end of each user-visible turn, speak **once**: two short sentences in the user's language — **what changed**, then the one **next action** or wait. The agent writes the line. **Silence only** if nothing new and no next action. Default `lane` is `companion` (voice F1, speed ~0.93, volume ~0.85); use `work` for a factual line. Subagents do not brief the user. `emotion` only biases prosody. Do **not** put speech JSON or HTML comments in the chat body.
 
 ### `install` arguments
 

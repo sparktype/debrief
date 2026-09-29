@@ -24,7 +24,7 @@ in the body of this document:
 | MCP tools | `speak` only | `speak` + **`install`** (`hosts`, `repair` default true) |
 | Speak `priority` | Main-only / future optional | Optional **`main` \| `subagent`** (default `main`); drives ModePolicy |
 | Speak `lane` / `emotion` | Not present | Optional **`lane`** (`companion` default \| `work`) + **`emotion`** closed enum; prosody bias; see `2026-07-22-reflective-companion-design.md` |
-| Speech contract tone | Short work summary every turn | **Reflective companion** preferred; **silence OK**; no file inventories |
+| Speech contract tone | Short work summary every turn | **Turn briefing** (2026-09-29): each user-visible turn, what changed, then one next action. **Silence only** if nothing new and no next action. The agent writes the line. No file inventories |
 | SpeechRequest | Forged `event: .stop` | **`SpeechPriority`** + `lane` + `emotion` on the request (not hook event names) |
 | Grok skills | `chorus-speak` only | **`chorus-setup`**, **`chorus-install`**, **`chorus-speak`** |
 | Claude/Codex skills | setup (+ speak later) | **`setup` + `install` + `speak`** |
@@ -34,7 +34,7 @@ in the body of this document:
 | Companion control | N/A | Menu **도우미 음성** (`companionEnabled`); off rejects companion lane |
 
 Canonical user/dev docs: `README.md`, `ONBOARDING.md`, `DEVELOPER.md`, `CLAUDE.md`.  
-Companion contract: `docs/superpowers/specs/2026-07-22-reflective-companion-design.md`.
+Lane, emotion, and 도우미 음성: `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` (attitude and timing superseded by the turn briefing above).
 
 ---
 

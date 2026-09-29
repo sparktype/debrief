@@ -85,8 +85,8 @@ public enum McpJSONRPC {
         [
             "name": "speak",
             "description":
-                "Speak a short reflective companion line when speech helps; silence is OK when it does not. "
-                + "Prefer observation + meaning + one next step (not file lists). "
+                "At the end of each user-visible turn, speak once: two short sentences — what changed, then the one next action. "
+                + "The agent writes the line. Silence only if nothing new. "
                 + "lane=companion (default, prefer voice F1) or work; emotion biases prosody only. "
                 + "On Claude Code: mcp__chorus__speak; on Grok: chorus__speak (search_tool/use_tool). "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",
@@ -104,7 +104,7 @@ public enum McpJSONRPC {
                     ] as [String: Any],
                     "lane": [
                         "type": "string",
-                        "description": "companion (default reflective) or work (factual report)",
+                        "description": "companion (default briefing) or work (factual report)",
                         "enum": ["companion", "work"],
                     ] as [String: Any],
                     "emotion": [

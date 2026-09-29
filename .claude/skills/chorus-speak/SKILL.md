@@ -1,11 +1,13 @@
 ---
 name: chorus:speak
-description: "관조 도우미 TTS. 필요할 때만 짧은 관찰+다음 한 걸음. lane/emotion 선택. 침묵 허용."
+description: "사용자에게 보이는 턴이 끝날 때 Chorus로 한 줄 브리핑. 바뀐 점과 다음 행동."
 ---
 
 # chorus:speak
 
-턴 끝 **관조 도우미** 한 줄. 화면 목록을 읽는 수준이면 **말하지 않음**.
+사용자에게 보이는 턴이 끝나면 **한 번** 말한다. 두 문장, 사용자 언어: **무엇이 바뀌었는지**, 그다음 **다음 행동 하나**(또는 기다림). 문장은 에이전트가 쓴다.
+
+새 사실도 다음 행동도 없으면 도구를 생략한다 (Silence only).
 
 ## 도구
 
@@ -17,13 +19,13 @@ description: "관조 도우미 TTS. 필요할 때만 짧은 관찰+다음 한 �
 
 ## 문장
 
-관찰 + 의미 + 다음 한 걸음(또는 쉼). 파일/체크리스트/본문 복붙 금지.
+파일 목록, A/B/C 체크리스트, 채팅 본문 복붙 금지. `lane=companion`, voice **F1**, speed ~0.93, volume ~0.85.
 
 ## 인자
 
 ```json
 {
-  "text": "관찰. 의미와 다음 한 걸음.",
+  "text": "무엇이 바뀌었는지. 다음 행동은 이것.",
   "voice": "F1",
   "speed": 0.93,
   "volume": 0.85,
@@ -32,6 +34,7 @@ description: "관조 도우미 TTS. 필요할 때만 짧은 관찰+다음 한 �
 }
 ```
 
-- `lane`: companion(기본) / work  
-- `emotion`: neutral · warm · focused · concerned · relieved · tired  
-- 메뉴 **도우미 음성** off면 companion 재생 안 됨  
+- `lane`: companion(기본) / work
+- `emotion`: neutral · warm · focused · concerned · relieved · tired
+- 서브에이전트는 사용자에게 브리핑하지 않는다. 말하면 `priority=subagent`, `lane=work`, 사실 한 줄.
+- 메뉴 **도우미 음성** off면 companion 재생 안 됨

@@ -99,6 +99,7 @@ struct VoiceCatalogTests {
         #expect(text.contains("subagent"))
         #expect(text.contains("M1"))
         #expect(text.contains("work") || text.contains("priority"))
+        #expect(text.contains("do not brief"))
     }
 
     @Test func userPromptSubmitContextIsCompact() {
@@ -112,6 +113,25 @@ struct VoiceCatalogTests {
         let text = VoiceCatalog.context(for: event, source: .claude)
         #expect(text.count < 400)
         #expect(text.contains("companion") || text.contains("F1"))
-        #expect(text.contains("Silence") || text.contains("silence"))
+        #expect(text.contains("Silence only"))
+        #expect(text.contains("what changed"))
+        #expect(text.contains("next action"))
+    }
+
+    @Test func sessionStartBriefsWhatChangedThenNextAction() {
+        let event = HookEvent(
+            name: .sessionStart,
+            sessionID: "s",
+            turnID: nil,
+            agentType: nil,
+            lastAssistantMessage: nil
+        )
+        let text = VoiceCatalog.context(for: event, source: .claude)
+        #expect(text.contains("what changed"))
+        #expect(text.contains("next action"))
+        #expect(text.contains("agent writes"))
+        #expect(text.contains("Silence only"))
+        #expect(text.localizedCaseInsensitiveContains("menu bar"))
+        #expect(!text.localizedCaseInsensitiveContains("Chorus summarizes"))
     }
 }

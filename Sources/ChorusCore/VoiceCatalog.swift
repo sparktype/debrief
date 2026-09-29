@@ -99,7 +99,7 @@ public enum VoiceCatalog {
     }
 
     /// MCP speak contract for start-family hooks (host- and event-aware).
-    /// Reflective companion by default: attitude + silence + optional lane/emotion.
+    /// Each user-visible turn: what changed, then one next action. The agent writes the line.
     public static func context(for event: HookEvent, source: HostSource) -> String {
         let assignment = assignment(for: event.agentType)
         let tool = toolReference(source: source)
@@ -108,27 +108,27 @@ public enum VoiceCatalog {
         switch event.name {
         case .userPromptSubmit:
             return """
-            Chorus: speak only if this turn needs user-facing reflection. Prefer \(tool) once as lane=companion \
-            (voice F1, emotion neutral|warm|focused|concerned|relieved|tired). Text = observe + meaning + one next step — \
-            no file lists. Silence is correct when nothing new matters. No HTML/JSON speech in the body.
+            Chorus: once at turn end, \(tool), lane=companion, voice F1. Two short sentences in the user's language: \
+            what changed, then the one next action or wait. Silence only if nothing new. No file lists or checklists. \
+            No HTML/JSON in the body.
             """
 
         case .subagentStart:
             return """
-            Subagent: if you speak, use \(tool) with priority=subagent, lane=work, voice \(assignment.voice) (\(assignment.name)). \
-            Facts only, one short line; companion lane discouraged. focus/quiet/night may suppress subagent. Silence OK. \
-            No HTML/JSON speech in the body.
+            Subagent: do not brief the user. The main agent speaks what changed and the next action. \
+            If you speak, use \(tool) once with priority=subagent, lane=work, voice \(assignment.voice) (\(assignment.name)): one fact only. \
+            focus/quiet/night may suppress subagent. No HTML/JSON speech in the body.
             """
 
         case .sessionStart, .stop, .subagentStop:
             return """
-            Chorus reflective companion TTS via \(tool). Prefer one short companion line when speech helps; silence when it does not \
-            (read-only thrash, same status as last turn, or pure lists already on screen). \
-            Companion structure: observe + meaning + one next step or rest. Prefer voice F1, speed ~0.93, volume ~0.85, \
-            lane=companion (default), emotion from neutral|warm|focused|concerned|relieved|tired (restrained). \
+            Chorus turn briefing via \(tool). At the end of each user-visible turn, speak once: two short sentences \
+            in the user's language — what changed, then the one next action or wait. The agent writes the line. \
+            Silence only if nothing new and no next action. Voice F1, speed ~0.93, volume ~0.85, lane=companion, \
+            emotion from neutral|warm|focused|concerned|relieved|tired (prosody only). \
             Optional work lane for pure facts with role voice \(assignment.voice) (\(assignment.name)), speed ~\(format(assignment.baselineSpeed)). \
             Required args: text, voice, speed, volume. Optional: priority (\(priority.rawValue) default here), lane, emotion. \
-            Never inventory files or checklist completions. No HTML/JSON speech in the body. Mute/mode/companion toggle: menu bar only.
+            No file lists or checklists. No HTML/JSON speech in the body. Mute/mode/companion toggle: menu bar only.
             """
         }
     }

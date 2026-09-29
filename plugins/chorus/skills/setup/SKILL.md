@@ -24,7 +24,7 @@ Prefer skill **chorus-install** or MCP tool **`install`**:
 
 2. **Restart Claude Code.**
 3. Confirm `mcp__chorus__speak` and `mcp__chorus__install`.
-4. Turn-end speech: skill **chorus-speak**.
+4. Turn-end speech: skill **chorus-speak** — what changed, then one next action.
 
 ## Grok
 
@@ -35,7 +35,7 @@ Prefer skill **chorus-install** or MCP tool **`install`**:
 ```
 
 2. Run **`/mcps`**.
-3. Turn-end speech: skill **chorus-speak** → `chorus__speak`.
+3. Turn-end speech: skill **chorus-speak** → `chorus__speak` (what changed, then one next action).
 
 ## All hosts
 
