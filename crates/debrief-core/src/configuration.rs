@@ -38,6 +38,7 @@ impl DebriefMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DebriefConfiguration {
     #[serde(default = "default_mode")]
     pub mode: DebriefMode,
@@ -212,25 +213,46 @@ mod tests {
         let directory = temporary_directory();
         let url = directory.join("nested/config.json");
 
-        let mut first = DebriefConfiguration::default();
-        first.mode = DebriefMode::Normal;
-        first.muted = false;
+        let first = DebriefConfiguration { mode: DebriefMode::Normal, muted: false, ..Default::default() };
         first.save(&url).unwrap();
 
-        let mut second = DebriefConfiguration::default();
-        second.mode = DebriefMode::Night;
-        second.muted = true;
+        let second = DebriefConfiguration { mode: DebriefMode::Night, muted: true, ..Default::default() };
         second.save(&url).unwrap();
 
         assert_eq!(DebriefConfiguration::load(&url).mode, DebriefMode::Night);
         assert!(DebriefConfiguration::load(&url).muted);
         assert_eq!(permissions(&url), 0o600);
-        assert_eq!(permissions(&url.parent().unwrap()), 0o700);
+        assert_eq!(permissions(url.parent().unwrap()), 0o700);
         let siblings: Vec<_> = fs::read_dir(url.parent().unwrap())
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(siblings, vec![std::ffi::OsString::from("config.json")]);
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn loads_swift_shaped_config_json_with_camel_case_keys() {
+        let directory = temporary_directory();
+        let url = directory.join("config.json");
+        let swift_shaped_json = r#"{
+            "mode": "focus",
+            "muted": true,
+            "companionEnabled": false,
+            "volumeCeilings": {"normal": 1.0},
+            "categoryVoices": {"work": "F3"},
+            "voiceSpeeds": {"F3": 1.1}
+        }"#;
+        fs::write(&url, swift_shaped_json).unwrap();
+
+        let loaded = DebriefConfiguration::load(&url);
+
+        assert_eq!(loaded.mode, DebriefMode::Focus);
+        assert!(loaded.muted);
+        assert!(!loaded.companion_enabled);
+        assert_eq!(loaded.category_voices.get("work"), Some(&"F3".to_string()));
+        assert_eq!(loaded.voice_speeds.get("F3"), Some(&1.1));
 
         fs::remove_dir_all(&directory).ok();
     }
