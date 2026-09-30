@@ -244,19 +244,23 @@ public struct UnixSocketClient: SpeechSink, Sendable {
             throw UnixSocketError.payloadTooLarge
         }
         let url = socketURL
-        try await Task.detached(priority: .userInitiated) {
-            var lastError: Error = UnixSocketError.disconnected
-            for attempt in 0..<2 {
-                do {
-                    try Self.submit(payload, to: url)
-                    return
-                } catch {
-                    lastError = error
-                    if attempt == 0 { usleep(20_000) }
+        // 블로킹 syscall은 협력 스레드 풀 밖에서 돌린다. 풀이 막히면 서버 태스크가 시작하지 못한다.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var lastError: Error = UnixSocketError.disconnected
+                for attempt in 0..<2 {
+                    do {
+                        try Self.submit(payload, to: url)
+                        continuation.resume()
+                        return
+                    } catch {
+                        lastError = error
+                        if attempt == 0 { usleep(20_000) }
+                    }
                 }
+                continuation.resume(throwing: lastError)
             }
-            throw lastError
-        }.value
+        }
     }
 
     private static func submit(_ payload: Data, to url: URL) throws {
@@ -280,6 +284,17 @@ public struct UnixSocketClient: SpeechSink, Sendable {
         let header = Data(bytes: &length, count: MemoryLayout<UInt32>.size)
         try UnixSocketServer.writeAll(header, to: descriptor)
         try UnixSocketServer.writeAll(payload, to: descriptor)
+        // 서버가 부하로 느려도 ACK를 기다린다. 짧게 끊고 재시도하면 같은 발화가 두 번 들어갈 수 있다.
+        var acknowledgementTimeout = timeval(tv_sec: 2, tv_usec: 0)
+        guard setsockopt(
+            descriptor,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &acknowledgementTimeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        ) == 0 else {
+            throw UnixSocketError.systemCall("setsockopt(timeout)", errno)
+        }
         let acknowledgement = try UnixSocketServer.readExactly(1, from: descriptor)
         guard acknowledgement.first == 0x06 else { throw UnixSocketError.rejected }
     }
