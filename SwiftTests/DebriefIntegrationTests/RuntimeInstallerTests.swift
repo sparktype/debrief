@@ -52,6 +52,36 @@ struct RuntimeInstallerTests {
         #expect(!manifest.runtimeFiles.contains { $0.path.contains(".app") })
     }
 
+    @Test func installSkipsBootstrapWhenAgentIsAlreadyHealthyAndUnchanged() async throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let source = home.appending(path: "build/debrief")
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("binary".utf8).write(to: source)
+        let paths = DebriefPaths.forHome(home)
+        let events = EventLog()
+        let model = FakeRuntimeModelInstaller(events: events, directory: home.appending(path: "model"))
+        let installer = RuntimeInstaller(
+            home: home,
+            sourceExecutable: source,
+            modelInstaller: model,
+            launchctl: FakeLaunchctlRunner(events: events),
+            userID: 501
+        )
+
+        try await installer.install(hosts: [], repair: true)
+
+        // Simulate a running, healthy daemon so the second install has nothing to fix.
+        try FileManager.default.createDirectory(at: paths.pidURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("\(getpid())".utf8).write(to: paths.pidURL)
+        try Data("socket".utf8).write(to: paths.socketURL)
+
+        try await installer.install(hosts: [], repair: true)
+
+        let recorded = await events.values
+        #expect(recorded == ["model:true", "enable", "bootout", "bootstrap", "model:true"])
+    }
+
     @Test func uninstallBootsOutBeforeRemovingExecutable() async throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }

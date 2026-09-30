@@ -75,18 +75,33 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
     @discardableResult
     public func install(hosts: Set<HostSource>, repair: Bool) async throws -> HostInstallResult {
         let paths = DebriefPaths.forHome(home)
+        let previousExecutable = try? Data(contentsOf: paths.executableURL)
         try installExecutable(from: sourceExecutable, to: paths.executableURL)
         _ = try await modelInstaller.install(repair: repair)
         let hostResult = try HostInstaller(home: home, executable: paths.executableURL)
             .install(hosts: hosts)
+        let launchAgentData = try EmbeddedTemplates.launchAgent(executable: paths.executableURL)
+        let executableChanged = previousExecutable != (try? Data(contentsOf: paths.executableURL))
+        let plistChanged = (try? Data(contentsOf: paths.launchAgentURL)) != launchAgentData
         try AtomicInstallerFile.write(
-            try EmbeddedTemplates.launchAgent(executable: paths.executableURL),
+            launchAgentData,
             to: paths.launchAgentURL,
             permissions: 0o600
         )
         try recordRuntimeOwnership(paths: paths)
-        try await bootstrapLaunchAgent(paths: paths)
+        // Re-bootstrapping an unchanged agent makes launchd re-register the login item with
+        // Background Task Management every time; doing that repeatedly trips BTM's own
+        // notification rate limit, which then makes `bootstrap` itself fail with EIO. Skip the
+        // re-registration entirely when nothing that requires it changed.
+        if executableChanged || plistChanged || !isAgentHealthy() {
+            try await bootstrapLaunchAgent(paths: paths)
+        }
         return hostResult
+    }
+
+    private func isAgentHealthy() -> Bool {
+        let snapshot = Diagnostics(home: home).status()
+        return snapshot.process == .running && snapshot.socketPresent
     }
 
     /// Enables an existing LaunchAgent. Does not write a plist or change config.json.
