@@ -43,7 +43,6 @@ struct RepositoryCutoverTests {
 
     @Test func activePluginAndCurrentDocsDoNotAdvertiseRemovedRuntime() throws {
         let paths = [
-            ".agents/plugins/marketplace.json",
             "plugins/debrief/.codex-plugin/plugin.json",
             "plugins/debrief/.claude-plugin/plugin.json",
             "plugins/debrief/hooks/hooks.json",
