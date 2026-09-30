@@ -105,10 +105,23 @@ impl DebriefConfiguration {
             url.file_name().unwrap().to_string_lossy(),
             std::process::id()
         ));
-        std::fs::write(&temporary, &data)?;
-        std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o600))?;
-        std::fs::rename(&temporary, url)?;
-        Ok(())
+
+        // Write, fsync, and rename — clean up the temp file on any failure after creation.
+        let result = (|| -> std::io::Result<()> {
+            use std::io::Write;
+            let mut file = std::fs::File::create(&temporary)?;
+            file.write_all(&data)?;
+            file.sync_all()?;
+            drop(file);
+            std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o600))?;
+            std::fs::rename(&temporary, url)?;
+            Ok(())
+        })();
+
+        if result.is_err() {
+            std::fs::remove_file(&temporary).ok();
+        }
+        result
     }
 }
 
