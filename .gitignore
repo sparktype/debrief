@@ -1,5 +1,6 @@
 .direnv/
 .envrc
+/target/
 node_modules/
 dist/
 .build/
