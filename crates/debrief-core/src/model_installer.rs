@@ -118,7 +118,15 @@ impl<D: ModelDownloading> ModelInstaller<D> {
             return Err(e);
         }
 
+        if let Err(e) = sync_directory(&staging) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(e);
+        }
+
         if final_dir.exists() {
+            // SAFETY: path_cstr produces valid null-terminated C strings from UTF-8 paths;
+            // AT_FDCWD resolves relative to the process's current directory, which is not
+            // used here since both `staging` and `final_dir` are absolute paths.
             let swapped = unsafe {
                 libc::renameatx_np(
                     libc::AT_FDCWD,
@@ -140,6 +148,7 @@ impl<D: ModelDownloading> ModelInstaller<D> {
             })?;
         }
 
+        sync_directory(&root)?;
         self.write_current_pointer(&root)?;
         Ok(InstalledModel { revision: self.manifest.revision.clone(), directory: final_dir })
     }
@@ -161,22 +170,32 @@ impl<D: ModelDownloading> ModelInstaller<D> {
     }
 
     fn write_validated_marker(&self, staging: &Path) -> Result<(), ModelInstallerError> {
+        use std::io::Write;
         let marker = staging.join(".validated.json");
         let data = serde_json::to_vec(&self.manifest).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
-        fs::write(&marker, data).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        let mut file = fs::File::create(&marker).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        file.write_all(&data).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        file.sync_all().map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
         Ok(())
     }
 
     fn write_current_pointer(&self, root: &Path) -> Result<(), ModelInstallerError> {
+        use std::io::Write;
         let pointer = CurrentModelPointer {
             revision: self.manifest.revision.clone(),
             relative_path: self.manifest.revision.clone(),
         };
         let data = serde_json::to_vec(&pointer).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
         let temporary = root.join(format!(".current-{}.json", std::process::id()));
-        fs::write(&temporary, &data).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        let mut file = fs::File::create(&temporary).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        file.write_all(&data).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        file.sync_all().map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        drop(file);
         let current = root.join("current.json");
         if current.exists() {
+            // SAFETY: path_cstr produces valid null-terminated C strings from UTF-8 paths;
+            // AT_FDCWD resolves relative to the process's current directory, which is not
+            // used here since both `temporary` and `current` are absolute paths.
             let swapped = unsafe {
                 libc::renameatx_np(
                     libc::AT_FDCWD,
@@ -191,15 +210,29 @@ impl<D: ModelDownloading> ModelInstaller<D> {
                 return Err(ModelInstallerError::AtomicReplacementFailed);
             }
             let _ = fs::remove_file(&temporary);
-        } else {
-            fs::rename(&temporary, &current).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+        } else if fs::rename(&temporary, &current).is_err() {
+            let _ = fs::remove_file(&temporary);
+            return Err(ModelInstallerError::AtomicReplacementFailed);
         }
-        Ok(())
+        sync_directory(root)
     }
 }
 
 fn path_cstr(path: &Path) -> std::ffi::CString {
     std::ffi::CString::new(path.as_os_str().to_str().unwrap()).unwrap()
+}
+
+fn sync_directory(path: &Path) -> Result<(), ModelInstallerError> {
+    use std::os::unix::io::AsRawFd;
+    let dir = std::fs::File::open(path).map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
+    // SAFETY: `dir` is a valid, open file descriptor for the lifetime of this call
+    // (owned by `dir`, not yet dropped); fsync on a directory fd is a well-defined
+    // way to flush directory-entry metadata to durable storage on macOS.
+    let ret = unsafe { libc::fsync(dir.as_raw_fd()) };
+    if ret != 0 {
+        return Err(ModelInstallerError::AtomicReplacementFailed);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
