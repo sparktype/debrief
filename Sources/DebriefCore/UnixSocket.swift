@@ -280,6 +280,17 @@ public struct UnixSocketClient: SpeechSink, Sendable {
         let header = Data(bytes: &length, count: MemoryLayout<UInt32>.size)
         try UnixSocketServer.writeAll(header, to: descriptor)
         try UnixSocketServer.writeAll(payload, to: descriptor)
+        // 서버가 부하로 느려도 ACK를 기다린다. 짧게 끊고 재시도하면 같은 발화가 두 번 들어갈 수 있다.
+        var acknowledgementTimeout = timeval(tv_sec: 2, tv_usec: 0)
+        guard setsockopt(
+            descriptor,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &acknowledgementTimeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        ) == 0 else {
+            throw UnixSocketError.systemCall("setsockopt(timeout)", errno)
+        }
         let acknowledgement = try UnixSocketServer.readExactly(1, from: descriptor)
         guard acknowledgement.first == 0x06 else { throw UnixSocketError.rejected }
     }

@@ -123,6 +123,55 @@ struct UnixSocketTests {
         }
     }
 
+    @Test func slowAcknowledgementDoesNotFailOrResubmit() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let socketURL = directory.appending(path: "debrief.sock")
+        let listener = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        defer { Darwin.close(listener) }
+        var address = try UnixSocketServer.address(for: socketURL.path)
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        #expect(bound == 0)
+        #expect(Darwin.listen(listener, 4) == 0)
+
+        // 서버가 프레임을 다 읽고 ACK를 400ms 늦게 보내는 상황을 흉내 낸다. accept는 한 번만 한다.
+        DispatchQueue.global().async {
+            let connection = Darwin.accept(listener, nil, nil)
+            defer { Darwin.close(connection) }
+            func readAll(_ count: Int) -> [UInt8] {
+                var bytes = [UInt8](repeating: 0, count: count)
+                var offset = 0
+                while offset < count {
+                    let n = bytes.withUnsafeMutableBytes {
+                        Darwin.read(connection, $0.baseAddress!.advanced(by: offset), count - offset)
+                    }
+                    if n <= 0 { return [] }
+                    offset += n
+                }
+                return bytes
+            }
+            let header = readAll(4)
+            guard header.count == 4 else { return }
+            let length = header.reduce(0) { ($0 << 8) | Int($1) }
+            _ = readAll(length)
+            usleep(400_000)
+            var ack: UInt8 = 0x06
+            _ = Darwin.write(connection, &ack, 1)
+        }
+
+        let client = UnixSocketClient(socketURL: socketURL)
+        let request = SpeechRequest(
+            envelope: SpeechEnvelope(v: 1, text: "완료", voice: "F1", speed: 0.93, volume: 0.6),
+            priority: .main,
+            agentType: nil
+        )
+        try await client.submit(request)
+    }
+
     private func temporaryDirectory() -> URL {
         let url = URL(fileURLWithPath: "/tmp", isDirectory: true)
             .appending(path: "cs-\(UUID().uuidString)")
