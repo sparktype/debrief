@@ -1,0 +1,6 @@
+[package]
+name = "debrief-tts"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

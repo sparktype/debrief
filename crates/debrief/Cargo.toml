@@ -1,0 +1,11 @@
+[package]
+name = "debrief"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "debrief"
+path = "src/main.rs"
+
+[dependencies]
+debrief-core = { path = "../debrief-core" }
