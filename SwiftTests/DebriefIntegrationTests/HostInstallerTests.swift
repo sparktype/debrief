@@ -35,7 +35,10 @@ struct HostInstallerTests {
         let codexToml = try String(contentsOf: codexConfig, encoding: .utf8)
         #expect(codexToml.contains("[mcp_servers.debrief]"))
         #expect(codexToml.contains("# BEGIN debrief-mcp"))
-        #expect((claudeJSON["mcpServers"] as? [String: Any])?["debrief"] != nil)
+        // Claude Code reads user MCP from ~/.claude.json — settings.json must not carry it.
+        #expect((claudeJSON["mcpServers"] as? [String: Any])?["debrief"] == nil)
+        let claudeMcp = try json(at: home.appending(path: ".claude.json"))
+        #expect((claudeMcp["mcpServers"] as? [String: Any])?["debrief"] != nil)
         #expect(claudeJSON["theme"] as? String == "dark")
         assertInstalledHooks(codexJSON, unrelatedEvent: "PreToolUse")
         assertInstalledHooks(claudeJSON, unrelatedEvent: "Notification")
@@ -193,6 +196,42 @@ struct HostInstallerTests {
                 atPath: home.appending(path: ".grok/skills/debrief-\(name)/SKILL.md").path
             ))
         }
+    }
+
+    @Test func claudeMcpLivesInClaudeJsonAndMigratesLegacySettingsEntry() throws {
+        let home = temporaryHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let executable = URL(fileURLWithPath: "/tmp/debrief-bin")
+        let settings = home.appending(path: ".claude/settings.json")
+        let claudeJson = home.appending(path: ".claude.json")
+        let installer = HostInstaller(home: home, executable: executable)
+
+        // 예전 버전이 settings.json에 남긴 등록 (manifest에 소유로 기록됨).
+        let registration = EmbeddedTemplates.mcpRegistration(executable: executable)
+        try writeJSON(["mcpServers": ["debrief": registration]], to: settings)
+        try InstallManifest(files: [OwnedInstalledFile(
+            host: .claude,
+            path: HostInstaller.mcpOwnershipPath(for: .claude),
+            sha256: try InstallerDigest.json(registration)
+        )]).save(to: DebriefPaths.forHome(home).installManifestURL)
+        try writeJSON([
+            "numStartups": 7,
+            "mcpServers": ["keep": ["command": "unrelated"]],
+        ], to: claudeJson)
+
+        try installer.install(hosts: [.claude])
+
+        let mcp = try #require(try json(at: claudeJson)["mcpServers"] as? [String: Any])
+        #expect(mcp["keep"] != nil)
+        #expect(mcp["debrief"] != nil)
+        #expect(try json(at: claudeJson)["numStartups"] as? Int == 7)
+        #expect((try json(at: settings)["mcpServers"] as? [String: Any])?["debrief"] == nil)
+
+        try installer.uninstall(hosts: [.claude])
+
+        let after = try #require(try json(at: claudeJson)["mcpServers"] as? [String: Any])
+        #expect(after["keep"] != nil)
+        #expect(after["debrief"] == nil)
     }
 
     @Test func uninstallRemovesOnlyUnchangedOwnedContent() throws {

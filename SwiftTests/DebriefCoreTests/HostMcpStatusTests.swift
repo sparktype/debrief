@@ -73,6 +73,21 @@ struct HostMcpStatusTests {
         #expect(status.menuLine.hasPrefix("❌"))
     }
 
+    @Test func claudeIgnoresLegacySettingsJsonMcp() throws {
+        let home = try makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let expected = DebriefPaths.forHome(home).executableURL
+        // 예전 설치가 남긴 settings.json 등록은 Claude Code가 읽지 않으므로 등록으로 치지 않는다.
+        try writeJSON(
+            ["mcpServers": ["debrief": ["command": expected.path, "args": ["mcp"]]]],
+            to: home.appending(path: ".claude/settings.json")
+        )
+        try writeJSON(["mcpServers": [:]], to: claudeSettings(home))
+
+        let status = HostMcpProbe.status(for: .claude, home: home, expectedExecutable: expected)
+        #expect(status.state == .missing)
+    }
+
     @Test func codexOkFromTomlTable() throws {
         let home = try makeHome()
         defer { try? FileManager.default.removeItem(at: home) }
@@ -141,8 +156,9 @@ struct HostMcpStatusTests {
         return url
     }
 
+    /// Claude Code reads user-scope MCP servers from ~/.claude.json, not ~/.claude/settings.json.
     private func claudeSettings(_ home: URL) -> URL {
-        home.appending(path: ".claude/settings.json")
+        home.appending(path: ".claude.json")
     }
 
     private func writeClaude(home: URL, command: String) throws {

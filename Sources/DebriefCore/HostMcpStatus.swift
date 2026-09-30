@@ -125,7 +125,8 @@ public enum HostMcpProbe {
     // MARK: - Claude JSON
 
     private static func probeClaude(home: URL, expected: URL) -> HostMcpState {
-        let url = home.appending(path: ".claude/settings.json")
+        // Claude Code reads user MCP servers from ~/.claude.json, not settings.json.
+        let url = home.appending(path: ".claude.json")
         guard FileManager.default.fileExists(atPath: url.path) else { return .absent }
         guard let data = try? Data(contentsOf: url),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]

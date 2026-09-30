@@ -129,7 +129,7 @@ struct DiagnosticsTests {
     @Test func doctorReportsMissingClaudeMcpWhenSettingsExist() throws {
         let home = temporaryHome()
         defer { try? FileManager.default.removeItem(at: home) }
-        try writeJSON(["mcpServers": [:]], to: home.appending(path: ".claude/settings.json"))
+        try writeJSON(["mcpServers": [:]], to: home.appending(path: ".claude.json"))
 
         let findings = Diagnostics(home: home, processExists: { _ in false }).doctor()
         #expect(findings.contains { $0.code == "mcp.claude.missing" && !$0.ok })

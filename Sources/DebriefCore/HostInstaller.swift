@@ -42,7 +42,6 @@ public struct HostInstaller: Sendable {
             case .codex:
                 try installJSONHost(
                     host,
-                    includeJSONMcp: false,
                     previousFiles: previousFiles,
                     previousHooks: previousHooks,
                     ownedHooks: &ownedHooks,
@@ -58,7 +57,6 @@ public struct HostInstaller: Sendable {
             case .claude:
                 try installJSONHost(
                     host,
-                    includeJSONMcp: true,
                     previousFiles: previousFiles,
                     previousHooks: previousHooks,
                     ownedHooks: &ownedHooks,
@@ -93,22 +91,11 @@ public struct HostInstaller: Sendable {
         for host in hosts.sorted(by: { $0.rawValue < $1.rawValue }) {
             switch host {
             case .codex:
-                try uninstallJSONHost(
-                    host,
-                    removeJSONMcp: false,
-                    stripLegacyJSONMcp: true,
-                    manifest: manifest,
-                    preserved: &preserved
-                )
+                try uninstallJSONHost(host, manifest: manifest, preserved: &preserved)
                 try uninstallTomlMcp(host: .codex, manifest: manifest, preserved: &preserved)
             case .claude:
-                try uninstallJSONHost(
-                    host,
-                    removeJSONMcp: true,
-                    stripLegacyJSONMcp: false,
-                    manifest: manifest,
-                    preserved: &preserved
-                )
+                try uninstallJSONHost(host, manifest: manifest, preserved: &preserved)
+                try uninstallClaudeMcp(manifest: manifest, preserved: &preserved)
             case .grok:
                 try uninstallGrokHost(manifest: manifest, preserved: &preserved)
             }
@@ -119,11 +106,10 @@ public struct HostInstaller: Sendable {
         return HostInstallResult(codexReviewRequired: false, preservedModifiedFiles: preserved.sorted())
     }
 
-    // MARK: - JSON hosts (Codex hooks / Claude settings)
+    // MARK: - JSON hosts (Codex hooks / Claude settings + ~/.claude.json MCP)
 
     private func installJSONHost(
         _ host: HostSource,
-        includeJSONMcp: Bool,
         previousFiles: [OwnedInstalledFile],
         previousHooks: [OwnedHook],
         ownedHooks: inout [OwnedHook],
@@ -158,19 +144,13 @@ public struct HostInstaller: Sendable {
         }
         root["hooks"] = hooks
 
-        if includeJSONMcp {
-            try mergeJSONMcp(
-                into: &root,
-                host: host,
-                previousFiles: previousFiles,
-                ownedFiles: &ownedFiles,
-                preserved: &preserved
-            )
-        } else if host == .codex {
-            // Repair: strip previously owned JSON mcpServers.debrief from hooks.json.
-            try stripLegacyJSONMcpIfOwned(from: &root, host: host, previousFiles: previousFiles)
-        }
+        // Claude Code ignores mcpServers in settings.json (user MCP lives in ~/.claude.json),
+        // so drop any debrief entry an older install left here.
+        try stripLegacyJSONMcpIfOwned(from: &root, host: host, previousFiles: previousFiles)
 
+        if host == .claude {
+            try installClaudeMcp(previousFiles: previousFiles, ownedFiles: &ownedFiles, preserved: &preserved)
+        }
         try backupIfNeeded(settingsURL)
         try writeSettings(root, to: settingsURL)
 
@@ -180,6 +160,24 @@ public struct HostInstaller: Sendable {
             ownedFiles: &ownedFiles,
             preserved: &preserved
         )
+    }
+
+    private func installClaudeMcp(
+        previousFiles: [OwnedInstalledFile],
+        ownedFiles: inout [OwnedInstalledFile],
+        preserved: inout [String]
+    ) throws {
+        let url = claudeUserConfigURL
+        var root = try readSettings(at: url)
+        try mergeJSONMcp(
+            into: &root,
+            host: .claude,
+            previousFiles: previousFiles,
+            ownedFiles: &ownedFiles,
+            preserved: &preserved
+        )
+        try backupIfNeeded(url)
+        try writeSettings(root, to: url)
     }
 
     private func mergeJSONMcp(
@@ -213,8 +211,8 @@ public struct HostInstaller: Sendable {
         root["mcpServers"] = mcpServers
     }
 
-    /// Remove a JSON `mcpServers.debrief` entry left in Codex hooks.json — Codex MCP registration
-    /// now lives in `config.toml` only, so a JSON entry from an older install is stale.
+    /// Remove a JSON `mcpServers.debrief` entry left in Codex hooks.json / Claude settings.json —
+    /// Codex MCP lives in `config.toml` and Claude MCP in `~/.claude.json`, so such an entry is stale.
     private func stripLegacyJSONMcpIfOwned(
         from root: inout [String: Any],
         host: HostSource,
@@ -239,8 +237,6 @@ public struct HostInstaller: Sendable {
 
     private func uninstallJSONHost(
         _ host: HostSource,
-        removeJSONMcp: Bool,
-        stripLegacyJSONMcp: Bool,
         manifest: InstallManifest,
         preserved: inout [String]
     ) throws {
@@ -258,21 +254,8 @@ public struct HostInstaller: Sendable {
             }
             root["hooks"] = hooks
 
-            let mcpPath = Self.mcpOwnershipPath(for: host)
-            if removeJSONMcp,
-               let owned = manifest.files.first(where: { $0.host == host && $0.path == mcpPath }),
-               var mcpServers = root["mcpServers"] as? [String: Any] {
-                if let existing = mcpServers["debrief"],
-                   (try? InstallerDigest.json(existing)) == owned.sha256 {
-                    mcpServers.removeValue(forKey: "debrief")
-                    root["mcpServers"] = mcpServers
-                } else if mcpServers["debrief"] != nil {
-                    preserved.append(mcpPath)
-                }
-            } else if stripLegacyJSONMcp {
-                let previous = manifest.files.filter { $0.host == host }
-                try stripLegacyJSONMcpIfOwned(from: &root, host: host, previousFiles: previous)
-            }
+            let previous = manifest.files.filter { $0.host == host }
+            try stripLegacyJSONMcpIfOwned(from: &root, host: host, previousFiles: previous)
 
             try writeSettings(root, to: settingsURL)
         }
@@ -280,6 +263,24 @@ public struct HostInstaller: Sendable {
         for owned in manifest.files where owned.host == host {
             if owned.path.hasPrefix("mcp:") { continue }
             try removeOwnedFile(owned, preserved: &preserved)
+        }
+    }
+
+    private func uninstallClaudeMcp(manifest: InstallManifest, preserved: inout [String]) throws {
+        let url = claudeUserConfigURL
+        let mcpPath = Self.mcpOwnershipPath(for: .claude)
+        guard FileManager.default.fileExists(atPath: url.path),
+              let owned = manifest.files.first(where: { $0.host == .claude && $0.path == mcpPath })
+        else { return }
+        var root = try readSettings(at: url)
+        guard var mcpServers = root["mcpServers"] as? [String: Any],
+              let existing = mcpServers["debrief"] else { return }
+        if (try? InstallerDigest.json(existing)) == owned.sha256 {
+            mcpServers.removeValue(forKey: "debrief")
+            root["mcpServers"] = mcpServers
+            try writeSettings(root, to: url)
+        } else {
+            preserved.append(mcpPath)
         }
     }
 
@@ -461,6 +462,9 @@ public struct HostInstaller: Sendable {
         case .grok: home.appending(path: ".grok/config.toml")
         }
     }
+
+    /// Claude Code user-scope config; the only place it reads user MCP servers from.
+    private var claudeUserConfigURL: URL { home.appending(path: ".claude.json") }
 
     /// Codex / Grok native MCP config path (TOML).
     private func mcpTomlConfigURL(for host: HostSource) -> URL {
