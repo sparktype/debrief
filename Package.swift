@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "debrief",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "debrief", targets: ["ChorusCLI"])],
+    products: [.executable(name: "debrief", targets: ["DebriefCLI"])],
     dependencies: [
         .package(
             url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
@@ -13,7 +13,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "ChorusCore",
+            name: "DebriefCore",
             dependencies: [
                 .product(
                     name: "onnxruntime",
@@ -21,16 +21,16 @@ let package = Package(
                 ),
             ]
         ),
-        .executableTarget(name: "ChorusCLI", dependencies: ["ChorusCore"]),
+        .executableTarget(name: "DebriefCLI", dependencies: ["DebriefCore"]),
         .testTarget(
-            name: "ChorusCoreTests",
-            dependencies: ["ChorusCore"],
-            path: "SwiftTests/ChorusCoreTests"
+            name: "DebriefCoreTests",
+            dependencies: ["DebriefCore"],
+            path: "SwiftTests/DebriefCoreTests"
         ),
         .testTarget(
-            name: "ChorusIntegrationTests",
-            dependencies: ["ChorusCore"],
-            path: "SwiftTests/ChorusIntegrationTests"
+            name: "DebriefIntegrationTests",
+            dependencies: ["DebriefCore"],
+            path: "SwiftTests/DebriefIntegrationTests"
         ),
     ]
 )

@@ -20,7 +20,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 
 ## 툴체인 (필수)
 
-**Xcode 27**로 빌드·테스트합니다. Command Line Tools만 있으면 Swift Testing 매크로가 실패합니다. `./scripts/with-xcode.sh`는 Xcode-beta가 있으면 그것을, 없으면 `/Applications/Xcode.app`을 씁니다. `CHORUS_XCODE_DEVELOPER`로 덮어씁니다.
+**Xcode 27**로 빌드·테스트합니다. Command Line Tools만 있으면 Swift Testing 매크로가 실패합니다. `./scripts/with-xcode.sh`는 Xcode-beta가 있으면 그것을, 없으면 `/Applications/Xcode.app`을 씁니다. `DEBRIEF_XCODE_DEVELOPER`로 덮어씁니다.
 
 ```bash
 ./scripts/with-xcode.sh swift test
@@ -33,7 +33,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 | Build (검증됨) | Xcode 27.0 / 27A266a |
 | Swift | 6.4 |
 | 플랫폼 | macOS 14+, arm64 |
-| 버전 | `ChorusVersion.current` = `0.0.2` (태그 `v0.0.2`) |
+| 버전 | `DebriefVersion.current` = `0.0.3` (태그 `v0.0.3`) |
 | 사용자 설치 | `brew install sparktype/tap/debrief` 다음 `debrief install`. 소스 빌드는 `./scripts/with-xcode.sh swift build -c release` |
 
 ## 규범 문서
@@ -69,7 +69,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 - Python / Node / FastAPI / Prometheus / DLQ
 - HTML comment speech envelope / Stop·SubagentStop speech extraction
 - PreToolUse / PostToolUse
-- `debrief speak` CLI와 메뉴바 앱. 설치 목적지는 `~/.local/bin/debrief`이며, 예전 `~/.local/bin/chorus` 파일은 설치 때 지웁니다.
+- `debrief speak` CLI와 메뉴바 앱. 설치 목적지는 `~/.local/bin/debrief`입니다.
 
 ## Speech 흐름 (MCP)
 

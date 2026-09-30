@@ -19,11 +19,11 @@ The coding agent owns summarization and selects spoken text and voice parameters
 ```text
 Package.swift
 Sources/
-├── ChorusCLI/
+├── DebriefCLI/
 │   └── EntryPoint.swift       daemon, CLI controls, mcp, hook, install
-└── ChorusCore/
+└── DebriefCore/
     ├── ResidentService.swift  pid + socket + daemon lifecycle
-    ├── ChorusDaemon.swift     speech accept loop over Unix socket
+    ├── DebriefDaemon.swift     speech accept loop over Unix socket
     ├── SpeechEnvelope.swift   internal wire model and validation
     ├── SpeechRequest.swift    envelope + SpeechPriority + lane + emotion
     ├── SpeechLane.swift       companion | work
@@ -44,8 +44,8 @@ Sources/
     ├── LegacyMigration.swift  one-time allowlisted configuration import
     └── Diagnostics.swift      status, doctor findings, last-error
 SwiftTests/
-├── ChorusCoreTests/
-└── ChorusIntegrationTests/
+├── DebriefCoreTests/
+└── DebriefIntegrationTests/
 plugins/debrief/               marketplace metadata, hooks, skills
 docs/archive/                 superseded Python-era designs (not product truth)
 .github/workflows/ci.yml      macos-15 swift test + release build
@@ -64,7 +64,7 @@ debrief daemon
         └── ResidentService
               ├── pid file
               ├── Unix socket server
-              ├── ChorusDaemon + SpeechQueue
+              ├── DebriefDaemon + SpeechQueue
               ├── SupertonicEngine
               └── AudioPlayer
 
@@ -133,7 +133,7 @@ Uses the MCP process executable as the source binary for `RuntimeInstaller` (sam
 
 ## Runtime lifecycle
 
-`debrief install` copies the executable to `~/.local/bin/debrief` (atomic write, mode 0755; a directory at that path is refused), installs the pinned model, host MCP, skills, Claude/Codex start-family hooks, and LaunchAgent `com.debrief.tts`. Bootstrap is `enable`, `bootout`, `bootstrap`, with one retry. Only after bootstrap succeeds does install remove a leftover app at `/Applications` or `~/Applications` when its bundle id matches (`debrief.app` / `com.debrief.tts`, plus earlier Chorus and prompt-recap bundles). Owned-file digests prevent uninstall from removing a binary whose contents differ from the manifest.
+`debrief install` copies the executable to `~/.local/bin/debrief` (atomic write, mode 0755; a directory at that path is refused), installs the pinned model, host MCP, skills, Claude/Codex start-family hooks, and LaunchAgent `com.debrief.tts`. Bootstrap is `enable`, `bootout`, `bootstrap`, with one retry. Owned-file digests prevent uninstall from removing a binary whose contents differ from the manifest.
 
 `debrief start` bootstraps the existing plist and does not rewrite it. A live pid prints `이미 실행 중입니다.` and does not bootout. `debrief stop` disables and bootouts the job, keeps the plist and the binary, and prints `서비스를 중지했습니다.` `debrief daemon` parks until SIGTERM or SIGINT. A second live daemon exits 0. A missing model records `last-error.json`, skips the socket, and stays running so KeepAlive does not spin.
 
@@ -146,11 +146,11 @@ Synthesis/playback failures and queue rejections write `~/Library/Caches/debrief
 ./scripts/with-xcode.sh swift build -c release
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`, then checks that `.build/release/debrief` is an arm64 binary. Local development uses Xcode 27 via `./scripts/with-xcode.sh` (Xcode-beta when installed, otherwise Xcode.app). Override with `CHORUS_XCODE_DEVELOPER`.
+GitHub Actions (`.github/workflows/ci.yml`) runs `swift test` and `swift build -c release` on `macos-15`, then checks that `.build/release/debrief` is an arm64 binary. Local development uses Xcode 27 via `./scripts/with-xcode.sh` (Xcode-beta when installed, otherwise Xcode.app). Override with `DEBRIEF_XCODE_DEVELOPER`.
 
-The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). `ChorusVersion.current` is `0.0.2`, tag `v0.0.2`. The tap formula is `sparktype/tap/debrief` (`class Debrief`, `swift build --product debrief`). Install with `brew install sparktype/tap/debrief`, then `debrief install`. `Formula/chorus.rb` remains on the tap for tag `v0.0.1` and builds the previous `chorus` binary. A source checkout still builds with `./scripts/with-xcode.sh swift build -c release`.
+The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). `DebriefVersion.current` is `0.0.3`, tag `v0.0.3`. The tap formula is `sparktype/tap/debrief` (`class Debrief`, `swift build --product debrief`). Install with `brew install sparktype/tap/debrief`, then `debrief install`. `Formula/chorus.rb` remains on the tap for tag `v0.0.1` and builds the previous `chorus` binary. A source checkout still builds with `./scripts/with-xcode.sh swift build -c release`.
 
-Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`CHORUS_TEST_MODEL_DIR` for the real-model smoke test).
+Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`DEBRIEF_TEST_MODEL_DIR` for the real-model smoke test).
 
 ## Change rules
 

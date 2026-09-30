@@ -18,7 +18,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 범위 밖:
 
-- 음성 인식, 마이크, Chorus 쪽 요약
+- 음성 인식, 마이크, debrief 쪽 요약
 - `debrief speak` 명령, 메뉴바 앱, Stop 훅에서 문장을 뽑는 방식
 
 ## 요구 사항
@@ -27,7 +27,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 - Codex, Claude Code, Grok 중 하나 이상
 - 소스 설치에는 Xcode 27
 
-버전은 `0.0.2`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
+버전은 `0.0.3`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
 
@@ -60,7 +60,6 @@ debrief status
 2. Supertonic 3을 `~/Library/Application Support/debrief/models/`에 두고 체크섬을 확인합니다.
 3. 선택한 호스트에 MCP, 스킬, Claude/Codex 시작 훅을 절대 경로로 넣습니다.
 4. `~/Library/LaunchAgents/com.debrief.tts.plist`를 쓰고 `debrief daemon`을 부트스트랩합니다.
-5. 부트스트랩이 성공한 뒤에만, 번들 ID가 일치하는 남은 앱을 `/Applications`와 `~/Applications`에서 제거합니다 (`debrief.app`, 이전 `Chorus.app`, `prompt-recap.app`).
 
 호스트를 제한하려면 `--codex`, `--claude`, `--grok`를 조합합니다. 플래그가 없으면 세 호스트 모두입니다. `--repair`는 소유한 파일을 다시 맞추고, 사용자가 고친 파일은 다이제스트가 다르면 덮어쓰지 않습니다.
 

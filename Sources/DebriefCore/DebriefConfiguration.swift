@@ -1,0 +1,161 @@
+import Darwin
+import Foundation
+
+public enum DebriefMode: String, Codable, CaseIterable, Sendable {
+    case normal
+    case focus
+    case quiet
+    case verbose
+    case night
+}
+
+public struct DebriefConfiguration: Codable, Equatable, Sendable {
+    public static let defaultVolumeCeilings: [String: Double] = [
+        DebriefMode.normal.rawValue: 1.0,
+        DebriefMode.focus.rawValue: 1.0,
+        DebriefMode.quiet.rawValue: 0.45,
+        DebriefMode.verbose.rawValue: 1.0,
+        DebriefMode.night.rawValue: 0.20,
+    ]
+    public static let `default` = DebriefConfiguration(
+        mode: .normal,
+        muted: false,
+        companionEnabled: true
+    )
+
+    public var mode: DebriefMode
+    public var muted: Bool
+    /// When false, companion-lane speech is rejected (P2 도우미 음성).
+    public var companionEnabled: Bool
+    public var volumeCeilings: [String: Double]
+    public var categoryVoices: [String: String]
+    public var voiceSpeeds: [String: Double]
+
+    public init(
+        mode: DebriefMode,
+        muted: Bool,
+        companionEnabled: Bool = true,
+        volumeCeilings: [String: Double] = defaultVolumeCeilings,
+        categoryVoices: [String: String] = [:],
+        voiceSpeeds: [String: Double] = [:]
+    ) {
+        self.mode = mode
+        self.muted = muted
+        self.companionEnabled = companionEnabled
+        self.volumeCeilings = volumeCeilings
+        self.categoryVoices = categoryVoices
+        self.voiceSpeeds = voiceSpeeds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, muted, companionEnabled, volumeCeilings, categoryVoices, voiceSpeeds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(DebriefMode.self, forKey: .mode) ?? .normal
+        muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+        companionEnabled = try container.decodeIfPresent(Bool.self, forKey: .companionEnabled) ?? true
+        volumeCeilings = try container.decodeIfPresent([String: Double].self, forKey: .volumeCeilings)
+            ?? Self.defaultVolumeCeilings
+        categoryVoices = try container.decodeIfPresent([String: String].self, forKey: .categoryVoices) ?? [:]
+        voiceSpeeds = try container.decodeIfPresent([String: Double].self, forKey: .voiceSpeeds) ?? [:]
+    }
+
+    public static func load(from url: URL) -> DebriefConfiguration {
+        guard let data = try? Data(contentsOf: url),
+              let configuration = try? JSONDecoder().decode(DebriefConfiguration.self, from: data)
+        else {
+            return .default
+        }
+        return configuration
+    }
+
+    public func save(to url: URL) throws {
+        let fileManager = FileManager.default
+        let directory = url.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+
+        let data = try JSONEncoder.debrief.encode(self)
+        let temporary = directory.appending(path: ".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        guard fileManager.createFile(
+            atPath: temporary.path,
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        defer { try? fileManager.removeItem(at: temporary) }
+
+        let handle = try FileHandle(forWritingTo: temporary)
+        do {
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+        } catch {
+            try? handle.close()
+            throw error
+        }
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+
+        guard rename(temporary.path, url.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+}
+
+public enum ConfigurationCommandError: Error, Equatable, Sendable {
+    case invalidMode(String)
+    case invalidMuteAction(String)
+    case invalidCompanionAction(String)
+}
+
+public enum ConfigurationCommands {
+    public static func applyMode(_ rawValue: String?, home: URL) throws -> DebriefConfiguration {
+        let url = DebriefPaths.forHome(home).configURL
+        var configuration = DebriefConfiguration.load(from: url)
+        guard let rawValue else { return configuration }
+        guard let mode = DebriefMode(rawValue: rawValue) else {
+            throw ConfigurationCommandError.invalidMode(rawValue)
+        }
+        configuration.mode = mode
+        try configuration.save(to: url)
+        return configuration
+    }
+
+    public static func applyMute(_ rawValue: String?, home: URL) throws -> DebriefConfiguration {
+        let url = DebriefPaths.forHome(home).configURL
+        var configuration = DebriefConfiguration.load(from: url)
+        switch rawValue ?? "toggle" {
+        case "on": configuration.muted = true
+        case "off": configuration.muted = false
+        case "toggle": configuration.muted.toggle()
+        case let invalid: throw ConfigurationCommandError.invalidMuteAction(invalid)
+        }
+        try configuration.save(to: url)
+        return configuration
+    }
+
+    /// Toggle or set companion-lane speech (`도우미 음성`).
+    public static func applyCompanion(_ rawValue: String?, home: URL) throws -> DebriefConfiguration {
+        let url = DebriefPaths.forHome(home).configURL
+        var configuration = DebriefConfiguration.load(from: url)
+        switch rawValue ?? "toggle" {
+        case "on": configuration.companionEnabled = true
+        case "off": configuration.companionEnabled = false
+        case "toggle": configuration.companionEnabled.toggle()
+        case let invalid: throw ConfigurationCommandError.invalidCompanionAction(invalid)
+        }
+        try configuration.save(to: url)
+        return configuration
+    }
+}
+
+private extension JSONEncoder {
+    static var debrief: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return encoder
+    }
+}
