@@ -244,19 +244,23 @@ public struct UnixSocketClient: SpeechSink, Sendable {
             throw UnixSocketError.payloadTooLarge
         }
         let url = socketURL
-        try await Task.detached(priority: .userInitiated) {
-            var lastError: Error = UnixSocketError.disconnected
-            for attempt in 0..<2 {
-                do {
-                    try Self.submit(payload, to: url)
-                    return
-                } catch {
-                    lastError = error
-                    if attempt == 0 { usleep(20_000) }
+        // 블로킹 syscall은 협력 스레드 풀 밖에서 돌린다. 풀이 막히면 서버 태스크가 시작하지 못한다.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var lastError: Error = UnixSocketError.disconnected
+                for attempt in 0..<2 {
+                    do {
+                        try Self.submit(payload, to: url)
+                        continuation.resume()
+                        return
+                    } catch {
+                        lastError = error
+                        if attempt == 0 { usleep(20_000) }
+                    }
                 }
+                continuation.resume(throwing: lastError)
             }
-            throw lastError
-        }.value
+        }
     }
 
     private static func submit(_ payload: Data, to url: URL) throws {
