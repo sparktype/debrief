@@ -121,8 +121,8 @@ public enum VoiceCatalog {
             return """
             debrief: once at turn end, \(tool), lane=companion, voice \(companion.voice) (\(companion.name)), \
             session=\(event.sessionID). Two short sentences in the user's language: \
-            what changed, then the one next action or wait. Silence only if nothing new. No file lists or checklists. \
-            No HTML/JSON in the body.
+            what changed, then the one next action or wait. After code work, that action is what to verify to keep ownership. \
+            Silence only if nothing new. No file lists or checklists. No HTML/JSON in the body.
             """
 
         case .subagentStart:
@@ -136,6 +136,9 @@ public enum VoiceCatalog {
             return """
             debrief turn briefing via \(tool). At the end of each user-visible turn, speak once: two short sentences \
             in the user's language — what changed, then the one next action or wait. The agent writes the line. \
+            After writing, changing, or analyzing code, keep the user's code ownership and cut cognitive debt: \
+            the next action names what they must verify themselves (behavior change, deletion, security or data path, \
+            an assumption you made, how to check or undo). Skip it for trivial changes. \
             Silence only if nothing new and no next action. Voice \(companion.voice) (\(companion.name)), \
             speed ~\(format(companion.baselineSpeed)), volume ~0.85, lane=companion, session=\(event.sessionID). \
             The server keeps that companion voice for this session. \

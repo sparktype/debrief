@@ -60,7 +60,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
-- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
+- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
 
 **제외**
 
@@ -84,7 +84,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 Claude / Codex start hooks
   → …/debrief hook --source claude|codex
       → SessionStart / UserPromptSubmit / SubagentStart
-          추가 context: 턴 브리핑(what changed, next action) + Silence only + lane/emotion + 역할 보이스
+          추가 context: 턴 브리핑(what changed, next action; 코드 작업 후엔 ownership 확인) + Silence only + lane/emotion + 역할 보이스
   → Stop / SubagentStop 은 설치하지 않음
 
 Grok

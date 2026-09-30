@@ -7,6 +7,8 @@
 
 > **Errata (2026-09-29):** Attitude, timing, and the “intentional silence is success” criterion below are superseded. Each user-visible turn gets one spoken line: what changed, then one next action. Silence only when the turn adds no new fact and no next action. The agent still writes the line. Lane, emotion, and ModePolicy in this spec stay. Stop and SubagentStop hooks stay uninstalled.
 
+> **Errata (2026-09-30):** After writing, changing, or analyzing code, the next action names what the user must verify themselves (behavior change, deletion, security or data path, an assumption, how to check or undo) to keep code ownership and reduce cognitive debt. Trivial changes and subagents are exempt. Wording only, in the hook context, skill, and `speak` tool description.
+
 ---
 
 ## 1. Outcome

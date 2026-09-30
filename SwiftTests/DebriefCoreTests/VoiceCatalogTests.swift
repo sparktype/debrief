@@ -133,6 +133,7 @@ struct VoiceCatalogTests {
         #expect(text.contains("Silence only"))
         #expect(text.contains("what changed"))
         #expect(text.contains("next action"))
+        #expect(text.contains("ownership"))
     }
 
     @Test func sessionStartBriefsWhatChangedThenNextAction() {
@@ -149,6 +150,7 @@ struct VoiceCatalogTests {
         #expect(text.contains("agent writes"))
         #expect(text.contains("Silence only"))
         #expect(text.contains("debrief mute"))
+        #expect(text.contains("ownership"))
         #expect(!text.localizedCaseInsensitiveContains("menu bar"))
         #expect(!text.contains("menubar"))
         #expect(!text.localizedCaseInsensitiveContains("Debrief summarizes"))

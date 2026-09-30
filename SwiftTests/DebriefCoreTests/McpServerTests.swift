@@ -31,6 +31,7 @@ struct McpServerTests {
         let description = tools?.first(where: { ($0["name"] as? String) == "speak" })?["description"] as? String
         #expect(description?.contains("what changed") == true)
         #expect(description?.contains("next action") == true)
+        #expect(description?.contains("ownership") == true)
         #expect(description?.localizedCaseInsensitiveContains("Debrief summarizes") != true)
     }
 

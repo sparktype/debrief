@@ -76,6 +76,7 @@ struct EmbeddedTemplatesTests {
             #expect(skill.contains("next action"))
             #expect(skill.contains("Silence only"))
             #expect(skill.contains("do not brief"))
+            #expect(skill.contains("ownership"))
             #expect(!skill.localizedCaseInsensitiveContains("Debrief summarizes"))
         }
     }

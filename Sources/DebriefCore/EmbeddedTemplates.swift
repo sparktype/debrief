@@ -156,6 +156,10 @@ public enum EmbeddedTemplates {
 
         At the end of each user-visible turn, call speak **once**. Two short sentences in the user's language: **what changed**, then the one **next action** or wait. The agent writes the line. **Silence only** if nothing new and no next action.
 
+        ## Code ownership
+
+        After writing, changing, or analyzing code, protect the user's code ownership and keep cognitive debt low. Make the **next action** the one thing they must verify themselves: a behavior change, a deletion, a security or data path, an assumption you made, or how to check or undo. Skip it for trivial changes; then brief as usual. Subagents never do this.
+
         ## Shape (`lane=companion`)
 
         The server rotates the companion voice across F1–M5, one voice per session, and keeps it. Pass `session` when the hook names a host session id. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. No file lists, checklists, or chat paste.

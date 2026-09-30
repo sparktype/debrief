@@ -86,7 +86,8 @@ public enum McpJSONRPC {
             "name": "speak",
             "description":
                 "At the end of each user-visible turn, speak once: two short sentences — what changed, then the one next action. "
-                + "The agent writes the line. Silence only if nothing new. "
+                + "The agent writes the line. After code work, the next action names what the user must verify to keep code ownership. "
+                + "Silence only if nothing new. "
                 + "lane=companion rotates one voice per session across F1–M5 (pass session to keep it) or work uses the voice you pass; emotion biases prosody only. "
                 + "On Claude Code: mcp__debrief__speak; on Grok: debrief__speak (search_tool/use_tool). "
                 + "Do not put HTML comments or JSON speech metadata in the assistant message body.",

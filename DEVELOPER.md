@@ -102,7 +102,7 @@ MCP registration points at `~/.local/bin/debrief` with `args: ["mcp"]`. TOML hos
 | lane | optional: `companion` (default) or `work` |
 | emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); prosody bias only |
 
-No HTML comments or speech JSON in the chat body. Each user-visible turn is one spoken line: what changed, then one next action. Silence only if nothing new and no next action. The agent writes the line. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
+No HTML comments or speech JSON in the chat body. Each user-visible turn is one spoken line: what changed, then one next action. After code work the next action names what the user must verify to keep code ownership (cognitive-debt reduction); wording only, not enforced in code. Silence only if nothing new and no next action. The agent writes the line. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
 
 Policy (`ModePolicy.admit`):
 
