@@ -33,7 +33,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 | Build (검증됨) | Xcode 27.0 / 27A266a |
 | Swift | 6.4 |
 | 플랫폼 | macOS 14+, arm64 |
-| 버전 | `DebriefVersion.current` = `0.0.5` (태그 `v0.0.5`) |
+| 버전 | `DebriefVersion.current` = `0.0.6` (태그 `v0.0.6`) |
 | 사용자 설치 | `brew install sparktype/tap/debrief` 다음 `debrief install`. 소스 빌드는 `./scripts/with-xcode.sh swift build -c release` |
 
 ## 규범 문서

@@ -3,6 +3,16 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [0.0.6] - 2026-09-30
+
+### 추가
+
+- 코드 오너십 안내. 코드를 작성·수정·분석한 턴에서는 턴 브리핑의 "다음 행동"이 사용자가 직접 확인해야 할 핵심(동작 변경, 삭제, 보안·데이터 경로, 에이전트의 가정, 확인·되돌리기 방법)이 되어 인지 부채를 줄입니다. 훅 컨텍스트, `debrief-speak` 스킬, `speak` 도구 설명에 문구를 추가했으며 새 도구나 호출은 없습니다. 사소한 변경과 서브에이전트는 제외하고, 에이전트의 준수는 코드로 강제하지 않습니다.
+
+### 수정
+
+- 추적에서 제외된 `.agents/plugins/marketplace.json`을 읽어 실패하던 `RepositoryCutoverTests`.
+
 ## [0.0.5] - 2026-09-30
 
 ### 수정
@@ -42,6 +52,7 @@
 - 단일 Swift 실행 파일이 Supertonic 3 모델 설치, 헤드리스 `LaunchAgent`, MCP `speak`/`install`, 호스트별 시작 훅·스킬 배선을 전부 담당합니다.
 - Homebrew 설치: `brew install sparktype/tap/chorus`, 이후 `chorus install` (0.0.2부터 `debrief`로 개명).
 
+[0.0.6]: https://github.com/sparktype/debrief/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/sparktype/debrief/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/sparktype/debrief/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/sparktype/debrief/compare/v0.0.2...v0.0.3
