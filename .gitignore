@@ -1,4 +1,5 @@
 .direnv/
+.envrc
 node_modules/
 dist/
 .build/
@@ -11,22 +12,20 @@ dist/
 .supertonic.pid
 **/__pycache__/
 *.pyc
-# Keep local Claude state private; track shared agents + skills only.
-.claude/*
-!.claude/agents/
-!.claude/agents/**
-!.claude/skills/
-!.claude/skills/**
+# Local Claude/agent tooling state — not product.
+.claude/
+.claude-plugin/
+.agents/
 .superpowers/
 .worktrees/
-
-# Local agent / IDE state (not product). Keep tracked .agents/plugins.
-.agents/skills/
 .codex/
 .swiftpm/
 .omx/
 xcuserdata/
 *.xcuserstate
+
+# Serena MCP 로컬 상태
+.serena/
 
 # gitnexus 로컬 인덱스
 .gitnexus/
