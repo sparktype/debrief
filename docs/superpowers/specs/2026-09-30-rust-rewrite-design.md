@@ -109,6 +109,8 @@ stdio JSON-RPC 서버 구조와 `speak`/`install` 도구 정의는 그대로 유
 
 **모델 다운로더**(`ModelInstaller.swift` 대응)는 아직 미구현이며, 다음 설계로 포팅한다. 동기 HTTP 클라이언트 `ureq`로 각 자산을 스테이징 디렉터리에 내려받고(`ModelInstaller.install(repair:)`의 `URLSessionModelDownloader` 대응), 다운로드한 파일의 크기·sha256을 검증한 뒤(`ModelInstallerError::ChecksumMismatch` 등, Swift와 동일 오류 종류), `renameatx_np`(Darwin 전용 원자적 교체 syscall — `libc` 크레이트로 FFI)로 최종 디렉터리와 원자적으로 맞바꾼다. `--repair` 모드에서는 기존 파일이 이미 유효(체크섬 일치)하면 재다운로드 없이 그대로 복사한다. `current.json` 포인터 파일도 같은 원자적 교체 패턴으로 갱신한다. 이 컴포넌트는 동시성 모델 절에서 정한 대로 완전히 동기(async 없음)로 구현한다.
 
+**`ureq`의 TLS provider는 `native-tls`로 명시 지정한다** (기본값인 `rustls`가 아님). `ureq`의 기본 `rustls`는 자체 인증서 저장소를 쓰고 macOS 시스템 키체인을 참조하지 않는데, HMG 사내망처럼 SSL 인터셉트 프록시가 있는 환경에서는 `rustls`가 그 프록시의 재서명 인증서를 신뢰하지 않아 `invalid peer certificate: UnknownIssuer`로 다운로드가 실패한다(직접 재현·검증함). `native-tls`는 macOS Secure Transport(시스템 키체인)를 그대로 쓰므로 이런 환경에서도 정상 동작한다. `Cargo.toml`: `ureq = { version = "3", default-features = false, features = ["native-tls"] }`. feature만 켜는 것으로는 부족하고, 코드에서 `TlsProvider::NativeTls`를 명시 지정해야 한다(안 그러면 "provider is Rustls but feature is not enabled" 패닉).
+
 ## 배포 파이프라인
 
 ### GitHub Actions
