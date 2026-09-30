@@ -83,16 +83,19 @@ public struct RuntimeInstaller<Model: RuntimeModelInstalling, Launchctl: Launchc
         let launchAgentData = try EmbeddedTemplates.launchAgent(executable: paths.executableURL)
         let executableChanged = previousExecutable != (try? Data(contentsOf: paths.executableURL))
         let plistChanged = (try? Data(contentsOf: paths.launchAgentURL)) != launchAgentData
-        try AtomicInstallerFile.write(
-            launchAgentData,
-            to: paths.launchAgentURL,
-            permissions: 0o600
-        )
+        // Rewriting the plist even with identical bytes still bumps its mtime, and macOS
+        // Background Task Management rescans a login item's plist on every mtime change. Doing
+        // that repeatedly (e.g. `install` run in a loop) trips BTM's own notification rate limit,
+        // which then makes `launchctl bootstrap` itself fail with EIO. Skip both the rewrite and
+        // the bootout/bootstrap re-registration when nothing that requires them changed.
+        if plistChanged {
+            try AtomicInstallerFile.write(
+                launchAgentData,
+                to: paths.launchAgentURL,
+                permissions: 0o600
+            )
+        }
         try recordRuntimeOwnership(paths: paths)
-        // Re-bootstrapping an unchanged agent makes launchd re-register the login item with
-        // Background Task Management every time; doing that repeatedly trips BTM's own
-        // notification rate limit, which then makes `bootstrap` itself fail with EIO. Skip the
-        // re-registration entirely when nothing that requires it changed.
         if executableChanged || plistChanged || !isAgentHealthy() {
             try await bootstrapLaunchAgent(paths: paths)
         }

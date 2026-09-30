@@ -3,6 +3,12 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [0.0.5] - 2026-09-30
+
+### 수정
+
+- 0.0.4의 BTM 쓰로틀 회피가 불완전했던 부분. `install`이 `bootstrap` 호출은 건너뛰어도 LaunchAgent plist 파일 자체는 내용이 같아도 매번 다시 썼는데, 파일을 다시 쓰기만 해도 mtime이 바뀌어 macOS Background Task Management가 그 로그인 항목을 재스캔합니다. 반복하면 여전히 BTM의 알림 속도 제한에 걸릴 수 있었습니다. plist 내용이 실제로 바뀌지 않았으면 파일 쓰기 자체를 건너뛰도록 고쳤습니다.
+
 ## [0.0.4] - 2026-09-30
 
 ### 수정
@@ -36,6 +42,7 @@
 - 단일 Swift 실행 파일이 Supertonic 3 모델 설치, 헤드리스 `LaunchAgent`, MCP `speak`/`install`, 호스트별 시작 훅·스킬 배선을 전부 담당합니다.
 - Homebrew 설치: `brew install sparktype/tap/chorus`, 이후 `chorus install` (0.0.2부터 `debrief`로 개명).
 
+[0.0.5]: https://github.com/sparktype/debrief/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/sparktype/debrief/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/sparktype/debrief/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/sparktype/debrief/compare/v0.0.1...v0.0.2

@@ -27,7 +27,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 - Codex, Claude Code, Grok 중 하나 이상
 - 소스 설치에는 Xcode 27
 
-버전은 `0.0.4`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
+버전은 `0.0.5`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
 
