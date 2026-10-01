@@ -14,6 +14,7 @@ pub mod mode_policy;
 pub mod model_installer;
 pub mod model_manifest;
 pub mod paths;
+pub mod runtime_installer;
 pub mod session_voice_rotation;
 pub mod speech_emotion;
 pub mod speech_envelope;
@@ -44,6 +45,7 @@ pub use model_installer::{
 };
 pub use model_manifest::{ModelAsset, ModelManifest, ModelManifestError};
 pub use paths::DebriefPaths;
+pub use runtime_installer::{RuntimeInstaller, RuntimeInstallerError, RuntimeModelInstalling, ServiceStartResult};
 pub use session_voice_rotation::{SessionVoiceError, SessionVoiceRotation, SessionVoiceStore};
 pub use speech_emotion::{EmotionProsody, SpeechEmotion};
 pub use speech_envelope::{EnvelopeError, SpeechEnvelope};
