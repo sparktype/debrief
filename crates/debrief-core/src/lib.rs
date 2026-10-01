@@ -1,4 +1,5 @@
 pub mod configuration;
+pub mod embedded_templates;
 pub mod hook_adapter;
 pub mod hook_engine;
 pub mod hook_event;
@@ -19,6 +20,7 @@ pub mod tts_backend;
 pub mod voice_catalog;
 
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
+pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTemplates};
 pub use hook_adapter::{HookAdapter, HookAdapterError};
 pub use hook_engine::{HookEngine, HookResult};
 pub use hook_event::{HookEvent, HookEventName, HostSource};
