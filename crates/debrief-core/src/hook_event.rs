@@ -1,5 +1,8 @@
 // 호스트 종류·훅 이벤트 이름과 정규화된 훅 이벤트 구조체
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HostSource {
     Codex,
     Claude,
@@ -16,7 +19,7 @@ impl HostSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HookEventName {
     SessionStart,
     UserPromptSubmit,

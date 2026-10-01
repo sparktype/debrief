@@ -1,6 +1,7 @@
 pub mod configuration;
 pub mod hook_adapter;
 pub mod hook_event;
+pub mod install_manifest;
 pub mod mode_policy;
 pub mod model_installer;
 pub mod model_manifest;
@@ -15,6 +16,10 @@ pub mod voice_catalog;
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
 pub use hook_adapter::{HookAdapter, HookAdapterError};
 pub use hook_event::{HookEvent, HookEventName, HostSource};
+pub use install_manifest::{
+    AtomicInstallerFile, InstallManifest, InstallManifestError, InstallerDigest, OwnedHook, OwnedInstalledFile,
+    OwnedRuntimeFile,
+};
 pub use mode_policy::ModePolicy;
 pub use model_installer::{
     InstalledModel, ModelDownloading, ModelInstaller, ModelInstallerError, UreqModelDownloader,
