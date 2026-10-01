@@ -1,5 +1,7 @@
+pub mod audio_player;
 pub mod configuration;
 pub mod debrief_command;
+pub mod debrief_daemon;
 pub mod debrief_version;
 pub mod diagnostics;
 pub mod embedded_templates;
@@ -29,8 +31,10 @@ pub mod tts_backend;
 pub mod unix_socket;
 pub mod voice_catalog;
 
+pub use audio_player::{AudioPlayerError, AudioPlaying};
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
 pub use debrief_command::{CliMessages, DebriefCommand};
+pub use debrief_daemon::{DebriefDaemon, DebriefDaemonError, ErrorRecorder, SpeechRequestSource};
 pub use debrief_version::DebriefVersion;
 pub use diagnostics::{CurrentError, DaemonProcessState, DiagnosticFinding, Diagnostics, StatusSnapshot};
 pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTemplates};
