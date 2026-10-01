@@ -293,6 +293,25 @@ impl UnixSocketServer {
         Ok(())
     }
 
+    fn set_receive_timeout(descriptor: RawFd, seconds: i64, microseconds: i32) -> Result<(), UnixSocketError> {
+        let mut timeout = libc::timeval { tv_sec: seconds, tv_usec: microseconds };
+        // SAFETY: `descriptor` is a valid socket fd; `timeout` is a valid, correctly-sized
+        // stack value matching the option being set.
+        if unsafe {
+            libc::setsockopt(
+                descriptor,
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                &mut timeout as *mut _ as *mut libc::c_void,
+                std::mem::size_of::<libc::timeval>() as u32,
+            )
+        } != 0
+        {
+            return Err(UnixSocketError::SystemCall("setsockopt(timeout)".to_string(), Self::errno()));
+        }
+        Ok(())
+    }
+
     fn read_exactly(count: usize, descriptor: RawFd) -> Result<Vec<u8>, UnixSocketError> {
         let mut data = vec![0u8; count];
         let mut offset = 0;
@@ -425,6 +444,9 @@ impl UnixSocketClient {
             let header = (payload.len() as u32).to_be_bytes();
             UnixSocketServer::write_all(&header, descriptor)?;
             UnixSocketServer::write_all(payload, descriptor)?;
+            // 서버가 부하로 느려도 ACK를 기다린다. 짧게 끊고 재시도하면 같은 발화가 두 번
+            // 들어갈 수 있다 — 150ms의 쓰기 타임아웃보다 길게 수신만 다시 설정한다.
+            UnixSocketServer::set_receive_timeout(descriptor, 2, 0)?;
             let acknowledgement = UnixSocketServer::read_exactly(1, descriptor)?;
             if acknowledgement.first() != Some(&0x06) {
                 return Err(UnixSocketError::Rejected);
