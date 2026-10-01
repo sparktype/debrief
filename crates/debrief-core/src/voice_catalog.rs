@@ -157,8 +157,8 @@ impl VoiceCatalog {
             HookEventName::UserPromptSubmit => format!(
                 "debrief: once at turn end, {tool}, lane=companion, voice {} ({}), \
 session={}. Two short sentences in the user's language: \
-what changed, then the one next action or wait. Silence only if nothing new. No file lists or checklists. \
-No HTML/JSON in the body.",
+what changed, then the one next action or wait. After code work, that action is what to verify to keep ownership. \
+Silence only if nothing new. No file lists or checklists. No HTML/JSON in the body.",
                 companion.voice, companion.name, event.session_id
             ),
             HookEventName::SubagentStart => format!(
@@ -170,6 +170,9 @@ focus/quiet/night may suppress subagent. No HTML/JSON speech in the body.",
             HookEventName::SessionStart | HookEventName::Stop | HookEventName::SubagentStop => format!(
                 "debrief turn briefing via {tool}. At the end of each user-visible turn, speak once: two short sentences \
 in the user's language — what changed, then the one next action or wait. The agent writes the line. \
+After writing, changing, or analyzing code, keep the user's code ownership and cut cognitive debt: \
+the next action names what they must verify themselves (behavior change, deletion, security or data path, \
+an assumption you made, how to check or undo). Skip it for trivial changes. \
 Silence only if nothing new and no next action. Voice {} ({}), \
 speed ~{}, volume ~0.85, lane=companion, session={}. \
 The server keeps that companion voice for this session. \
@@ -384,6 +387,7 @@ mod tests {
         assert!(text.contains("Silence only"));
         assert!(text.contains("what changed"));
         assert!(text.contains("next action"));
+        assert!(text.contains("ownership"));
     }
 
     #[test]
@@ -401,6 +405,7 @@ mod tests {
         assert!(text.contains("agent writes"));
         assert!(text.contains("Silence only"));
         assert!(text.contains("debrief mute"));
+        assert!(text.contains("ownership"));
         assert!(!text.to_lowercase().contains("menu bar"));
         assert!(!text.contains("menubar"));
         assert!(!text.to_lowercase().contains("debrief summarizes"));
