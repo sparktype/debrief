@@ -14,45 +14,46 @@ HMG 사내 AI에서 Opus는 지원되지 않으며, Agent 파라미터 `model: "
 ## 프로젝트 개요
 
 debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon 서비스입니다.  
-단일 Swift 실행 파일 `debrief`가 모델 설치, 헤드리스 LaunchAgent, MCP (`speak` · `install`), start-family hook/skill 배선, 합성을 담당합니다.
+단일 Rust 실행 파일 `debrief`가 모델 설치, 헤드리스 LaunchAgent, MCP (`speak` · `install`), start-family hook/skill 배선, 합성을 담당합니다.
 
-**Python 런타임은 제거되었습니다.** `hook_voice`, `tts_server`, pytest, FastAPI, Whisper, LLM 요약을 재도입하지 마세요.
+**Python 런타임은 제거되었습니다.** `hook_voice`, `tts_server`, pytest, FastAPI, Whisper, LLM 요약을 재도입하지 마세요.  
+**Swift 소스는 포팅 전 참고용으로만 리포에 남아 있습니다** (`Sources/`, `SwiftTests/`, `Package.swift`). CI는 빌드·테스트하지 않으며 제품 진실이 아닙니다. 재도입하지 마세요.
 
 ## 툴체인 (필수)
 
-**Xcode 27**로 빌드·테스트합니다. Command Line Tools만 있으면 Swift Testing 매크로가 실패합니다. `./scripts/with-xcode.sh`는 Xcode-beta가 있으면 그것을, 없으면 `/Applications/Xcode.app`을 씁니다. `DEBRIEF_XCODE_DEVELOPER`로 덮어씁니다.
+Rust 툴체인(`rustup`)으로 빌드·테스트합니다.
 
 ```bash
-./scripts/with-xcode.sh swift test
-./scripts/with-xcode.sh swift build -c release
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --release
 ```
 
 | 항목 | 값 |
 |------|-----|
-| App | Xcode 27 (`Xcode-beta.app` 또는 `Xcode.app`) |
-| Build (검증됨) | Xcode 27.0 / 27A266a |
-| Swift | 6.4 |
+| 워크스페이스 | `debrief-core`(lib) · `debrief-tts`(lib) · `debrief`(bin) |
 | 플랫폼 | macOS 14+, arm64 |
-| 버전 | `DebriefVersion.current` = `0.0.6` (태그 `v0.0.6`) |
-| 사용자 설치 | `brew install sparktype/tap/debrief` 다음 `debrief install`. 소스 빌드는 `./scripts/with-xcode.sh swift build -c release` |
+| 버전 | `DebriefVersion::CURRENT` = `0.1.0` (`CARGO_PKG_VERSION`, 태그 `v0.1.0`) |
+| 사용자 설치 | `brew install sparktype/tap/debrief` 다음 `debrief install` (Homebrew가 GitHub Release의 프리빌트 바이너리를 받음, 소스 빌드 불필요). 소스 빌드는 `cargo build --release` |
 
 ## 규범 문서
 
 1. `README.md` — 사용자 진입점
 2. `DEVELOPER.md` — 개발·빌드·범위
 3. `ONBOARDING.md` — 설치·일상 사용
-4. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계 (envelope speech contract는 2026-07-19로 대체)
+4. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계 (envelope speech contract는 2026-07-19로 대체, 전체 구현은 Rust 재작성으로 대체)
 5. `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` — 이전 메뉴바 상주 (패키징은 2026-09-29 데몬 스펙으로 대체)
 5a. `docs/superpowers/specs/2026-09-29-daemon-single-binary-design.md` — 헤드리스 데몬 · CLI (구현됨. 본문 식별자는 chorus)
 6. `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` — MCP speak + install + Grok (승인; 상단 errata 참고)
 7. `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` — lane · emotion · 도우미 음성 (태도·타이밍은 2026-09-29 턴 브리핑으로 대체)
-8. `docs/archive/` — 폐기된 Python 시대 문서 (제품 진실 아님)
+8. `docs/superpowers/specs/2026-09-30-rust-rewrite-design.md` — Rust 재작성: 크레이트 경계, 동기 동시성 모델, 배포 파이프라인
+9. `docs/archive/` — 폐기된 Python 시대 문서 (제품 진실 아님)
 
 ## 제품 경계
 
 **포함**
 
-- Supertonic 3 + ONNX Runtime (Swift 패키지)
+- Supertonic 3 + ONNX Runtime (`ort` crate) + 오디오 재생 (`cpal`)
 - MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
 - CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `hook` / `mcp` (`speak` CLI 없음)
@@ -104,8 +105,8 @@ Grok: `debrief__speak` / `debrief__install` (`search_tool` / `use_tool`).
 설치·복구:
 
 ```bash
-./scripts/with-xcode.sh swift build -c release
-.build/release/debrief install --repair   # 또는 --claude / --codex / --grok
+cargo build --release
+./target/release/debrief install --repair   # 또는 --claude / --codex / --grok
 ```
 
 MCP가 이미 되면 `install` 도구로 repair 가능합니다. Hook·MCP command는 HostInstaller가 `~/.local/bin/debrief` 절대 경로로 merge합니다.
@@ -117,4 +118,4 @@ MCP가 이미 되면 `install` 도구로 repair 가능합니다. Hook·MCP comma
 1. 동작 변경 전 실패 테스트 먼저 (TDD).
 2. Python·shell 런타임 래퍼를 다시 넣지 않습니다.
 3. 사용자 노출 문자열은 경어체를 유지합니다.
-4. 완료 주장은 `./scripts/with-xcode.sh swift test`와 release 빌드 성공 이후에만.
+4. 완료 주장은 `cargo test --workspace`, `cargo clippy --workspace --all-targets`와 release 빌드 성공 이후에만.

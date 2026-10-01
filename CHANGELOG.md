@@ -3,6 +3,17 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [0.1.0] - 2026-10-01
+
+### 변경
+
+- Swift 단일 바이너리 구현을 Rust Cargo 워크스페이스(`debrief-core`, `debrief-tts`, `debrief`)로 전면 재작성했습니다. Swift Testing의 모든 테스트 케이스를 1:1로 포팅해 183개 Rust 테스트가 통과하며, 실제 설치된 Supertonic 3 모델로 한국어 합성·재생까지 수동 검증했습니다. ONNX 추론은 `ort` 크레이트, 오디오 재생은 `cpal`을 씁니다. 배포는 Homebrew가 소스를 빌드하지 않고 GitHub Release의 프리빌트 바이너리를 받습니다.
+- `debrief install --claude`가 Claude Code MCP를 `~/.claude/settings.json`이 아니라 `~/.claude.json`에 등록합니다. Claude Code는 사용자 범위 MCP 서버를 `~/.claude.json`에서만 읽으므로, 이전 설치가 `settings.json`에 남긴 등록은 더 이상 작동하지 않았습니다. 설치 시 낡은 항목을 자동 이전합니다.
+
+### 수정
+
+- 발화 제출의 ACK 대기 타임아웃을 150ms에서 2초로 늘렸습니다. 서버가 부하로 느릴 때 짧은 타임아웃으로 재시도하면 같은 발화가 두 번 재생될 수 있었습니다.
+
 ## [0.0.6] - 2026-09-30
 
 ### 추가

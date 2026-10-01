@@ -25,9 +25,9 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 - Apple Silicon, macOS 14 이상
 - Codex, Claude Code, Grok 중 하나 이상
-- 소스 설치에는 Xcode 27
+- 소스 설치에는 Rust 툴체인(`rustup`)
 
-버전은 `0.0.6`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
+버전은 `0.1.0`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
 
@@ -36,13 +36,13 @@ brew install sparktype/tap/debrief
 debrief install
 ```
 
-저장소가 비공개이면 Homebrew가 태그 아카이브를 받도록 GitHub 토큰이 필요합니다. 소스에서 빌드할 때는 Xcode 27이 필요합니다.
+소스에서 빌드할 때는 Rust 툴체인이 필요합니다.
 
 ```sh
 git clone https://github.com/sparktype/debrief.git
 cd debrief
-./scripts/with-xcode.sh swift build -c release
-env -u HF_HUB_OFFLINE .build/release/debrief install
+cargo build --release
+env -u HF_HUB_OFFLINE ./target/release/debrief install
 ```
 
 셸에서 `debrief`를 찾으려면 `~/.local/bin`이 `PATH`에 있어야 합니다. LaunchAgent는 절대 경로로 데몬을 띄우므로, 경로가 없어도 재생 자체는 됩니다.
@@ -65,7 +65,7 @@ debrief status
 
 | 호스트 | 설치 후 |
 | --- | --- |
-| Claude Code | `~/.claude/settings.json`의 `mcpServers["debrief"]`. 스킬은 `~/.claude/skills`. Claude를 재시작하면 `mcp__debrief__speak`, `mcp__debrief__install`이 보입니다. |
+| Claude Code | `~/.claude.json`의 `mcpServers["debrief"]`. 스킬은 `~/.claude/skills`. Claude를 재시작하면 `mcp__debrief__speak`, `mcp__debrief__install`이 보입니다. |
 | Codex | MCP는 `~/.codex/config.toml`. 훅은 `~/.codex/hooks.json`. `/hooks`에서 훅을 신뢰합니다. 스킬은 `~/.agents/skills`. |
 | Grok | MCP는 `~/.grok/config.toml`의 `[mcp_servers.debrief]`. 훅은 없습니다. `/mcps`로 `debrief__speak`, `debrief__install`을 갱신합니다. 스킬은 `~/.grok/skills`. |
 
@@ -178,7 +178,8 @@ debrief status
 
 | 호스트 | 파일 | 설치 후 |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` | `mcpServers.debrief`와 시작 훅. Claude를 재시작 |
+| Claude Code | `~/.claude.json` | `mcpServers.debrief`. Claude를 재시작 |
+| Claude Code | `~/.claude/settings.json` | 시작 훅 |
 | Claude Code | `~/.claude/skills/debrief-setup` `debrief-install` `debrief-speak` | 스킬 |
 | Codex | `~/.codex/config.toml` | MCP 서버 `debrief` |
 | Codex | `~/.codex/hooks.json` | 시작 훅. `/hooks`에서 신뢰 |
@@ -256,4 +257,5 @@ Codex 도구 이름은 서버 `debrief`의 `speak`와 `install`입니다. Grok�
 | [docs/superpowers/specs/2026-09-29-daemon-single-binary-design.md](docs/superpowers/specs/2026-09-29-daemon-single-binary-design.md) | 데몬과 CLI 계약. 본문 식별자는 초안의 chorus |
 | [docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md](docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md) | MCP speak / install |
 | [docs/superpowers/specs/2026-07-22-reflective-companion-design.md](docs/superpowers/specs/2026-07-22-reflective-companion-design.md) | lane, emotion, 도우미 음성 |
+| [docs/superpowers/specs/2026-09-30-rust-rewrite-design.md](docs/superpowers/specs/2026-09-30-rust-rewrite-design.md) | Rust 재작성: 크레이트 경계, 배포 파이프라인 |
 | [docs/archive/](docs/archive/) | Python 시대 기록. 현재 제품 설명이 아님 |

@@ -6,7 +6,7 @@ debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon p
 
 ## First installation
 
-Version `0.0.6`. Install from Homebrew, then finish setup with `debrief install`:
+Version `0.1.0`. Install from Homebrew, then finish setup with `debrief install`:
 
 ```sh
 brew install sparktype/tap/debrief
@@ -15,13 +15,13 @@ debrief install
 # debrief install --grok --repair
 ```
 
-The repository is private. Homebrew needs a GitHub token that can read `github.com/sparktype/debrief` when it downloads the tag archive. A source build needs Xcode 27:
+A source build needs the Rust toolchain (`rustup`):
 
 ```sh
 git clone https://github.com/sparktype/debrief.git
 cd debrief
-./scripts/with-xcode.sh swift build -c release
-env -u HF_HUB_OFFLINE .build/release/debrief install
+cargo build --release
+env -u HF_HUB_OFFLINE ./target/release/debrief install
 ```
 
 `debrief install` copies the executable to `~/.local/bin/debrief`. LaunchAgent starts that path, so playback works even when the shell cannot see `debrief`. The CLI commands below need `~/.local/bin` on `PATH`. The tap still has `Formula/chorus.rb` for tag `v0.0.1`, which builds the previous `chorus` binary.
@@ -87,7 +87,8 @@ Host wiring is separate. `debrief install` writes absolute paths. `debrief insta
 
 | Host | Where | After install |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json` | `mcpServers.debrief` and start-family hooks. Restart Claude. |
+| Claude Code | `~/.claude.json` | `mcpServers.debrief`. Restart Claude. |
+| Claude Code | `~/.claude/settings.json` | start-family hooks |
 | Claude Code | `~/.claude/skills/debrief-*` | setup, install, speak |
 | Codex | `~/.codex/config.toml` and `~/.codex/hooks.json` | MCP plus hooks. Trust them in `/hooks`. |
 | Codex | `~/.agents/skills/` | the same three skills |

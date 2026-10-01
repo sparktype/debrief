@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Swift test + release build
+    name: Rust test + release build
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -17,20 +17,20 @@ jobs:
 
       - name: Show toolchain
         run: |
-          xcodebuild -version
-          swift --version
+          rustc --version
+          cargo --version
           uname -m
 
-      - name: Resolve packages
-        run: swift package resolve
-
       - name: Test
-        run: swift test
+        run: cargo test --workspace
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Release build
-        run: swift build -c release
+        run: cargo build --release --target aarch64-apple-darwin
 
       - name: Architecture check
         run: |
-          file .build/release/debrief
-          lipo -info .build/release/debrief || true
+          file target/aarch64-apple-darwin/release/debrief
+          lipo -info target/aarch64-apple-darwin/release/debrief || true
