@@ -368,6 +368,13 @@ pub struct UnixSocketClient {
     socket_url: PathBuf,
 }
 
+impl crate::mcp_speak_tool::SpeechSink for UnixSocketClient {
+    type Error = UnixSocketError;
+    fn submit(&self, request: SpeechRequest) -> Result<(), Self::Error> {
+        UnixSocketClient::submit(self, &request)
+    }
+}
+
 impl UnixSocketClient {
     pub fn new(socket_url: PathBuf) -> Self {
         UnixSocketClient { socket_url }

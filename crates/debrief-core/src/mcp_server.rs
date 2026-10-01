@@ -288,6 +288,71 @@ pub fn write_frame<W: std::io::Write>(output: &mut W, value: &Value, format: Mcp
     let _ = output.flush();
 }
 
+/// 호스트가 spawn하는 stdio MCP 서버; 도구: speak + install.
+pub struct McpServer<Sink: crate::mcp_speak_tool::SpeechSink, Runner: crate::mcp_install_tool::McpInstallRunning> {
+    home: std::path::PathBuf,
+    sink: Sink,
+    diagnostics: crate::diagnostics::Diagnostics<'static>,
+    install_runner: Runner,
+}
+
+impl<Sink, Runner> McpServer<Sink, Runner>
+where
+    Sink: crate::mcp_speak_tool::SpeechSink,
+    Runner: crate::mcp_install_tool::McpInstallRunning,
+{
+    pub fn new(home: std::path::PathBuf, sink: Sink, install_runner: Runner) -> Self {
+        let diagnostics = crate::diagnostics::Diagnostics::new(&home);
+        McpServer { home, sink, diagnostics, install_runner }
+    }
+
+    /// 도우미 레인은 로테이션된 보이스를 쓴다. 명시적 세션 id가 우선하고, 없으면 이 프로세스가
+    /// 보이스 하나를 유지한다.
+    fn companion_voice(&self, arguments: &crate::mcp_speak_tool::McpSpeakArguments) -> Option<String> {
+        if !matches!(arguments.lane, crate::speech_lane::SpeechLane::Companion) {
+            return None;
+        }
+        let key = arguments.session.clone().unwrap_or_else(|| format!("mcp:{}", std::process::id()));
+        let store = crate::session_voice_rotation::SessionVoiceStore::new(
+            crate::paths::DebriefPaths::for_home(&self.home).session_voices_url,
+        );
+        store.claim(&key).ok()
+    }
+
+    fn call_tool(&self, name: &str, arguments: &serde_json::Map<String, Value>) -> McpToolCallResult {
+        match name {
+            "speak" => match crate::mcp_speak_tool::McpSpeakTool::parse_arguments(arguments) {
+                Ok(parsed) => {
+                    let companion_voice = self.companion_voice(&parsed);
+                    crate::mcp_speak_tool::McpSpeakTool::execute(&parsed, &self.sink, &self.diagnostics, companion_voice.as_deref())
+                }
+                Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
+            },
+            "install" => match crate::mcp_install_tool::McpInstallTool::parse_arguments(arguments) {
+                Ok(parsed) => crate::mcp_install_tool::McpInstallTool::execute(&parsed, &self.install_runner, &self.diagnostics),
+                Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
+            },
+            _ => McpToolCallResult { is_error: true, message: "unknown tool".to_string() },
+        }
+    }
+
+    pub fn run<R: std::io::Read, W: std::io::Write>(&self, input: R, mut output: W) {
+        let mut reader = FrameReader::new(input);
+        #[allow(unused_assignments)]
+        let mut wire_format = McpWireFormat::ContentLength;
+        while let Some(frame) = reader.read_frame() {
+            wire_format = frame.format;
+            let Ok(request) = serde_json::from_slice::<Value>(&frame.body) else {
+                write_frame(&mut output, &McpJsonRpc::parse_error_response(), wire_format);
+                continue;
+            };
+            if let Some(response) = McpJsonRpc::handle(&request, |name, args| self.call_tool(name, args)) {
+                write_frame(&mut output, &response, wire_format);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,5 +458,83 @@ mod tests {
         let frame = reader.read_frame().unwrap();
         assert_eq!(frame.format, McpWireFormat::NewlineDelimited);
         assert_eq!(frame.body, br#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#);
+    }
+
+    struct NoopSink;
+    impl crate::mcp_speak_tool::SpeechSink for NoopSink {
+        type Error = ();
+        fn submit(&self, _request: crate::speech_request::SpeechRequest) -> Result<(), ()> {
+            Ok(())
+        }
+    }
+
+    struct NoopInstallRunner;
+    impl crate::mcp_install_tool::McpInstallRunning for NoopInstallRunner {
+        type Error = ();
+        fn install(
+            &self,
+            _hosts: &std::collections::HashSet<crate::hook_event::HostSource>,
+            _repair: bool,
+        ) -> Result<crate::host_installer::HostInstallResult, ()> {
+            Ok(crate::host_installer::HostInstallResult { codex_review_required: false, preserved_modified_files: Vec::new() })
+        }
+    }
+
+    fn temporary_home() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let home = std::env::temp_dir().join(format!("debrief-mcp-{nanos}-{counter}"));
+        std::fs::create_dir_all(&home).unwrap();
+        home
+    }
+
+    fn initialize_body(id: i64) -> Vec<u8> {
+        format!(
+            r#"{{"jsonrpc":"2.0","id":{id},"method":"initialize","params":{{"protocolVersion":"2024-11-05","capabilities":{{}},"clientInfo":{{"name":"t","version":"0"}}}}}}"#
+        )
+        .into_bytes()
+    }
+
+    fn content_length_frame(body: &[u8]) -> Vec<u8> {
+        let mut frame = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
+        frame.extend_from_slice(body);
+        frame
+    }
+
+    #[test]
+    fn initialize_responds_with_content_length_framing() {
+        let home = temporary_home();
+        let server = McpServer::new(home.clone(), NoopSink, NoopInstallRunner);
+        let request = content_length_frame(&initialize_body(1));
+        let mut output = Vec::new();
+        server.run(std::io::Cursor::new(request), &mut output);
+
+        let header_end = output.windows(4).position(|w| w == [0x0D, 0x0A, 0x0D, 0x0A]).unwrap();
+        let body = &output[header_end + 4..];
+        let response: Value = serde_json::from_slice(body).unwrap();
+        assert_eq!(response["id"], 1);
+        assert_eq!(response["result"]["serverInfo"]["name"], "debrief");
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn initialize_responds_to_newline_delimited_json() {
+        let home = temporary_home();
+        let server = McpServer::new(home.clone(), NoopSink, NoopInstallRunner);
+        let mut request = initialize_body(0);
+        request.push(b'\n');
+        let mut output = Vec::new();
+        server.run(std::io::Cursor::new(request), &mut output);
+
+        assert!(!output.starts_with(b"Content-Length:"));
+        let nl = output.iter().position(|&b| b == b'\n').unwrap();
+        let response: Value = serde_json::from_slice(&output[..nl]).unwrap();
+        assert_eq!(response["id"], 0);
+        assert_eq!(response["result"]["serverInfo"]["name"], "debrief");
+
+        std::fs::remove_dir_all(&home).ok();
     }
 }

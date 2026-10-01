@@ -52,7 +52,7 @@ pub use install_manifest::{
 };
 pub use launch_agent_control::{LaunchAgentControl, LaunchctlError, LaunchctlRunning, ProcessLaunchctlRunner};
 pub use mcp_install_tool::{LiveMcpInstallRunner, McpInstallArguments, McpInstallRunning, McpInstallTool};
-pub use mcp_server::{write_frame, Frame, FrameReader, McpFraming, McpJsonRpc, McpWireFormat};
+pub use mcp_server::{write_frame, Frame, FrameReader, McpFraming, McpJsonRpc, McpServer, McpWireFormat};
 pub use mcp_speak_tool::{CommandError, McpSpeakArguments, McpSpeakTool, McpToolCallResult, SpeechSink};
 pub use mcp_toml_config::McpTomlConfig;
 pub use mode_policy::ModePolicy;
@@ -60,7 +60,7 @@ pub use model_installer::{
     InstalledModel, ModelDownloading, ModelInstaller, ModelInstallerError, UreqModelDownloader,
 };
 pub use model_manifest::{ModelAsset, ModelManifest, ModelManifestError};
-pub use paths::DebriefPaths;
+pub use paths::{current_executable_url, DebriefPaths};
 pub use resident_service::{is_foreign_host_running, ProvisioningFailed, ResidentService, ResidentServiceError};
 pub use runtime_installer::{RuntimeInstaller, RuntimeInstallerError, RuntimeModelInstalling, ServiceStartResult};
 pub use session_voice_rotation::{SessionVoiceError, SessionVoiceRotation, SessionVoiceStore};

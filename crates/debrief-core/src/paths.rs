@@ -1,5 +1,11 @@
 use std::path::{Path, PathBuf};
 
+/// 실행 중인 바이너리의 실제 경로. `argv[0]`는 셸이 `PATH`로 해석한 리터럴 명령일 뿐
+/// 절대 경로가 아니므로, 여기서 그걸 쓰면 안 된다.
+pub fn current_executable_url() -> PathBuf {
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("debrief")).canonicalize().unwrap_or_else(|_| PathBuf::from("debrief"))
+}
+
 pub struct DebriefPaths {
     pub home: PathBuf,
     pub data_directory: PathBuf,
