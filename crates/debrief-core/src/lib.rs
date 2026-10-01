@@ -12,7 +12,9 @@ pub mod session_voice_rotation;
 pub mod speech_emotion;
 pub mod speech_envelope;
 pub mod speech_lane;
+pub mod speech_queue;
 pub mod speech_request;
+pub mod tts_backend;
 pub mod voice_catalog;
 
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
@@ -34,5 +36,7 @@ pub use session_voice_rotation::{SessionVoiceError, SessionVoiceRotation, Sessio
 pub use speech_emotion::{EmotionProsody, SpeechEmotion};
 pub use speech_envelope::{EnvelopeError, SpeechEnvelope};
 pub use speech_lane::SpeechLane;
+pub use speech_queue::{QueueDecision, SpeechQueue};
 pub use speech_request::{SpeechPriority, SpeechRequest};
+pub use tts_backend::{PcmBuffer, TtsBackend, TtsBackendError};
 pub use voice_catalog::{VoiceAssignment, VoiceCatalog};
