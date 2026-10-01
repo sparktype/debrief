@@ -24,7 +24,23 @@ impl Default for UreqModelDownloader {
 
 impl ModelDownloading for UreqModelDownloader {
     fn download(&self, asset: &ModelAsset, destination: &Path) -> Result<(), ModelInstallerError> {
-        todo!()
+        use ureq::tls::{TlsConfig, TlsProvider};
+
+        let tls_config = TlsConfig::builder().provider(TlsProvider::NativeTls).build();
+        let config = ureq::Agent::config_builder().tls_config(tls_config).build();
+        let agent = ureq::Agent::new_with_config(config);
+
+        let mut response = agent.get(&asset.url).call().map_err(|_| ModelInstallerError::DownloadFailed)?;
+
+        let mut file = std::fs::File::create(destination).map_err(|_| ModelInstallerError::DownloadFailed)?;
+        std::io::copy(&mut response.body_mut().as_reader(), &mut file)
+            .map_err(|_| ModelInstallerError::DownloadFailed)?;
+
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o600))
+            .map_err(|_| ModelInstallerError::DownloadFailed)?;
+        file.sync_all().map_err(|_| ModelInstallerError::DownloadFailed)?;
+        Ok(())
     }
 }
 
@@ -355,5 +371,29 @@ mod tests {
         assert!(!root.join("supertonic-3").join(&new_manifest.revision).exists());
 
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn ureq_downloader_fetches_a_real_asset_over_https() {
+        if std::env::var("DEBRIEF_TEST_NETWORK").is_err() {
+            eprintln!("skipping: set DEBRIEF_TEST_NETWORK=1 to run a real network download test");
+            return;
+        }
+        let manifest = ModelManifest::supertonic3();
+        let asset = manifest.assets.iter().find(|a| a.relative_path == "onnx/tts.json").unwrap();
+        let dir = temporary_directory();
+        let destination = dir.join("tts.json");
+
+        let downloader = UreqModelDownloader::new();
+        downloader.download(asset, &destination).expect("real download must succeed");
+
+        let data = fs::read(&destination).unwrap();
+        assert_eq!(data.len() as u64, asset.byte_count);
+        let mut hasher = Sha256::new();
+        hasher.update(&data);
+        let digest: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
+        assert_eq!(digest, asset.sha256);
+
+        fs::remove_dir_all(&dir).ok();
     }
 }
