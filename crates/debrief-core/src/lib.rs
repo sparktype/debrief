@@ -2,6 +2,7 @@ pub mod configuration;
 pub mod hook_adapter;
 pub mod hook_event;
 pub mod install_manifest;
+pub mod launch_agent_control;
 pub mod mode_policy;
 pub mod model_installer;
 pub mod model_manifest;
@@ -20,6 +21,7 @@ pub use install_manifest::{
     AtomicInstallerFile, InstallManifest, InstallManifestError, InstallerDigest, OwnedHook, OwnedInstalledFile,
     OwnedRuntimeFile,
 };
+pub use launch_agent_control::{LaunchAgentControl, LaunchctlError, LaunchctlRunning, ProcessLaunchctlRunner};
 pub use mode_policy::ModePolicy;
 pub use model_installer::{
     InstalledModel, ModelDownloading, ModelInstaller, ModelInstallerError, UreqModelDownloader,
