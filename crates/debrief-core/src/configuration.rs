@@ -187,8 +187,12 @@ mod tests {
     }
 
     fn uuid_like() -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
         use std::time::{SystemTime, UNIX_EPOCH};
-        format!("{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos())
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+        format!("{nanos}-{counter}")
     }
 
     fn permissions(path: &Path) -> u32 {
