@@ -2,12 +2,15 @@
 use debrief_core::{
     current_executable_url, CliMessages, ConfigurationCommands, DebriefCommand, DebriefPaths, Diagnostics,
     HookCommandRunner, HostSource, LiveMcpInstallRunner, McpServer, ModelInstaller, ModelManifest,
-    ProcessLaunchctlRunner, RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient,
-    UreqModelDownloader,
+    ProcessLaunchctlRunner, ResidentService, ResidentServiceError, RuntimeInstaller, RuntimeInstallerError,
+    ServiceStartResult, UnixSocketClient, UreqModelDownloader,
 };
+use debrief_tts::{AudioPlayer, SupertonicEngine};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -24,11 +27,88 @@ fn main() {
         .unwrap_or_else(|_| dirs_home());
 
     match command {
-        DebriefCommand::Daemon => {
-            eprintln!("debrief daemon: TTS 추론 엔진이 아직 포팅되지 않았습니다 (별도 계획 필요).");
+        DebriefCommand::Daemon => run_daemon(&home),
+        other => std::process::exit(run_command(other, &home)),
+    }
+}
+
+/// 상주형 헤드리스 데몬. 신호(SIGTERM/SIGINT)는 서비스를 멈추고 소켓·pid를 지운 뒤 0으로 종료한다.
+fn run_daemon(home: &std::path::Path) -> ! {
+    if debrief_core::is_foreign_host_running(home, &|pid| unsafe { libc::kill(pid, 0) == 0 }) {
+        println!("{}", CliMessages::ALREADY_RUNNING);
+        std::process::exit(0);
+    }
+
+    let service: Arc<ResidentService<SupertonicEngine, AudioPlayer>> = Arc::new(ResidentService::new(
+        home.to_path_buf(),
+        Box::new(ResidentService::<SupertonicEngine, AudioPlayer>::default_model_directory_provider),
+        Box::new(|model_directory| SupertonicEngine::new(model_directory).map_err(|_| debrief_core::ProvisioningFailed)),
+        Box::new(AudioPlayer::new),
+        None,
+        None,
+    ));
+
+    match service.start() {
+        Ok(()) => {}
+        Err(ResidentServiceError::AlreadyRunning) => {
+            println!("{}", CliMessages::ALREADY_RUNNING);
+            std::process::exit(0);
+        }
+        Err(ResidentServiceError::ModelUnavailable) => match service.park_without_socket("모델을 사용할 수 없습니다.") {
+            Ok(()) => {}
+            Err(ResidentServiceError::AlreadyRunning) => {
+                println!("{}", CliMessages::ALREADY_RUNNING);
+                std::process::exit(0);
+            }
+            Err(error) => {
+                let message = format!("{error:?}");
+                let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &message);
+                eprintln!("error: {message}");
+                std::process::exit(1);
+            }
+        },
+        Err(error) => {
+            let message = format!("{error:?}");
+            let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &message);
+            eprintln!("error: {message}");
             std::process::exit(1);
         }
-        other => std::process::exit(run_command(other, &home)),
+    }
+
+    install_termination_handler();
+    let watcher_service = service.clone();
+    std::thread::spawn(move || {
+        loop {
+            if TERMINATION_REQUESTED.load(Ordering::SeqCst) {
+                watcher_service.stop(true);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
+
+    service.wait_until_stopped();
+    if let Some(failure) = service.consume_run_failure() {
+        let message = format!("{failure:?}");
+        let _ = Diagnostics::new(home).record_error("daemon", "run_failed", &message);
+    }
+    std::process::exit(0);
+}
+
+static TERMINATION_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn handle_termination_signal(_signal: libc::c_int) {
+    TERMINATION_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+/// SIGTERM/SIGINT를 신호 안전한 플래그로만 받고, 실제 정리(소켓 종료, pid 제거)는 별도 와처
+/// 스레드에서 수행한다 — 시그널 핸들러 안에서 락을 잡지 않기 위함이다.
+fn install_termination_handler() {
+    // SAFETY: `handle_termination_signal` has the `extern "C" fn(c_int)` signature `signal`
+    // expects, and only stores to an `AtomicBool` — safe to call from a signal handler context.
+    unsafe {
+        libc::signal(libc::SIGTERM, handle_termination_signal as *const () as usize);
+        libc::signal(libc::SIGINT, handle_termination_signal as *const () as usize);
     }
 }
 
