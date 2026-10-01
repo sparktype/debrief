@@ -1,4 +1,5 @@
 pub mod configuration;
+pub mod debrief_command;
 pub mod debrief_version;
 pub mod diagnostics;
 pub mod embedded_templates;
@@ -29,6 +30,7 @@ pub mod unix_socket;
 pub mod voice_catalog;
 
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
+pub use debrief_command::{CliMessages, DebriefCommand};
 pub use debrief_version::DebriefVersion;
 pub use diagnostics::{CurrentError, DaemonProcessState, DiagnosticFinding, Diagnostics, StatusSnapshot};
 pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTemplates};
