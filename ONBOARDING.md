@@ -6,7 +6,7 @@ debrief speaks text prepared by Codex, Claude Code, or Grok. A headless daemon p
 
 ## First installation
 
-Version `0.1.0`. Install from Homebrew, then finish setup with `debrief install`:
+Version `0.1.1`. Install from Homebrew, then finish setup with `debrief install`:
 
 ```sh
 brew install sparktype/tap/debrief

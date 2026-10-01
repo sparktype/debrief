@@ -33,7 +33,7 @@ cargo build --release
 |------|-----|
 | 워크스페이스 | `debrief-core`(lib) · `debrief-tts`(lib) · `debrief`(bin) |
 | 플랫폼 | macOS 14+, arm64 |
-| 버전 | `DebriefVersion::CURRENT` = `0.1.0` (`CARGO_PKG_VERSION`, 태그 `v0.1.0`) |
+| 버전 | `DebriefVersion::CURRENT` = `0.1.1` (`CARGO_PKG_VERSION`, 태그 `v0.1.1`) |
 | 사용자 설치 | `brew install sparktype/tap/debrief` 다음 `debrief install` (Homebrew가 GitHub Release의 프리빌트 바이너리를 받음, 소스 빌드 불필요). 소스 빌드는 `cargo build --release` |
 
 ## 규범 문서

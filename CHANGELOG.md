@@ -3,6 +3,12 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [0.1.1] - 2026-10-01
+
+### 수정
+
+- 한국어 합성이 영어 음소에 가깝게 들리던 심각한 버그. Rust 재작성의 유니코드 정규화(NFKD)가 빈 스텁으로 남아 있어, 완성형 한글 음절(가/각/나 등)을 `unicode_indexer.json`이 아는 분해된 자모(초성/중성/종성)로 바꾸지 못했습니다. 그 결과 모든 한글 음절이 무효 토큰(-1)으로 인코딩되어 모델이 음소 정보 없이 추론했습니다. `unicode-normalization` 크레이트로 실제 NFKD 분해를 적용했습니다.
+
 ## [0.1.0] - 2026-10-01
 
 ### 변경
@@ -63,6 +69,8 @@
 - 단일 Swift 실행 파일이 Supertonic 3 모델 설치, 헤드리스 `LaunchAgent`, MCP `speak`/`install`, 호스트별 시작 훅·스킬 배선을 전부 담당합니다.
 - Homebrew 설치: `brew install sparktype/tap/chorus`, 이후 `chorus install` (0.0.2부터 `debrief`로 개명).
 
+[0.1.1]: https://github.com/sparktype/debrief/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/sparktype/debrief/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/sparktype/debrief/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/sparktype/debrief/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/sparktype/debrief/compare/v0.0.3...v0.0.4
