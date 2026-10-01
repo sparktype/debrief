@@ -22,6 +22,7 @@ pub mod speech_lane;
 pub mod speech_queue;
 pub mod speech_request;
 pub mod tts_backend;
+pub mod unix_socket;
 pub mod voice_catalog;
 
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
@@ -53,4 +54,5 @@ pub use speech_lane::SpeechLane;
 pub use speech_queue::{QueueDecision, SpeechQueue};
 pub use speech_request::{SpeechPriority, SpeechRequest};
 pub use tts_backend::{PcmBuffer, TtsBackend, TtsBackendError};
+pub use unix_socket::{is_recoverable_accept_error, UnixSocketClient, UnixSocketError, UnixSocketServer};
 pub use voice_catalog::{VoiceAssignment, VoiceCatalog};
