@@ -1,4 +1,6 @@
 pub mod configuration;
+pub mod debrief_version;
+pub mod diagnostics;
 pub mod embedded_templates;
 pub mod hook_adapter;
 pub mod hook_engine;
@@ -22,6 +24,8 @@ pub mod tts_backend;
 pub mod voice_catalog;
 
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
+pub use debrief_version::DebriefVersion;
+pub use diagnostics::{CurrentError, DaemonProcessState, DiagnosticFinding, Diagnostics, StatusSnapshot};
 pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTemplates};
 pub use hook_adapter::{HookAdapter, HookAdapterError};
 pub use hook_engine::{HookEngine, HookResult};
