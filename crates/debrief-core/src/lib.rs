@@ -51,7 +51,7 @@ pub use install_manifest::{
     OwnedRuntimeFile,
 };
 pub use launch_agent_control::{LaunchAgentControl, LaunchctlError, LaunchctlRunning, ProcessLaunchctlRunner};
-pub use mcp_install_tool::{McpInstallArguments, McpInstallRunning, McpInstallTool};
+pub use mcp_install_tool::{LiveMcpInstallRunner, McpInstallArguments, McpInstallRunning, McpInstallTool};
 pub use mcp_server::{write_frame, Frame, FrameReader, McpFraming, McpJsonRpc, McpWireFormat};
 pub use mcp_speak_tool::{CommandError, McpSpeakArguments, McpSpeakTool, McpToolCallResult, SpeechSink};
 pub use mcp_toml_config::McpTomlConfig;

@@ -18,6 +18,41 @@ pub trait McpInstallRunning {
     fn install(&self, hosts: &HashSet<HostSource>, repair: bool) -> Result<HostInstallResult, Self::Error>;
 }
 
+/// 실제 `RuntimeInstaller`를 감싸는 `McpInstallRunning` 구현 — MCP `install` 도구의 기본 실행기.
+pub struct LiveMcpInstallRunner {
+    home: std::path::PathBuf,
+    source_executable: std::path::PathBuf,
+}
+
+impl LiveMcpInstallRunner {
+    pub fn new(home: std::path::PathBuf, source_executable: std::path::PathBuf) -> Self {
+        LiveMcpInstallRunner { home, source_executable }
+    }
+}
+
+impl McpInstallRunning for LiveMcpInstallRunner {
+    type Error = crate::runtime_installer::RuntimeInstallerError;
+
+    fn install(&self, hosts: &HashSet<HostSource>, repair: bool) -> Result<HostInstallResult, Self::Error> {
+        let paths = crate::paths::DebriefPaths::for_home(&self.home);
+        let model_installer = crate::model_installer::ModelInstaller::new(
+            paths.models_directory.clone(),
+            crate::model_manifest::ModelManifest::supertonic3(),
+            crate::model_installer::UreqModelDownloader::new(),
+        );
+        let launchctl = crate::launch_agent_control::ProcessLaunchctlRunner::new();
+        let runtime = crate::runtime_installer::RuntimeInstaller::new(
+            self.home.clone(),
+            self.source_executable.clone(),
+            model_installer,
+            &launchctl,
+            // SAFETY: getuid() takes no arguments and cannot fail.
+            unsafe { libc::getuid() },
+        );
+        runtime.install(hosts, repair)
+    }
+}
+
 pub struct McpInstallTool;
 
 impl McpInstallTool {
