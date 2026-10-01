@@ -435,6 +435,37 @@ pub fn is_recoverable_accept_error(error: &UnixSocketError) -> bool {
     matches!(error, UnixSocketError::InvalidFrame | UnixSocketError::PayloadTooLarge | UnixSocketError::Rejected)
 }
 
+#[derive(Debug, PartialEq)]
+pub enum DirectSpeechCommandError {
+    Envelope(crate::speech_envelope::EnvelopeError),
+    Socket(UnixSocketError),
+}
+
+pub struct DirectSpeechCommand;
+
+impl DirectSpeechCommand {
+    pub fn submit(
+        text: &str,
+        voice: &str,
+        speed: f64,
+        volume: f64,
+        priority: crate::speech_request::SpeechPriority,
+        home: &Path,
+    ) -> Result<(), DirectSpeechCommandError> {
+        let envelope = crate::speech_envelope::SpeechEnvelope { v: 1, text: text.to_string(), voice: voice.to_string(), speed, volume };
+        envelope.validate().map_err(DirectSpeechCommandError::Envelope)?;
+        let request = SpeechRequest {
+            envelope,
+            priority,
+            lane: crate::speech_lane::SpeechLane::Companion,
+            emotion: crate::speech_emotion::SpeechEmotion::Neutral,
+            agent_type: None,
+        };
+        let socket_url = crate::paths::DebriefPaths::for_home(home).socket_url;
+        UnixSocketClient::new(socket_url).submit(&request).map_err(DirectSpeechCommandError::Socket)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,5 +606,53 @@ mod tests {
             unsafe { libc::close(descriptor) };
             fs::remove_dir_all(&directory).ok();
         }
+    }
+
+    #[test]
+    fn valid_fields_submit_exactly_once() {
+        let directory = temporary_directory();
+        let home = directory.join("home");
+        fs::create_dir_all(&home).unwrap();
+        let socket_url = crate::paths::DebriefPaths::for_home(&home).socket_url;
+        let server = std::sync::Arc::new(UnixSocketServer::new(socket_url).unwrap());
+
+        let server_clone = server.clone();
+        let received = std::thread::spawn(move || server_clone.accept());
+        DirectSpeechCommand::submit("직접 발화", "M1", 1.1, 0.7, SpeechPriority::Main, &home).unwrap();
+
+        let request = received.join().unwrap().unwrap();
+        assert_eq!(
+            request.envelope,
+            SpeechEnvelope { v: 1, text: "직접 발화".to_string(), voice: "M1".to_string(), speed: 1.1, volume: 0.7 }
+        );
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn invalid_fields_fail_before_socket_access() {
+        let directory = temporary_directory();
+        let home = directory.join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let result = DirectSpeechCommand::submit("x", "BAD", 1.0, 1.0, SpeechPriority::Main, &home);
+        assert_eq!(
+            result,
+            Err(DirectSpeechCommandError::Envelope(crate::speech_envelope::EnvelopeError::InvalidVoice))
+        );
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn unavailable_daemon_returns_transport_failure() {
+        let directory = temporary_directory();
+        let home = directory.join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let result = DirectSpeechCommand::submit("x", "F1", 1.0, 1.0, SpeechPriority::Main, &home);
+        assert!(result.is_err());
+
+        fs::remove_dir_all(&directory).ok();
     }
 }
