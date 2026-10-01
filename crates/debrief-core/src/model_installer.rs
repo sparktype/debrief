@@ -79,6 +79,7 @@ impl InstalledModel {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CurrentModelPointer {
     revision: String,
     relative_path: String,
