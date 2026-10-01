@@ -107,10 +107,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn temporary_directory() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "debrief-install-manifest-tests-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
-        ));
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("debrief-install-manifest-tests-{nanos}-{counter}"));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
