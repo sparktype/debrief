@@ -122,7 +122,8 @@ impl HostMcpProbe {
     // MARK: - Claude JSON
 
     fn probe_claude(home: &Path, expected: &Path) -> HostMcpState {
-        let url = home.join(".claude/settings.json");
+        // Claude Code는 사용자 범위 MCP 서버를 ~/.claude.json에서 읽는다, settings.json이 아니다.
+        let url = home.join(".claude.json");
         if !url.exists() {
             return HostMcpState::Absent;
         }
@@ -256,7 +257,7 @@ mod tests {
     fn write_claude(home: &Path, command: &str) {
         write_json(
             &serde_json::json!({"mcpServers": {"debrief": {"command": command, "args": ["mcp"]}}}),
-            &home.join(".claude/settings.json"),
+            &home.join(".claude.json"),
         );
     }
 
@@ -305,13 +306,29 @@ mod tests {
     fn claude_missing_when_no_debrief_entry() {
         let home = make_home();
         let expected = crate::paths::DebriefPaths::for_home(&home).executable_url;
-        write_json(&serde_json::json!({"mcpServers": {"other": {"command": "/bin/true"}}}), &home.join(".claude/settings.json"));
+        write_json(&serde_json::json!({"mcpServers": {"other": {"command": "/bin/true"}}}), &home.join(".claude.json"));
 
         let status = HostMcpProbe::status(HostSource::Claude, &home, &expected);
         assert_eq!(status.state, HostMcpState::Missing);
         assert!(status.is_problem());
         assert!(status.menu_line().starts_with('⚠'));
         assert!(status.menu_line().contains("미등록"));
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn claude_ignores_legacy_settings_json_mcp() {
+        let home = make_home();
+        let expected = crate::paths::DebriefPaths::for_home(&home).executable_url;
+        // 예전 설치가 남긴 settings.json 등록은 Claude Code가 읽지 않으므로 등록으로 치지 않는다.
+        write_json(
+            &serde_json::json!({"mcpServers": {"debrief": {"command": expected.to_string_lossy(), "args": ["mcp"]}}}),
+            &home.join(".claude/settings.json"),
+        );
+        write_json(&serde_json::json!({"mcpServers": {}}), &home.join(".claude.json"));
+
+        let status = HostMcpProbe::status(HostSource::Claude, &home, &expected);
+        assert_eq!(status.state, HostMcpState::Missing);
         fs::remove_dir_all(&home).ok();
     }
 
@@ -333,7 +350,7 @@ mod tests {
     fn claude_unreadable_when_invalid_json() {
         let home = make_home();
         let expected = crate::paths::DebriefPaths::for_home(&home).executable_url;
-        let settings = home.join(".claude/settings.json");
+        let settings = home.join(".claude.json");
         fs::create_dir_all(settings.parent().unwrap()).unwrap();
         fs::write(&settings, "not-json").unwrap();
 

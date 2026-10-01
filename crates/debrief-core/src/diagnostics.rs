@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn doctor_reports_missing_claude_mcp_when_settings_exist() {
         let home = temporary_home();
-        write_json(&serde_json::json!({"mcpServers": {}}), &home.join(".claude/settings.json"));
+        write_json(&serde_json::json!({"mcpServers": {}}), &home.join(".claude.json"));
 
         let findings = Diagnostics::with_process_check(&home, |_| false).doctor();
         assert!(findings.iter().any(|f| f.code == "mcp.claude.missing" && !f.ok));

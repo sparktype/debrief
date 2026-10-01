@@ -61,27 +61,12 @@ impl HostInstaller {
 
             match host {
                 HostSource::Codex => {
-                    self.install_json_host(
-                        host,
-                        false,
-                        &previous_files,
-                        &previous_hooks,
-                        &mut owned_hooks,
-                        &mut owned_files,
-                        &mut preserved,
-                    )?;
+                    self.install_json_host(host, &previous_files, &previous_hooks, &mut owned_hooks, &mut owned_files, &mut preserved)?;
                     self.install_toml_mcp(HostSource::Codex, &previous_files, &mut owned_files, &mut preserved)?;
                 }
                 HostSource::Claude => {
-                    self.install_json_host(
-                        host,
-                        true,
-                        &previous_files,
-                        &previous_hooks,
-                        &mut owned_hooks,
-                        &mut owned_files,
-                        &mut preserved,
-                    )?;
+                    self.install_json_host(host, &previous_files, &previous_hooks, &mut owned_hooks, &mut owned_files, &mut preserved)?;
+                    self.install_claude_mcp(&previous_files, &mut owned_files, &mut preserved)?;
                 }
                 HostSource::Grok => {
                     self.install_grok_host(&previous_files, &mut owned_files, &mut preserved)?;
@@ -108,11 +93,12 @@ impl HostInstaller {
         for host in sorted_hosts {
             match host {
                 HostSource::Codex => {
-                    self.uninstall_json_host(host, false, true, &manifest, &mut preserved)?;
+                    self.uninstall_json_host(host, &manifest, &mut preserved)?;
                     self.uninstall_toml_mcp(HostSource::Codex, &manifest, &mut preserved)?;
                 }
                 HostSource::Claude => {
-                    self.uninstall_json_host(host, true, false, &manifest, &mut preserved)?;
+                    self.uninstall_json_host(host, &manifest, &mut preserved)?;
+                    self.uninstall_claude_mcp(&manifest, &mut preserved)?;
                 }
                 HostSource::Grok => {
                     self.uninstall_grok_host(&manifest, &mut preserved)?;
@@ -126,13 +112,11 @@ impl HostInstaller {
         Ok(HostInstallResult { codex_review_required: false, preserved_modified_files: preserved })
     }
 
-    // MARK: - JSON hosts (Codex hooks / Claude settings)
+    // MARK: - JSON hosts (Codex hooks / Claude settings + ~/.claude.json MCP)
 
-    #[allow(clippy::too_many_arguments)]
     fn install_json_host(
         &self,
         host: HostSource,
-        include_json_mcp: bool,
         previous_files: &[OwnedInstalledFile],
         previous_hooks: &[OwnedHook],
         owned_hooks: &mut Vec<OwnedHook>,
@@ -171,16 +155,28 @@ impl HostInstaller {
         }
         root.insert("hooks".to_string(), Value::Object(hooks));
 
-        if include_json_mcp {
-            self.merge_json_mcp(&mut root, host, previous_files, owned_files, preserved)?;
-        } else if host == HostSource::Codex {
-            self.strip_legacy_json_mcp_if_owned(&mut root, previous_files)?;
-        }
+        // Claude Code는 settings.json의 mcpServers를 무시한다(사용자 MCP는 ~/.claude.json에
+        // 산다) — 과거 설치가 여기 남겼을 debrief 항목은 낡은 것이므로 제거한다.
+        self.strip_legacy_json_mcp_if_owned(&mut root, host, previous_files)?;
 
         Self::backup_if_needed(&settings_url)?;
         Self::write_settings(&root, &settings_url)?;
 
         self.install_skills(host, previous_files, owned_files, preserved)?;
+        Ok(())
+    }
+
+    fn install_claude_mcp(
+        &self,
+        previous_files: &[OwnedInstalledFile],
+        owned_files: &mut Vec<OwnedInstalledFile>,
+        preserved: &mut Vec<String>,
+    ) -> Result<(), HostInstallerError> {
+        let url = self.claude_user_config_url();
+        let mut root = Self::read_settings(&url)?;
+        self.merge_json_mcp(&mut root, HostSource::Claude, previous_files, owned_files, preserved)?;
+        Self::backup_if_needed(&url)?;
+        Self::write_settings(&root, &url)?;
         Ok(())
     }
 
@@ -220,18 +216,19 @@ impl HostInstaller {
         Ok(())
     }
 
-    /// Codex hooks.json에 남은 JSON `mcpServers.debrief` 항목을 제거한다 — Codex MCP 등록은
-    /// 이제 `config.toml`에만 있으므로, 과거 설치에서 남은 JSON 항목은 낡은 것이다.
+    /// Codex hooks.json / Claude settings.json에 남은 JSON `mcpServers.debrief` 항목을 제거한다 —
+    /// Codex MCP는 `config.toml`에, Claude MCP는 `~/.claude.json`에 살므로 그런 항목은 낡은 것이다.
     fn strip_legacy_json_mcp_if_owned(
         &self,
         root: &mut Map<String, Value>,
+        host: HostSource,
         previous_files: &[OwnedInstalledFile],
     ) -> Result<(), HostInstallerError> {
         let Some(Value::Object(mcp_servers)) = root.get("mcpServers").cloned() else { return Ok(()) };
         let mut mcp_servers = mcp_servers;
         let mut changed = false;
         if let Some(existing) = mcp_servers.get("debrief").cloned() {
-            let mcp_path = Self::mcp_ownership_path(HostSource::Codex);
+            let mcp_path = Self::mcp_ownership_path(host);
             let current = InstallerDigest::json(&existing).map_err(|_| HostInstallerError::Io)?;
             let registration_digest = InstallerDigest::json(&Self::mcp_registration_json(&self.executable))
                 .map_err(|_| HostInstallerError::Io)?;
@@ -250,8 +247,6 @@ impl HostInstaller {
     fn uninstall_json_host(
         &self,
         host: HostSource,
-        remove_json_mcp: bool,
-        strip_legacy_json_mcp: bool,
         manifest: &InstallManifest,
         preserved: &mut Vec<String>,
     ) -> Result<(), HostInstallerError> {
@@ -270,28 +265,8 @@ impl HostInstaller {
             }
             root.insert("hooks".to_string(), Value::Object(hooks));
 
-            let mcp_path = Self::mcp_ownership_path(host);
-            if remove_json_mcp {
-                if let Some(owned) = manifest.files.iter().find(|f| f.host == host && f.path == mcp_path) {
-                    if let Some(Value::Object(mcp_servers)) = root.get("mcpServers").cloned() {
-                        let mut mcp_servers = mcp_servers;
-                        let matches_owned = mcp_servers
-                            .get("debrief")
-                            .and_then(|existing| InstallerDigest::json(existing).ok())
-                            .as_deref()
-                            == Some(owned.sha256.as_str());
-                        if matches_owned {
-                            mcp_servers.remove("debrief");
-                            root.insert("mcpServers".to_string(), Value::Object(mcp_servers));
-                        } else if mcp_servers.contains_key("debrief") {
-                            preserved.push(mcp_path);
-                        }
-                    }
-                }
-            } else if strip_legacy_json_mcp {
-                let previous: Vec<_> = manifest.files.iter().filter(|f| f.host == host).cloned().collect();
-                self.strip_legacy_json_mcp_if_owned(&mut root, &previous)?;
-            }
+            let previous: Vec<_> = manifest.files.iter().filter(|f| f.host == host).cloned().collect();
+            self.strip_legacy_json_mcp_if_owned(&mut root, host, &previous)?;
 
             Self::write_settings(&root, &settings_url)?;
         }
@@ -301,6 +276,29 @@ impl HostInstaller {
                 continue;
             }
             Self::remove_owned_file(owned, preserved)?;
+        }
+        Ok(())
+    }
+
+    fn uninstall_claude_mcp(&self, manifest: &InstallManifest, preserved: &mut Vec<String>) -> Result<(), HostInstallerError> {
+        let url = self.claude_user_config_url();
+        let mcp_path = Self::mcp_ownership_path(HostSource::Claude);
+        if !url.exists() {
+            return Ok(());
+        }
+        let Some(owned) = manifest.files.iter().find(|f| f.host == HostSource::Claude && f.path == mcp_path) else {
+            return Ok(());
+        };
+        let mut root = Self::read_settings(&url)?;
+        let Some(Value::Object(mcp_servers)) = root.get("mcpServers").cloned() else { return Ok(()) };
+        let mut mcp_servers = mcp_servers;
+        let Some(existing) = mcp_servers.get("debrief").cloned() else { return Ok(()) };
+        if InstallerDigest::json(&existing).ok().as_deref() == Some(owned.sha256.as_str()) {
+            mcp_servers.remove("debrief");
+            root.insert("mcpServers".to_string(), Value::Object(mcp_servers));
+            Self::write_settings(&root, &url)?;
+        } else {
+            preserved.push(mcp_path);
         }
         Ok(())
     }
@@ -486,8 +484,13 @@ impl HostInstaller {
         match host {
             HostSource::Codex => self.home.join(".codex/config.toml"),
             HostSource::Grok => self.home.join(".grok/config.toml"),
-            HostSource::Claude => unreachable!("Claude MCP is JSON in settings.json"),
+            HostSource::Claude => unreachable!("Claude MCP is JSON in ~/.claude.json"),
         }
+    }
+
+    /// Claude Code 사용자 범위 설정 — 사용자 MCP 서버를 읽는 유일한 곳.
+    fn claude_user_config_url(&self) -> PathBuf {
+        self.home.join(".claude.json")
     }
 
     fn skills_directory(&self, host: HostSource) -> PathBuf {
@@ -626,7 +629,10 @@ mod tests {
         let codex_toml = fs::read_to_string(&codex_config).unwrap();
         assert!(codex_toml.contains("[mcp_servers.debrief]"));
         assert!(codex_toml.contains("# BEGIN debrief-mcp"));
-        assert!(claude_json["mcpServers"]["debrief"].is_object());
+        // Claude Code는 ~/.claude.json에서 사용자 MCP를 읽는다 — settings.json엔 들어가지 않는다.
+        assert!(claude_json["mcpServers"].get("debrief").is_none());
+        let claude_mcp = json_at(&home.join(".claude.json"));
+        assert!(claude_mcp["mcpServers"]["debrief"].is_object());
         assert_eq!(claude_json["theme"], "dark");
 
         for (root, unrelated) in [(&codex_json, "PreToolUse"), (&claude_json, "Notification")] {
@@ -757,6 +763,48 @@ mod tests {
         for name in EmbeddedTemplates::SKILL_NAMES {
             assert!(!home.join(format!(".grok/skills/debrief-{name}/SKILL.md")).exists());
         }
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn claude_mcp_lives_in_claude_json_and_migrates_legacy_settings_entry() {
+        let home = temporary_home();
+        let executable = PathBuf::from("/tmp/debrief-bin");
+        let settings = home.join(".claude/settings.json");
+        let claude_json = home.join(".claude.json");
+        let installer = HostInstaller::new(home.clone(), executable.clone(), None);
+
+        // 예전 버전이 settings.json에 남긴 등록 (manifest에 소유로 기록됨).
+        let (command, args) = EmbeddedTemplates::mcp_registration(&executable);
+        let registration = serde_json::json!({"command": command, "args": args});
+        write_json(&serde_json::json!({"mcpServers": {"debrief": registration.clone()}}), &settings);
+        InstallManifest {
+            hooks: Vec::new(),
+            files: vec![OwnedInstalledFile {
+                host: HostSource::Claude,
+                path: HostInstaller::mcp_ownership_path(HostSource::Claude),
+                sha256: InstallerDigest::json(&registration).unwrap(),
+            }],
+            runtime_files: Vec::<OwnedRuntimeFile>::new(),
+        }
+        .save(&DebriefPaths::for_home(&home).install_manifest_url)
+        .unwrap();
+        write_json(&serde_json::json!({"numStartups": 7, "mcpServers": {"keep": {"command": "unrelated"}}}), &claude_json);
+
+        installer.install(&[HostSource::Claude].into_iter().collect()).unwrap();
+
+        let mcp = json_at(&claude_json)["mcpServers"].clone();
+        assert!(mcp["keep"].is_object());
+        assert!(mcp["debrief"].is_object());
+        assert_eq!(json_at(&claude_json)["numStartups"], 7);
+        assert!(json_at(&settings)["mcpServers"].get("debrief").is_none());
+
+        installer.uninstall(&[HostSource::Claude].into_iter().collect()).unwrap();
+
+        let after = json_at(&claude_json)["mcpServers"].clone();
+        assert!(after["keep"].is_object());
+        assert!(after.get("debrief").is_none());
 
         fs::remove_dir_all(&home).ok();
     }
