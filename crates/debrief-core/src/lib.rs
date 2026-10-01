@@ -1,5 +1,6 @@
 pub mod configuration;
 pub mod hook_adapter;
+pub mod hook_engine;
 pub mod hook_event;
 pub mod install_manifest;
 pub mod launch_agent_control;
@@ -19,6 +20,7 @@ pub mod voice_catalog;
 
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
 pub use hook_adapter::{HookAdapter, HookAdapterError};
+pub use hook_engine::{HookEngine, HookResult};
 pub use hook_event::{HookEvent, HookEventName, HostSource};
 pub use install_manifest::{
     AtomicInstallerFile, InstallManifest, InstallManifestError, InstallerDigest, OwnedHook, OwnedInstalledFile,
