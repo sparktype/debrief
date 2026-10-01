@@ -14,3 +14,16 @@ pub trait TtsBackend: Send + Sync {
 pub enum TtsBackendError {
     SynthesisFailed,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pcm_buffer_carries_mono_float_samples() {
+        let buffer = PcmBuffer { sample_rate: 44_100.0, channels: 1, samples: vec![0.0, 0.5, -0.5] };
+        assert_eq!(buffer.sample_rate, 44_100.0);
+        assert_eq!(buffer.channels, 1);
+        assert_eq!(buffer.samples, vec![0.0, 0.5, -0.5]);
+    }
+}
