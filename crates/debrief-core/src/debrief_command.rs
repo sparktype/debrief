@@ -24,25 +24,27 @@ pub enum DebriefCommand {
 impl DebriefCommand {
     pub fn usage_text() -> String {
         format!(
-            "debrief {}\n\n\
-Install / repair (release build, then):\n\
-  debrief install [--codex] [--claude] [--grok] [--repair]\n\
-  debrief uninstall [--codex] [--claude] [--grok]\n\n\
-Service:\n\
-  debrief daemon\n\
-  debrief start\n\
-  debrief stop\n\
-  debrief status\n\
-  debrief doctor\n\n\
-Controls (written to config.json; applied on the next utterance):\n\
-  debrief mute [on|off|toggle]\n\
-  debrief mode [normal|focus|quiet|verbose|night]\n\
-  debrief companion [on|off|toggle]\n\n\
-Agents:\n\
-  debrief mcp\n\
-  debrief hook --source <codex|claude>\n\
-  debrief help",
-            DebriefVersion::CURRENT
+            "debrief {version}\n\n{body}",
+            version = DebriefVersion::CURRENT,
+            body = concat!(
+                "Install / repair (release build, then):\n",
+                "  debrief install [--codex] [--claude] [--grok] [--repair]\n",
+                "  debrief uninstall [--codex] [--claude] [--grok]\n\n",
+                "Service:\n",
+                "  debrief daemon\n",
+                "  debrief start\n",
+                "  debrief stop\n",
+                "  debrief status\n",
+                "  debrief doctor\n\n",
+                "Controls (written to config.json; applied on the next utterance):\n",
+                "  debrief mute [on|off|toggle]\n",
+                "  debrief mode [normal|focus|quiet|verbose|night]\n",
+                "  debrief companion [on|off|toggle]\n\n",
+                "Agents:\n",
+                "  debrief mcp\n",
+                "  debrief hook --source <codex|claude>\n",
+                "  debrief help",
+            )
         )
     }
 

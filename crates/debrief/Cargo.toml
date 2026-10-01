@@ -9,3 +9,4 @@ path = "src/main.rs"
 
 [dependencies]
 debrief-core = { path = "../debrief-core" }
+libc = "0.2"

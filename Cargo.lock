@@ -91,6 +91,7 @@ name = "debrief"
 version = "0.1.0"
 dependencies = [
  "debrief-core",
+ "libc",
 ]
 
 [[package]]

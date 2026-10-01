@@ -131,16 +131,7 @@ At the end of each user-visible turn, call speak **once**. Two short sentences i
 The server rotates the companion voice across F1–M5, one voice per session, and keeps it. Pass `session` when the hook names a host session id. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. No file lists, checklists, or chat paste.\n\n\
 ## Args\n\n\
 ```json\n\
-{{\n\
-  \"text\": \"무엇이 바뀌었는지. 다음 행동은 이것.\",\n\
-  \"voice\": \"F1\",\n\
-  \"speed\": 0.93,\n\
-  \"volume\": 0.85,\n\
-  \"priority\": \"main\",\n\
-  \"lane\": \"companion\",\n\
-  \"emotion\": \"neutral\",\n\
-  \"session\": \"host-session-id\"\n\
-}}\n\
+{{\n  \"text\": \"무엇이 바뀌었는지. 다음 행동은 이것.\",\n  \"voice\": \"F1\",\n  \"speed\": 0.93,\n  \"volume\": 0.85,\n  \"priority\": \"main\",\n  \"lane\": \"companion\",\n  \"emotion\": \"neutral\",\n  \"session\": \"host-session-id\"\n}}\n\
 ```\n\n\
 | Field | Required | Notes |\n\
 |-------|----------|--------|\n\
