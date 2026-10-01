@@ -153,11 +153,9 @@ fn is_emoji(value: u32) -> bool {
     (0x1F300..=0x1FAFF).contains(&value) || (0x2600..=0x27BF).contains(&value) || (0x1F1E6..=0x1F1FF).contains(&value)
 }
 
-/// 유니코드 NFKD 정규화의 간이 구현 — 이 전처리 단계가 실제로 의존하는 것은 결합 문자(강세
-/// 표시 등) 분해뿐이므로, 전체 유니코드 분해 테이블 대신 Rust 표준 라이브러리로 충분한 범위만
-/// 다룬다. 완전한 NFKD가 필요해지면 `unicode-normalization` 크레이트로 교체한다.
 fn unicode_normalize_nfkd(input: &str) -> String {
-    input.to_string()
+    use unicode_normalization::UnicodeNormalization;
+    input.nfkd().collect()
 }
 
 pub struct SupertonicEngine {
@@ -415,6 +413,17 @@ impl TtsBackend for SupertonicEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preprocess_decomposes_precomposed_hangul_into_jamo() {
+        // "가"(U+AC00)는 unicode_indexer.json에 토큰이 없어 분해하지 않으면 -1(무효 토큰)로
+        // 인코딩된다. NFKD 분해를 거쳐야 초성/중성/종성 자모(U+1100대)로 바뀌어 유효한 토큰이 된다.
+        let processed = SupertonicTextProcessor::preprocess("가").expect("preprocess must succeed");
+        assert!(
+            !processed.contains('가'),
+            "precomposed Hangul syllable must be decomposed into jamo, got: {processed}"
+        );
+    }
 
     #[test]
     fn synthesizes_korean_with_installed_voice() {
