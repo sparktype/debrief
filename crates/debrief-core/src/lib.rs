@@ -4,6 +4,7 @@ pub mod hook_adapter;
 pub mod hook_engine;
 pub mod hook_event;
 pub mod host_installer;
+pub mod host_mcp_status;
 pub mod install_manifest;
 pub mod launch_agent_control;
 pub mod mcp_toml_config;
@@ -26,6 +27,7 @@ pub use hook_adapter::{HookAdapter, HookAdapterError};
 pub use hook_engine::{HookEngine, HookResult};
 pub use hook_event::{HookEvent, HookEventName, HostSource};
 pub use host_installer::{HostInstallResult, HostInstaller, HostInstallerError};
+pub use host_mcp_status::{HostMcpProbe, HostMcpState, HostMcpStatus};
 pub use install_manifest::{
     AtomicInstallerFile, InstallManifest, InstallManifestError, InstallerDigest, OwnedHook, OwnedInstalledFile,
     OwnedRuntimeFile,
