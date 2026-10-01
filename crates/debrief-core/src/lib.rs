@@ -3,6 +3,7 @@ pub mod embedded_templates;
 pub mod hook_adapter;
 pub mod hook_engine;
 pub mod hook_event;
+pub mod host_installer;
 pub mod install_manifest;
 pub mod launch_agent_control;
 pub mod mcp_toml_config;
@@ -24,6 +25,7 @@ pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTem
 pub use hook_adapter::{HookAdapter, HookAdapterError};
 pub use hook_engine::{HookEngine, HookResult};
 pub use hook_event::{HookEvent, HookEventName, HostSource};
+pub use host_installer::{HostInstallResult, HostInstaller, HostInstallerError};
 pub use install_manifest::{
     AtomicInstallerFile, InstallManifest, InstallManifestError, InstallerDigest, OwnedHook, OwnedInstalledFile,
     OwnedRuntimeFile,
