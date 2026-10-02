@@ -234,6 +234,33 @@ impl<'a> Diagnostics<'a> {
         body
     }
 
+    /// `doctor_report_text`에 decide 연동 상태(아이디어 7)와, decide가 가용할 때의 모드 추천
+    /// (아이디어 5, 추천만 하고 자동 적용은 하지 않음)을 덧붙인다.
+    pub fn doctor_report_text_with_decide(&self, decide: &dyn crate::decide_client::DecideJudge) -> String {
+        let mut body = self.doctor_report_text();
+        let snapshot = self.status();
+
+        let reachable = decide.noul("decide 연동 상태 확인", "decide 서버가 지금 응답하는가?").is_some();
+        body.push('\n');
+        body.push_str(&format!("[{}] decide.reachable", if reachable { "정상" } else { "문제" }));
+
+        if reachable {
+            let state = format!(
+                "모드={}, 음소거={}, 도우미={}, 소켓={}",
+                snapshot.mode.as_str(),
+                snapshot.muted,
+                snapshot.companion_enabled,
+                snapshot.socket_present
+            );
+            if let Some(recommended) = decide.choice(&state, "현재 상태에 가장 적합한 debrief mode를 추천한다.", &["normal", "focus", "quiet", "verbose", "night"]) {
+                body.push('\n');
+                body.push_str(&format!("추천 모드: {recommended} (참고용 — debrief mode로 직접 변경)"));
+            }
+        }
+
+        body
+    }
+
     /// 호스트별(Claude/Codex/Grok) debrief MCP 배선 상태.
     pub fn host_mcp_statuses(&self) -> Vec<HostMcpStatus> {
         HostMcpProbe::statuses(&self.paths.home, &self.paths.executable_url)
@@ -580,6 +607,37 @@ mod tests {
         diagnostics.clear_current_error().unwrap();
         assert!(diagnostics.current_error().is_none());
         assert!(!DebriefPaths::for_home(&home).last_error_url.exists());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    struct StubDecide {
+        reachable: bool,
+        mode_choice: Option<String>,
+    }
+    impl crate::decide_client::DecideJudge for StubDecide {
+        fn noul(&self, _state: &str, _instructions: &str) -> Option<f64> {
+            self.reachable.then_some(1.0)
+        }
+        fn choice(&self, _state: &str, _instructions: &str, _options: &[&str]) -> Option<String> {
+            self.mode_choice.clone()
+        }
+    }
+
+    #[test]
+    fn doctor_report_includes_decide_reachable_status() {
+        let home = temporary_home();
+        let diagnostics = Diagnostics::new(&home);
+        let reachable = StubDecide { reachable: true, mode_choice: Some("focus".to_string()) };
+        let report = diagnostics.doctor_report_text_with_decide(&reachable);
+        assert!(report.contains("decide"));
+        assert!(report.contains("추천 모드"));
+        assert!(report.contains("focus"));
+
+        let unreachable = StubDecide { reachable: false, mode_choice: None };
+        let report = diagnostics.doctor_report_text_with_decide(&unreachable);
+        assert!(report.contains("decide"));
+        assert!(!report.contains("추천 모드"));
 
         fs::remove_dir_all(&home).ok();
     }

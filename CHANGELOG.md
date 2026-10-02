@@ -3,6 +3,17 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [0.1.2] - 2026-10-02
+
+### 추가
+
+- 선택적 로컬 판단 모델 `decide`(`jev-style serve`, `http://127.0.0.1:8765`) 연동. 텍스트를 생성하지 않고 확률/선택만 반환하는 보강 전용이며, `decide` 불가·타임아웃·연결 끊김 시 전부 기존 동작으로 즉시 폴백합니다(fail-open). `DebriefConfiguration.decideEnabled`/`decideEndpoint`로 토글(기본 활성화).
+  - 미등록 서브에이전트 `agent_type`을 9개 역할 카테고리 중 하나로 자동 분류(정적 매핑에 없을 때만 호출).
+  - MCP `speak`의 main+companion 턴 브리핑에 침묵 판단(보고 가치가 낮으면 전송하지 않음)을 추가.
+  - `emotion: "auto"` 요청 시 decide가 6개 emotion 중 하나를 선택.
+  - subagent priority 사실을 decide가 중요하다고 판단하면 main으로 승격.
+  - `debrief doctor`에 `decide.reachable` 상태와 참고용 모드 추천(자동 적용 없음)을 추가.
+
 ## [0.1.1] - 2026-10-01
 
 ### 수정

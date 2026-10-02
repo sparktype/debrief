@@ -14,6 +14,8 @@ debrief is a macOS 14+ Apple Silicon TTS service delivered as one Rust executabl
 
 The coding agent owns summarization and selects spoken text and voice parameters.
 
+Optional runtime dependency: `decide` (`jev-style serve`, `http://127.0.0.1:8765`) — a local judgment model returning only probabilities/choices, never generated text. When reachable it augments silence gating, `emotion: "auto"` selection, subagent→main priority promotion, unregistered `agent_type` classification, and `debrief doctor`'s mode recommendation (`DebriefConfiguration.decideEnabled`/`decideEndpoint`). Every call fails open: unreachable, timed out, or disabled falls straight back to existing behavior.
+
 ## Source layout
 
 ```text
@@ -155,7 +157,7 @@ cargo build --release
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `cargo test --workspace`, `cargo clippy -- -D warnings`, and `cargo build --release --target aarch64-apple-darwin` on `macos-15`, then checks that the binary is arm64. A tag push matching `v*` triggers `.github/workflows/release.yml`, which builds the same release binary, packages it as a tarball, and publishes a GitHub Release.
 
-The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). `DebriefVersion::CURRENT` is `0.1.1` (reads the workspace `Cargo.toml` version via `env!("CARGO_PKG_VERSION")`), tag `v0.1.1`. The tap formula is `sparktype/tap/debrief` (`class Debrief`, installs a prebuilt release tarball — no source build or Rust toolchain required on the user's machine). Install with `brew install sparktype/tap/debrief`, then `debrief install`. `Formula/chorus.rb` remains on the tap for tag `v0.0.1` and builds the previous `chorus` binary.
+The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). `DebriefVersion::CURRENT` is `0.1.2` (reads the workspace `Cargo.toml` version via `env!("CARGO_PKG_VERSION")`), tag `v0.1.2`. The tap formula is `sparktype/tap/debrief` (`class Debrief`, installs a prebuilt release tarball — no source build or Rust toolchain required on the user's machine). Install with `brew install sparktype/tap/debrief`, then `debrief install`. `Formula/chorus.rb` remains on the tap for tag `v0.0.1` and builds the previous `chorus` binary.
 
 Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`DEBRIEF_TEST_MODEL_DIR` for the real-model smoke test, gated the same way the Swift test suite gated it).
 

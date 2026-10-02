@@ -52,6 +52,10 @@ pub struct DebriefConfiguration {
     pub category_voices: HashMap<String, String>,
     #[serde(default)]
     pub voice_speeds: HashMap<String, f64>,
+    #[serde(default = "default_decide_enabled")]
+    pub decide_enabled: bool,
+    #[serde(default = "default_decide_endpoint")]
+    pub decide_endpoint: String,
 }
 
 fn default_mode() -> DebriefMode {
@@ -60,6 +64,14 @@ fn default_mode() -> DebriefMode {
 
 fn default_companion_enabled() -> bool {
     true
+}
+
+fn default_decide_enabled() -> bool {
+    true
+}
+
+fn default_decide_endpoint() -> String {
+    "http://127.0.0.1:8765".to_string()
 }
 
 impl Default for DebriefConfiguration {
@@ -71,6 +83,8 @@ impl Default for DebriefConfiguration {
             volume_ceilings: DebriefConfiguration::default_volume_ceilings(),
             category_voices: HashMap::new(),
             voice_speeds: HashMap::new(),
+            decide_enabled: default_decide_enabled(),
+            decide_endpoint: default_decide_endpoint(),
         }
     }
 }
@@ -208,6 +222,45 @@ mod tests {
         assert_eq!(DebriefConfiguration::load(&url), DebriefConfiguration::default());
         fs::write(&url, "not-json").unwrap();
         assert_eq!(DebriefConfiguration::load(&url), DebriefConfiguration::default());
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn decide_fields_default_to_enabled_local_endpoint() {
+        let configuration = DebriefConfiguration::default();
+        assert!(configuration.decide_enabled);
+        assert_eq!(configuration.decide_endpoint, "http://127.0.0.1:8765");
+    }
+
+    #[test]
+    fn decide_fields_missing_from_disk_load_as_defaults() {
+        let directory = temporary_directory();
+        let url = directory.join("config.json");
+        fs::write(&url, "{}").unwrap();
+
+        let loaded = DebriefConfiguration::load(&url);
+        assert!(loaded.decide_enabled);
+        assert_eq!(loaded.decide_endpoint, "http://127.0.0.1:8765");
+
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn decide_fields_round_trip_through_save_and_load() {
+        let directory = temporary_directory();
+        let url = directory.join("config.json");
+
+        let configuration = DebriefConfiguration {
+            decide_enabled: false,
+            decide_endpoint: "http://127.0.0.1:9000".to_string(),
+            ..Default::default()
+        };
+        configuration.save(&url).unwrap();
+
+        let loaded = DebriefConfiguration::load(&url);
+        assert!(!loaded.decide_enabled);
+        assert_eq!(loaded.decide_endpoint, "http://127.0.0.1:9000");
 
         fs::remove_dir_all(&directory).ok();
     }

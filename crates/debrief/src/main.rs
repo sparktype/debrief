@@ -1,9 +1,9 @@
 // debrief CLI 진입점 — 서브커맨드 파싱과 실행을 연결한다
 use debrief_core::{
-    current_executable_url, CliMessages, ConfigurationCommands, DebriefCommand, DebriefPaths, Diagnostics,
-    HookCommandRunner, HostSource, LiveMcpInstallRunner, McpServer, ModelInstaller, ModelManifest,
-    ProcessLaunchctlRunner, ResidentService, ResidentServiceError, RuntimeInstaller, RuntimeInstallerError,
-    ServiceStartResult, UnixSocketClient, UreqModelDownloader,
+    current_executable_url, CliMessages, ConfigurationCommands, DebriefCommand, DebriefConfiguration, DebriefPaths,
+    DecideJudge, Diagnostics, HookCommandRunner, HostSource, HttpDecideClient, LiveMcpInstallRunner, McpServer,
+    ModelInstaller, ModelManifest, NoopDecideClient, ProcessLaunchctlRunner, ResidentService, ResidentServiceError,
+    RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UreqModelDownloader,
 };
 use debrief_tts::{AudioPlayer, SupertonicEngine};
 use std::collections::HashSet;
@@ -214,7 +214,10 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
         }
         DebriefCommand::Doctor => {
             let diagnostics = Diagnostics::new(home);
-            println!("{}", diagnostics.doctor_report_text());
+            let configuration = DebriefConfiguration::load(&DebriefPaths::for_home(home).config_url);
+            let http_decide = HttpDecideClient::new(configuration.decide_endpoint.clone());
+            let decide: &dyn DecideJudge = if configuration.decide_enabled { &http_decide } else { &NoopDecideClient };
+            println!("{}", diagnostics.doctor_report_text_with_decide(decide));
             if diagnostics.doctor().iter().any(|f| !f.ok) {
                 1
             } else {

@@ -1,6 +1,7 @@
 // 훅 이벤트를 호스트에 돌려줄 stdout(JSON)으로 변환 — speak 계약은 MCP speak 도구로 이동했으므로
 // 이 엔진은 더 이상 직접 발화를 전송하지 않는다(Swift 원본의 `sink` 매개변수에 대응하는
 // 전송 경로는 제거했다 — 호출되지 않는 코드를 유지할 이유가 없다).
+use crate::decide_client::{DecideJudge, NoopDecideClient};
 use crate::hook_adapter::HookAdapter;
 use crate::hook_event::{HookEvent, HookEventName, HostSource};
 use crate::session_voice_rotation::SessionVoiceStore;
@@ -14,11 +15,16 @@ pub struct HookResult {
 
 pub struct HookEngine<'a> {
     session_voices: Option<&'a SessionVoiceStore>,
+    decide: &'a dyn DecideJudge,
 }
 
 impl<'a> HookEngine<'a> {
     pub fn new(session_voices: Option<&'a SessionVoiceStore>) -> Self {
-        HookEngine { session_voices }
+        HookEngine { session_voices, decide: &NoopDecideClient }
+    }
+
+    pub fn with_decide(session_voices: Option<&'a SessionVoiceStore>, decide: &'a dyn DecideJudge) -> Self {
+        HookEngine { session_voices, decide }
     }
 
     pub fn handle(&self, event: &HookEvent, source: HostSource) -> HookResult {
@@ -30,7 +36,7 @@ impl<'a> HookEngine<'a> {
                 } else {
                     self.session_voices.and_then(|store| store.claim(&event.session_id).ok())
                 };
-                let context = VoiceCatalog::context(event, source, session_voice.as_deref());
+                let context = VoiceCatalog::context(event, source, session_voice.as_deref(), self.decide);
                 let stdout = HookAdapter::context_output(&context, event);
                 HookResult { stdout, submitted: false, delivery_error: None }
             }

@@ -1,4 +1,6 @@
 // `debrief hook --source <host>`가 쓰는 훅 실행기 — stdin 페이로드를 받아 stdout(JSON)을 돌려준다
+use crate::configuration::DebriefConfiguration;
+use crate::decide_client::{DecideJudge, HttpDecideClient, NoopDecideClient};
 use crate::hook_adapter::HookAdapter;
 use crate::hook_engine::HookEngine;
 use crate::hook_event::HostSource;
@@ -14,7 +16,10 @@ impl HookCommandRunner {
         };
         let paths = DebriefPaths::for_home(home);
         let session_voices = SessionVoiceStore::new(paths.session_voices_url.clone());
-        let engine = HookEngine::new(Some(&session_voices));
+        let configuration = DebriefConfiguration::load(&paths.config_url);
+        let http_decide = HttpDecideClient::new(configuration.decide_endpoint.clone());
+        let decide: &dyn DecideJudge = if configuration.decide_enabled { &http_decide } else { &NoopDecideClient };
+        let engine = HookEngine::with_decide(Some(&session_voices), decide);
         let result = engine.handle(&event, source);
         let diagnostics = crate::diagnostics::Diagnostics::new(home);
         if result.submitted {

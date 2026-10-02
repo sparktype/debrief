@@ -295,6 +295,7 @@ pub struct McpServer<Sink: crate::mcp_speak_tool::SpeechSink, Runner: crate::mcp
     sink: Sink,
     diagnostics: crate::diagnostics::Diagnostics<'static>,
     install_runner: Runner,
+    decide: Box<dyn crate::decide_client::DecideJudge>,
 }
 
 impl<Sink, Runner> McpServer<Sink, Runner>
@@ -304,7 +305,13 @@ where
 {
     pub fn new(home: std::path::PathBuf, sink: Sink, install_runner: Runner) -> Self {
         let diagnostics = crate::diagnostics::Diagnostics::new(&home);
-        McpServer { home, sink, diagnostics, install_runner }
+        let configuration = crate::configuration::DebriefConfiguration::load(&crate::paths::DebriefPaths::for_home(&home).config_url);
+        let decide: Box<dyn crate::decide_client::DecideJudge> = if configuration.decide_enabled {
+            Box::new(crate::decide_client::HttpDecideClient::new(configuration.decide_endpoint))
+        } else {
+            Box::new(crate::decide_client::NoopDecideClient)
+        };
+        McpServer { home, sink, diagnostics, install_runner, decide }
     }
 
     /// 도우미 레인은 로테이션된 보이스를 쓴다. 명시적 세션 id가 우선하고, 없으면 이 프로세스가
@@ -325,7 +332,13 @@ where
             "speak" => match crate::mcp_speak_tool::McpSpeakTool::parse_arguments(arguments) {
                 Ok(parsed) => {
                     let companion_voice = self.companion_voice(&parsed);
-                    crate::mcp_speak_tool::McpSpeakTool::execute(&parsed, &self.sink, &self.diagnostics, companion_voice.as_deref())
+                    crate::mcp_speak_tool::McpSpeakTool::execute_with_decide(
+                        &parsed,
+                        &self.sink,
+                        &self.diagnostics,
+                        companion_voice.as_deref(),
+                        self.decide.as_ref(),
+                    )
                 }
                 Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
             },

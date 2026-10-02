@@ -3,6 +3,7 @@ pub mod configuration;
 pub mod debrief_command;
 pub mod debrief_daemon;
 pub mod debrief_version;
+pub mod decide_client;
 pub mod diagnostics;
 pub mod embedded_templates;
 pub mod hook_adapter;
@@ -38,6 +39,7 @@ pub use configuration::{ConfigurationCommandError, ConfigurationCommands, Debrie
 pub use debrief_command::{CliMessages, DebriefCommand};
 pub use debrief_daemon::{DebriefDaemon, DebriefDaemonError, ErrorRecorder, SpeechRequestSource};
 pub use debrief_version::DebriefVersion;
+pub use decide_client::{DecideJudge, HttpDecideClient, NoopDecideClient};
 pub use diagnostics::{CurrentError, DaemonProcessState, DiagnosticFinding, Diagnostics, StatusSnapshot};
 pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTemplates};
 pub use hook_adapter::{HookAdapter, HookAdapterError};

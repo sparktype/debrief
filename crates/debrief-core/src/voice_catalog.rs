@@ -25,6 +25,10 @@ impl VoiceAssignment {
 
 pub struct VoiceCatalog;
 
+/// `decide`로 미등록 agent_type을 분류할 때 제시하는 9개 역할 옵션 (`"default"` 제외).
+const ROLE_CATEGORIES: [&str; 9] =
+    ["reviewer", "planner", "builder", "tester", "explorer", "optimizer", "guardian", "ops", "specialist"];
+
 static ALLOWED_VOICE_IDS: LazyLock<std::collections::HashSet<String>> = LazyLock::new(|| {
     [
         "F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5",
@@ -139,6 +143,32 @@ impl VoiceCatalog {
         ASSIGNMENTS.get(category).cloned().unwrap_or_else(|| ASSIGNMENTS["default"].clone())
     }
 
+    /// `assignment`와 동일하지만, 정적 매핑에 없는 agent_type은 `decide`로 9개 역할 중 하나를
+    /// 분류해본 뒤에 폴백한다. `decide`가 불가하거나 유효하지 않은 카테고리를 돌려주면 기존처럼
+    /// `"default"`로 떨어진다 — 정적 매핑에 있는 agent_type은 `decide`를 호출하지 않는다.
+    pub fn assignment_with_decide(agent_type: Option<&str>, decide: &dyn crate::decide_client::DecideJudge) -> VoiceAssignment {
+        let Some(agent_type) = agent_type else {
+            return ASSIGNMENTS["default"].clone();
+        };
+        let lowercase = agent_type.to_lowercase();
+        if let Some(category) = AGENT_CATEGORIES.get(agent_type).or_else(|| AGENT_CATEGORIES.get(lowercase.as_str())) {
+            return ASSIGNMENTS.get(*category).cloned().unwrap_or_else(|| ASSIGNMENTS["default"].clone());
+        }
+
+        let classified = decide
+            .choice(
+                agent_type,
+                "이 서브에이전트 이름을 아래 9개 역할 카테고리 중 가장 적합한 하나로 분류한다.",
+                &ROLE_CATEGORIES,
+            )
+            .filter(|category| ROLE_CATEGORIES.contains(&category.as_str()));
+
+        match classified {
+            Some(category) => ASSIGNMENTS.get(category.as_str()).cloned().unwrap_or_else(|| ASSIGNMENTS["default"].clone()),
+            None => ASSIGNMENTS["default"].clone(),
+        }
+    }
+
     pub fn persona_for_voice(voice: &str) -> VoiceAssignment {
         ASSIGNMENTS
             .values()
@@ -147,8 +177,13 @@ impl VoiceCatalog {
             .unwrap_or_else(|| ASSIGNMENTS["default"].clone())
     }
 
-    pub fn context(event: &HookEvent, source: HostSource, session_voice: Option<&str>) -> String {
-        let assignment = Self::assignment(event.agent_type.as_deref());
+    pub fn context(
+        event: &HookEvent,
+        source: HostSource,
+        session_voice: Option<&str>,
+        decide: &dyn crate::decide_client::DecideJudge,
+    ) -> String {
+        let assignment = Self::assignment_with_decide(event.agent_type.as_deref(), decide);
         let tool = Self::tool_reference(source);
         let priority = Self::recommended_priority(event.name);
         let companion = Self::persona_for_voice(session_voice.unwrap_or("F1"));
@@ -201,7 +236,7 @@ No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and co
             agent_type: agent_type.map(|s| s.to_string()),
             last_assistant_message: None,
         };
-        Self::context(&event, HostSource::Claude, None)
+        Self::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient)
     }
 
     fn tool_reference(source: HostSource) -> &'static str {
@@ -249,6 +284,57 @@ mod tests {
         for (agent_type, voice) in cases {
             assert_eq!(VoiceCatalog::assignment(Some(agent_type)).voice, voice, "{agent_type}");
         }
+    }
+
+    struct StubDecide {
+        choice: Option<String>,
+    }
+
+    impl crate::decide_client::DecideJudge for StubDecide {
+        fn noul(&self, _state: &str, _instructions: &str) -> Option<f64> {
+            None
+        }
+
+        fn choice(&self, _state: &str, _instructions: &str, _options: &[&str]) -> Option<String> {
+            self.choice.clone()
+        }
+    }
+
+    #[test]
+    fn unregistered_agent_type_uses_decide_classification_when_available() {
+        let decide = StubDecide { choice: Some("planner".to_string()) };
+        let assignment = VoiceCatalog::assignment_with_decide(Some("gan-planner-v2"), &decide);
+        assert_eq!(assignment.category, "planner");
+        assert_eq!(assignment.voice, "M1");
+    }
+
+    #[test]
+    fn unregistered_agent_type_falls_back_to_default_when_decide_unavailable() {
+        let decide = StubDecide { choice: None };
+        let assignment = VoiceCatalog::assignment_with_decide(Some("gan-planner-v2"), &decide);
+        assert_eq!(assignment.category, "default");
+    }
+
+    #[test]
+    fn unregistered_agent_type_falls_back_to_default_on_invalid_decide_choice() {
+        let decide = StubDecide { choice: Some("not-a-real-category".to_string()) };
+        let assignment = VoiceCatalog::assignment_with_decide(Some("gan-planner-v2"), &decide);
+        assert_eq!(assignment.category, "default");
+    }
+
+    #[test]
+    fn registered_agent_type_does_not_consult_decide() {
+        struct PanicIfCalled;
+        impl crate::decide_client::DecideJudge for PanicIfCalled {
+            fn noul(&self, _state: &str, _instructions: &str) -> Option<f64> {
+                panic!("noul should not be called for a registered agent_type");
+            }
+            fn choice(&self, _state: &str, _instructions: &str, _options: &[&str]) -> Option<String> {
+                panic!("choice should not be called for a registered agent_type");
+            }
+        }
+        let assignment = VoiceCatalog::assignment_with_decide(Some("planner"), &PanicIfCalled);
+        assert_eq!(assignment.voice, "M1");
     }
 
     #[test]
@@ -350,7 +436,7 @@ mod tests {
             agent_type: None,
             last_assistant_message: None,
         };
-        let text = VoiceCatalog::context(&event, HostSource::Claude, None);
+        let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.contains("mcp__debrief__speak"));
         assert!(text.contains("F1"));
         assert!(text.to_lowercase().contains("silence") || text.contains("침묵") || text.contains("does not"));
@@ -365,7 +451,7 @@ mod tests {
             agent_type: Some("planner".to_string()),
             last_assistant_message: None,
         };
-        let text = VoiceCatalog::context(&event, HostSource::Claude, None);
+        let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.contains("subagent"));
         assert!(text.contains("M1"));
         assert!(text.contains("work") || text.contains("priority"));
@@ -381,7 +467,7 @@ mod tests {
             agent_type: None,
             last_assistant_message: None,
         };
-        let text = VoiceCatalog::context(&event, HostSource::Claude, None);
+        let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.chars().count() < 400);
         assert!(text.contains("companion") || text.contains("F1"));
         assert!(text.contains("Silence only"));
@@ -399,7 +485,7 @@ mod tests {
             agent_type: None,
             last_assistant_message: None,
         };
-        let text = VoiceCatalog::context(&event, HostSource::Claude, None);
+        let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.contains("what changed"));
         assert!(text.contains("next action"));
         assert!(text.contains("agent writes"));
