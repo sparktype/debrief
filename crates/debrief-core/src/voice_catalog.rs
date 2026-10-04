@@ -198,8 +198,8 @@ Silence only if nothing new. No file lists or checklists. No HTML/JSON in the bo
             ),
             HookEventName::SubagentStart => format!(
                 "Subagent: do not brief the user. The main agent speaks what changed and the next action. \
-If you speak, use {tool} once with priority=subagent, lane=work, voice {} ({}): one fact only. \
-focus/quiet/night may suppress subagent. No HTML/JSON speech in the body.",
+Speak once when your work is done: use {tool} with priority=subagent, lane=work, voice {} ({}): one fact only. \
+focus/quiet/night suppress subagent. No HTML/JSON speech in the body.",
                 assignment.voice, assignment.name
             ),
             HookEventName::SessionStart | HookEventName::Stop | HookEventName::SubagentStop => format!(
@@ -456,6 +456,7 @@ mod tests {
         assert!(text.contains("M1"));
         assert!(text.contains("work") || text.contains("priority"));
         assert!(text.contains("do not brief"));
+        assert!(text.contains("when your work is done"));
     }
 
     #[test]

@@ -145,7 +145,7 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | priority | no | `main` / `subagent` |\n\
 | lane | no | `companion` (default) / `work` |\n\
 | emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (prosody bias only) |\n\n\
-Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user. If they speak: `priority=subagent`, `lane=work`, one fact.\n\n\
+Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
 Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. Binary: `{executable}`.",
             title = title,
             tool_intro = tool_intro,
@@ -324,6 +324,7 @@ mod tests {
             assert!(skill.contains("next action"));
             assert!(skill.contains("Silence only"));
             assert!(skill.contains("do not brief"));
+            assert!(skill.contains("when their work is done"));
             assert!(skill.contains("ownership"));
             assert!(!skill.to_lowercase().contains("debrief summarizes"));
         }

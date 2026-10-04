@@ -30,6 +30,6 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | lane | no | companion (default) / work |
 | emotion | no | neutral, warm, focused, concerned, relieved, tired |
 
-Subagents **do not brief** the user. If they speak: `priority=subagent`, `lane=work`, one fact.
+Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.
 
 Menu: mute · mode · **도우미 음성** · 진단.
