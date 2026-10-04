@@ -28,7 +28,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 - 소스 설치에는 Rust 툴체인(`rustup`)
 - 선택적 런타임 의존성: `decide`(`jev-style serve`, `http://127.0.0.1:8765`) — 없어도 전부 동작하며, 있으면 침묵 판단·emotion 선택·우선순위 승격·agent_type 분류·모드 추천을 보강합니다
 
-버전은 `0.1.2`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
+버전은 `0.1.3`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
 
