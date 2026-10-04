@@ -26,6 +26,7 @@ pub enum HookEventName {
     SubagentStart,
     Stop,
     SubagentStop,
+    PermissionRequest,
 }
 
 impl HookEventName {
@@ -36,6 +37,7 @@ impl HookEventName {
             HookEventName::SubagentStart => "SubagentStart",
             HookEventName::Stop => "Stop",
             HookEventName::SubagentStop => "SubagentStop",
+            HookEventName::PermissionRequest => "PermissionRequest",
         }
     }
 
@@ -46,6 +48,7 @@ impl HookEventName {
             "SubagentStart" => Some(HookEventName::SubagentStart),
             "Stop" => Some(HookEventName::Stop),
             "SubagentStop" => Some(HookEventName::SubagentStop),
+            "PermissionRequest" => Some(HookEventName::PermissionRequest),
             _ => None,
         }
     }
@@ -58,4 +61,5 @@ pub struct HookEvent {
     pub turn_id: Option<String>,
     pub agent_type: Option<String>,
     pub last_assistant_message: Option<String>,
+    pub cwd: Option<String>,
 }

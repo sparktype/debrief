@@ -19,6 +19,7 @@ pub struct DebriefPaths {
     pub install_manifest_url: PathBuf,
     pub last_error_url: PathBuf,
     pub session_voices_url: PathBuf,
+    pub session_state_url: PathBuf,
 }
 
 impl DebriefPaths {
@@ -38,6 +39,7 @@ impl DebriefPaths {
             install_manifest_url: data_directory.join("install-manifest.json"),
             last_error_url: cache_directory.join("last-error.json"),
             session_voices_url: data_directory.join("session-voices.json"),
+            session_state_url: data_directory.join("session-state.json"),
         }
     }
 }
@@ -62,5 +64,6 @@ mod tests {
         assert_eq!(paths.install_manifest_url, PathBuf::from("/Users/example/Library/Application Support/debrief/install-manifest.json"));
         assert_eq!(paths.models_directory, PathBuf::from("/Users/example/Library/Application Support/debrief/models"));
         assert_eq!(paths.session_voices_url, PathBuf::from("/Users/example/Library/Application Support/debrief/session-voices.json"));
+        assert_eq!(paths.session_state_url, PathBuf::from("/Users/example/Library/Application Support/debrief/session-state.json"));
     }
 }

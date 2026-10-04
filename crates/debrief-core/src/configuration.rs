@@ -56,6 +56,12 @@ pub struct DebriefConfiguration {
     pub decide_enabled: bool,
     #[serde(default = "default_decide_endpoint")]
     pub decide_endpoint: String,
+    /// 에이전트가 말하지 않은 턴이 이 시간(초) 이상 걸렸으면 Stop 훅이 알린다. 0이면 끈다.
+    #[serde(default = "default_long_turn_seconds")]
+    pub long_turn_seconds: u64,
+    /// 다른 프로젝트 세션이 동시에 활성이면 발화 앞에 프로젝트 이름을 붙인다.
+    #[serde(default = "default_session_label")]
+    pub session_label: bool,
 }
 
 fn default_mode() -> DebriefMode {
@@ -67,6 +73,14 @@ fn default_companion_enabled() -> bool {
 }
 
 fn default_decide_enabled() -> bool {
+    true
+}
+
+fn default_long_turn_seconds() -> u64 {
+    60
+}
+
+fn default_session_label() -> bool {
     true
 }
 
@@ -85,6 +99,8 @@ impl Default for DebriefConfiguration {
             voice_speeds: HashMap::new(),
             decide_enabled: default_decide_enabled(),
             decide_endpoint: default_decide_endpoint(),
+            long_turn_seconds: default_long_turn_seconds(),
+            session_label: default_session_label(),
         }
     }
 }
@@ -312,5 +328,17 @@ mod tests {
         assert_eq!(loaded.voice_speeds.get("F3"), Some(&1.1));
 
         fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn notice_settings_default_and_parse() {
+        let defaults: DebriefConfiguration = serde_json::from_str("{}").unwrap();
+        assert_eq!(defaults.long_turn_seconds, 60);
+        assert!(defaults.session_label);
+
+        let custom: DebriefConfiguration =
+            serde_json::from_str(r#"{"longTurnSeconds": 0, "sessionLabel": false}"#).unwrap();
+        assert_eq!(custom.long_turn_seconds, 0);
+        assert!(!custom.session_label);
     }
 }

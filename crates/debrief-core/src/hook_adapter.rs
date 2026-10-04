@@ -41,6 +41,7 @@ impl HookAdapter {
                 &["agent_type", "agentType", "subagent_type", "subagentType", "agent_name", "agentName"],
             ),
             last_assistant_message: string_in(payload, &["last_assistant_message", "lastAssistantMessage"]),
+            cwd: string_in(payload, &["cwd"]),
         })
     }
 
@@ -125,6 +126,7 @@ mod tests {
                 turn_id: None,
                 agent_type: None,
                 last_assistant_message: None,
+                cwd: None,
             };
             let data = HookAdapter::context_output("context", &event);
             let text = String::from_utf8(data).unwrap();
@@ -142,6 +144,20 @@ mod tests {
             event.last_assistant_message.unwrap(),
             "완료.\n<!-- chorus:speak {\"v\":1,\"text\":\"Codex 보존 검증을 완료했습니다.\",\"voice\":\"F1\",\"speed\":0.93,\"volume\":0.6} -->"
         );
+    }
+
+    #[test]
+    fn permission_request_carries_cwd() {
+        let payload = json!({
+            "hook_event_name": "PermissionRequest",
+            "session_id": "s1",
+            "cwd": "/Users/x/work/proj",
+            "tool_name": "Bash",
+        });
+        let data = serde_json::to_vec(&payload).unwrap();
+        let event = HookAdapter::decode(&data, HostSource::Claude).unwrap();
+        assert_eq!(event.name, HookEventName::PermissionRequest);
+        assert_eq!(event.cwd.as_deref(), Some("/Users/x/work/proj"));
     }
 
     #[test]
