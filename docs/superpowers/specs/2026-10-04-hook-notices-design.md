@@ -17,7 +17,7 @@
 | 1 | 권한 요청 알림 | `PermissionRequest` 훅이 고정 문구를 데몬에 직접 보낸다 |
 | 4 | 멀티 세션 구분 | 다른 프로젝트의 세션이 동시에 활성이면 발화 앞에 프로젝트명을 붙인다 |
 | 5 | 긴 턴 완료 알림 | 임계값을 넘긴 턴이 끝났는데 에이전트가 말하지 않았으면 `Stop` 훅이 알린다 |
-| 6 | 방해금지 연동 | (옵트인) macOS 집중 모드가 켜져 있으면 유효 모드를 최소 `quiet`로 낮춘다 |
+| 6 | 방해금지 연동 | (옵트인) macOS 방해금지가 켜져 있으면 유효 모드를 최소 `quiet`로 낮춘다 |
 
 ## 제품 경계 변경
 
@@ -58,13 +58,13 @@
 - 설정 `sessionLabel`(기본 true)로 끈다. 알림(1·5)도 같은 규칙을 쓴다.
 
 ### 6. 방해금지 연동
-- 설정 `focusSync`(기본 **false**, 옵트인). CLI `debrief focus [on|off|toggle]`.
+- 설정 `dndSync`(기본 **false**, 옵트인). CLI `debrief dnd [on|off|toggle]`. (`debrief mode focus`와 이름이 겹쳐 `focus` 대신 `dnd`를 쓴다.)
 - 데몬이 `submit` 때 `~/Library/DoNotDisturb/DB/Assertions.json`을 읽어, `storeAssertionRecords`가
   비어 있지 않은 항목이 있으면 집중 모드 활성으로 본다. 활성이면 유효 모드를
   `Normal|Verbose|Focus → Quiet`로 올린다(`Night`는 그대로). 저장된 모드는 바꾸지 않는다.
 - 읽기·파싱 실패는 비활성으로 취급한다(fail-open).
 - **미검증**: 집중 모드가 켜진 상태의 실제 파일 구조는 이 개발 머신에서 켜 보지 못했다.
-  구현은 알려진 키에 기대며, 사용자가 직접 켜서 `debrief doctor`로 확인해야 한다.
+  구현은 알려진 키에 기대며, 사용자가 직접 켜서 확인해야 한다. `dndSync`가 켜져 있으면 `debrief doctor`가 `dnd.readable`/`dnd.unreadable`로 파일 판독 여부를 보여 준다(데몬이 아니라 CLI 프로세스 기준).
   LaunchAgent로 뜬 데몬의 파일 접근 권한(TCC)도 같은 이유로 미검증이다.
 
 ## 설치기 변경

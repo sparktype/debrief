@@ -56,8 +56,11 @@ cargo build --release
 - Supertonic 3 + ONNX Runtime (`ort` crate) + 오디오 재생 (`cpal`)
 - MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
-- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `hook` / `mcp` (`speak` CLI 없음)
-- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context
+- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `hook` / `mcp` (`speak` CLI 없음)
+- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래), `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
+- 훅 알림: 권한 요청 시 "권한 승인을 기다리고 있습니다."(`lane=work`), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴이 끝나면 "N분 걸린 작업이 끝났습니다." LLM 생성 없는 고정 문구이며 `mute`로만 꺼집니다
+- 멀티 세션: 다른 프로젝트 세션이 30분 안에 활성이면 speak 앞에 `"<프로젝트>. "`를 붙입니다(`sessionLabel`, 기본 켜짐)
+- 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
@@ -90,7 +93,8 @@ Claude / Codex start hooks
   → …/debrief hook --source claude|codex
       → SessionStart / UserPromptSubmit / SubagentStart
           추가 context: 턴 브리핑(what changed, next action; 코드 작업 후엔 ownership 확인) + Silence only + lane/emotion + 역할 보이스
-  → Stop / SubagentStop 은 설치하지 않음
+  → PermissionRequest / Stop 훅은 데몬에 고정 문구 알림만 직접 보냄 (Stop에서 문장 추출은 하지 않음)
+  → SubagentStop 은 설치하지 않음
 
 Grok
   → 훅 context 없음 → 스킬 + MCP 도구 설명이 계약
@@ -103,7 +107,7 @@ Grok
 Claude Code: `mcp__debrief__speak` / `mcp__debrief__install`.  
 Grok: `debrief__speak` / `debrief__install` (`search_tool` / `use_tool`).  
 기본 lane은 `companion`, speed ~0.93, volume ~0.85. 도우미 목소리는 세션마다 F1–M5를 돌고, `session`이 같으면 그 목소리를 유지합니다. `session`이 없으면 이 MCP 프로세스가 받은 목소리를 씁니다. `emotion`은 닫힌 enum이며 재생 바이어스만 줍니다.  
-서브에이전트는 사용자에게 브리핑하지 않습니다. 말하면 `priority: "subagent"`, `lane: "work"`, 사실 한 줄 (focus/quiet/night에서 subagent 억제).  
+서브에이전트는 사용자에게 브리핑하지 않지만, 작업이 끝나면 한 번 `priority: "subagent"`, `lane: "work"`, 사실 한 줄로 말합니다 (focus/quiet/night에서 subagent 억제).  
 본문에 speech JSON·HTML 주석을 넣지 마세요. `debrief companion off`면 companion lane은 재생되지 않습니다.
 
 설치·복구:

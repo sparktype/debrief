@@ -103,6 +103,6 @@ Limit a repair to one host with `--claude`, `--codex`, or `--grok`. When MCP alr
 - After writing, changing, or analyzing code, the next action names what you must verify yourself (behavior change, deletion, security or data path, an assumption, how to check or undo), so you keep code ownership and cognitive debt stays low. Trivial changes and subagents skip this.
 - **Silence only** if nothing new and no next action. No file lists or checklists.
 - Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum; prosody only), `session` (host session id; keeps the companion voice).
-- Companion voice rotates across F1–M5, one voice per session. Pass `session` with the host session id so that chat keeps its voice. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. Subagents do not brief the user; if they speak, `priority=subagent` and `lane=work`, one fact.
+- Companion voice rotates across F1–M5, one voice per session. Pass `session` with the host session id so that chat keeps its voice. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. Subagents do not brief the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.
 - Do not put speech JSON or HTML comments in the chat body.
 - Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`.
