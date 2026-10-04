@@ -14,7 +14,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 - 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `start`, `stop`)
 - MCP `speak`, `install`
-- Claude / Codex 훅 (SessionStart, UserPromptSubmit, SubagentStart 컨텍스트 + PermissionRequest, Stop 고정 문구 알림)과 세 호스트용 스킬
+- Claude / Codex 훅 (SessionStart, UserPromptSubmit, SubagentStart 컨텍스트 + PermissionRequest, Stop 고정 문구 알림 + SessionEnd 정리. Claude에는 StopFailure, Notification, Elicitation, PermissionDenied, TeammateIdle, TaskCompleted 알림 추가)과 세 호스트용 스킬
 
 범위 밖:
 

@@ -72,6 +72,29 @@
 Claude·Codex 모두 두 이벤트를 지원한다. `repair` 시 과거 envelope 시대의 Stop 항목은 다이제스트가
 달라 기존 정리 로직으로 처리한다(테스트로 확인).
 
+## 2차 확장 — 나머지 훅 이벤트 (2026-10-04)
+
+호스트별 이벤트: 공통(Claude·Codex) = SessionStart, UserPromptSubmit, SubagentStart, PermissionRequest,
+Stop, SessionEnd. Claude 전용 = StopFailure, Notification, Elicitation, PermissionDenied,
+TeammateIdle, TaskCompleted. 설치기는 `EmbeddedTemplates::hook_events(host)`로 호스트별로 설치한다.
+
+| 이벤트 | 동작 | 쿨다운 |
+|--------|------|--------|
+| StopFailure | `error_type`별 고정 문구(한도·과부하 / 계정 / 그 외). 해당 턴을 마감해 이후 Stop 완료 알림을 막는다 | 없음 |
+| Notification | `notification_type`이 `idle_prompt`·`agent_needs_input`일 때만 "입력을 기다리고 있습니다." `permission_prompt`·`elicitation_*`는 다른 훅이 맡아 제외. 유형을 모르면 침묵 | 300초 |
+| Elicitation | "추가 입력이 필요합니다." | 없음 |
+| PermissionDenied | "자동 모드가 도구 호출을 거부했습니다." | 120초 |
+| TeammateIdle · TaskCompleted | `teamNotices`(기본 꺼짐)를 켠 경우만 | 120초 |
+| SessionEnd | 세션을 상태 저장소에서 지운다(끝난 세션이 30분간 다중 세션 판정에 남지 않게). 알림 없음 | - |
+
+- 상태 저장소를 쓸 수 없으면 쿨다운이 필요한 알림은 조용히 건너뛴다.
+- `doctor`는 설치 흔적이 있는 호스트에 대해 기대 이벤트 목록과 비교해 `hooks.<host>.missing`(누락 이벤트와
+  복구 명령 포함) 또는 `hooks.<host>.complete`를 보고한다.
+- **정정**: 초안 추천에 있던 "`stop_hook_active`로 Stop 오탐 방지"는 구현하지 않는다. 한 턴을 한 번만 마감하는
+  `finish_turn`이 이미 반복 Stop을 막으므로 효과가 없다.
+- **미검증 필드명**: 문서가 잘려 `notification_type`·`error_type`(Claude)과 SessionEnd의 사유 필드는 확인하지
+  못했다. 없거나 다르면 알림이 나가지 않는 쪽(침묵)으로 실패한다. Codex의 SessionEnd 지원은 문서 요약 기준이다.
+
 ## 비목표
 - 알림음(비언어)·replay·skip·macOS 알림센터 연동은 이번 범위가 아니다.
 - 알림 문구 설정화(i18n)는 하지 않는다. 경어체 한국어 고정.

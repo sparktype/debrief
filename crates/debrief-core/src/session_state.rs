@@ -17,6 +17,9 @@ pub struct SessionEntry {
     pub turn_started: Option<u64>,
     #[serde(default)]
     pub spoken: bool,
+    /// 알림 종류별 마지막 발화 시각(쿨다운 판정용).
+    #[serde(default)]
+    pub notice_at: HashMap<String, u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -39,6 +42,20 @@ impl SessionStates {
         entry.turn_started = Some(now);
         entry.spoken = false;
         entry.last_seen = now;
+    }
+
+    pub fn remove(&mut self, session_id: &str) {
+        self.sessions.remove(session_id);
+    }
+
+    /// 같은 종류의 알림이 `cooldown_seconds` 안에 이미 나갔으면 `false`. 허용하면 시각을 기록한다.
+    pub fn allow_notice(&mut self, session_id: &str, kind: &str, now: u64, cooldown_seconds: u64) -> bool {
+        let Some(entry) = self.sessions.get_mut(session_id) else { return false };
+        if entry.notice_at.get(kind).is_some_and(|at| now.saturating_sub(*at) < cooldown_seconds) {
+            return false;
+        }
+        entry.notice_at.insert(kind.to_string(), now);
+        true
     }
 
     pub fn mark_spoken(&mut self, session_id: &str) {
@@ -217,5 +234,26 @@ mod tests {
         let keys = store.update(1000 + RETAINED_SECONDS + 1, |s| s.sessions.keys().cloned().collect::<Vec<_>>()).unwrap();
         assert_eq!(keys, vec!["new".to_string()]);
         std::fs::remove_dir_all(directory).ok();
+    }
+
+    #[test]
+    fn remove_drops_the_session_from_label_decisions() {
+        let mut states = SessionStates::default();
+        states.touch("a", Some("debrief".into()), 10);
+        states.touch("b", Some("richell".into()), 10);
+        assert!(states.label_for("a", 10).is_some());
+        states.remove("b");
+        assert_eq!(states.label_for("a", 10), None, "끝난 세션은 다중 세션 판정에서 빠진다");
+    }
+
+    #[test]
+    fn allow_notice_enforces_a_per_kind_cooldown() {
+        let mut states = SessionStates::default();
+        states.touch("a", None, 0);
+        assert!(states.allow_notice("a", "TaskCompleted", 100, 120));
+        assert!(!states.allow_notice("a", "TaskCompleted", 219, 120), "쿨다운 안");
+        assert!(states.allow_notice("a", "TeammateIdle", 150, 120), "종류별로 따로 센다");
+        assert!(states.allow_notice("a", "TaskCompleted", 220, 120), "쿨다운 뒤");
+        assert!(!states.allow_notice("ghost", "TaskCompleted", 0, 120), "모르는 세션은 허용하지 않는다");
     }
 }

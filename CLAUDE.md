@@ -57,10 +57,10 @@ cargo build --release
 - MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
 - CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `hook` / `mcp` (`speak` CLI 없음)
-- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래), `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
-- 훅 알림: 권한 요청 시 "권한 승인을 기다리고 있습니다."(`lane=work`), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴이 끝나면 "N분 걸린 작업이 끝났습니다." LLM 생성 없는 고정 문구이며 `mute`로만 꺼집니다
+- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래). SessionEnd — 세션 상태 정리. Claude 전용 StopFailure · Notification · Elicitation · PermissionDenied · TeammateIdle · TaskCompleted — 고정 문구 알림. 설계는 `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
+- 훅 알림(에이전트가 말할 수 없는 순간): 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification idle_prompt·agent_needs_input / Elicitation), 자동 모드 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴의 완료. 팀 이벤트(TeammateIdle·TaskCompleted)는 `teamNotices`를 켠 경우만. 잦은 유형은 쿨다운(2~5분). LLM 생성 없는 고정 문구(`lane=work`)이며 `mute`로만 꺼집니다
 - 멀티 세션: 다른 프로젝트 세션이 30분 안에 활성이면 speak 앞에 `"<프로젝트>. "`를 붙입니다(`sessionLabel`, 기본 켜짐)
-- 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인
+- 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인. `doctor`는 호스트별 훅 이벤트 누락도 `hooks.<host>.missing`으로 알려 줍니다
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
@@ -93,7 +93,8 @@ Claude / Codex start hooks
   → …/debrief hook --source claude|codex
       → SessionStart / UserPromptSubmit / SubagentStart
           추가 context: 턴 브리핑(what changed, next action; 코드 작업 후엔 ownership 확인) + Silence only + lane/emotion + 역할 보이스
-  → PermissionRequest / Stop 훅은 데몬에 고정 문구 알림만 직접 보냄 (Stop에서 문장 추출은 하지 않음)
+  → PermissionRequest / Stop(+ Claude 전용 알림 이벤트) 훅은 데몬에 고정 문구 알림만 직접 보냄 (Stop에서 문장 추출은 하지 않음)
+  → SessionEnd 는 세션 상태만 지움
   → SubagentStop 은 설치하지 않음
 
 Grok

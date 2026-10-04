@@ -190,6 +190,8 @@ impl<'a> Diagnostics<'a> {
             recovery: if snapshot.launch_agent_installed { None } else { Some(recovery) },
         });
 
+        findings.extend(self.hook_findings());
+
         if DebriefConfiguration::load(&self.paths.config_url).dnd_sync {
             let readable = crate::macos_dnd::MacosDnd::is_active(&self.paths.home).is_some();
             findings.push(DiagnosticFinding {
@@ -338,6 +340,59 @@ impl<'a> Diagnostics<'a> {
             && manifest == ModelManifest::supertonic3()
             && manifest.validate().is_ok();
         (Some(installed.revision), valid)
+    }
+
+    /// 호스트 설정에 기대하는 debrief 훅 이벤트가 모두 있는지 본다. 설치 흔적이 없는 호스트는 건너뛴다.
+    fn hook_findings(&self) -> Vec<DiagnosticFinding> {
+        let manifest = InstallManifest::load(&self.paths.install_manifest_url).unwrap_or_default();
+        let mut findings = Vec::new();
+        for (host, settings) in [
+            (HostSource::Codex, self.paths.home.join(".codex/hooks.json")),
+            (HostSource::Claude, self.paths.home.join(".claude/settings.json")),
+        ] {
+            let Some(hooks) = std::fs::read(&settings)
+                .ok()
+                .and_then(|data| serde_json::from_slice::<serde_json::Value>(&data).ok())
+                .and_then(|root| root.get("hooks").and_then(|hooks| hooks.as_object().cloned()))
+            else {
+                continue;
+            };
+            let present: std::collections::HashSet<&str> = hooks
+                .iter()
+                .filter(|(_, groups)| Self::has_debrief_command(groups))
+                .map(|(event, _)| event.as_str())
+                .collect();
+            if present.is_empty() && !manifest.hooks.iter().any(|owned| owned.host == host) {
+                continue;
+            }
+            let missing: Vec<&str> = crate::embedded_templates::EmbeddedTemplates::hook_events(host)
+                .iter()
+                .map(|event| event.as_str())
+                .filter(|name| !present.contains(name))
+                .collect();
+            findings.push(if missing.is_empty() {
+                DiagnosticFinding { code: format!("hooks.{}.complete", host.as_str()), ok: true, recovery: None }
+            } else {
+                DiagnosticFinding {
+                    code: format!("hooks.{}.missing", host.as_str()),
+                    ok: false,
+                    recovery: Some(format!("debrief install --{} --repair (누락 {})", host.as_str(), missing.join(", "))),
+                }
+            });
+        }
+        findings
+    }
+
+    fn has_debrief_command(groups: &serde_json::Value) -> bool {
+        groups.as_array().is_some_and(|groups| {
+            groups.iter().any(|group| {
+                group.get("hooks").and_then(|hooks| hooks.as_array()).is_some_and(|hooks| {
+                    hooks.iter().any(|hook| {
+                        hook.get("command").and_then(|command| command.as_str()).is_some_and(|c| c.contains("debrief") && c.contains(" hook --source "))
+                    })
+                })
+            })
+        })
     }
 
     fn settings_readable(url: &Path) -> bool {
@@ -596,6 +651,34 @@ mod tests {
         fs::create_dir_all(assertions.parent().unwrap()).unwrap();
         fs::write(&assertions, r#"{"data":[{"storeInvalidationRecords":[]}]}"#).unwrap();
         assert!(diagnostics.doctor().iter().any(|f| f.code == "dnd.readable" && f.ok));
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn doctor_reports_missing_hook_events_only_for_hosts_that_use_debrief() {
+        let home = temporary_home();
+        let diagnostics = Diagnostics::new(&home);
+        assert!(!diagnostics.doctor().iter().any(|f| f.code.starts_with("hooks.")), "설치 흔적이 없으면 말하지 않는다");
+
+        let command = "'/Users/x/.local/bin/debrief' hook --source claude";
+        let group = serde_json::json!([{"hooks": [{"type": "command", "command": command}]}]);
+        let claude = home.join(".claude/settings.json");
+        write_json(&serde_json::json!({"hooks": {"SessionStart": group, "UserPromptSubmit": group}}), &claude);
+        let findings = diagnostics.doctor();
+        let missing = findings.iter().find(|f| f.code == "hooks.claude.missing").expect("누락 보고");
+        assert!(!missing.ok);
+        let recovery = missing.recovery.clone().unwrap();
+        assert!(recovery.contains("install --claude --repair") && recovery.contains("StopFailure"), "{recovery}");
+
+        let all: serde_json::Map<String, serde_json::Value> = crate::embedded_templates::EmbeddedTemplates::hook_events(HostSource::Claude)
+            .iter()
+            .map(|event| (event.as_str().to_string(), group.clone()))
+            .collect();
+        write_json(&serde_json::json!({ "hooks": all }), &claude);
+        let findings = diagnostics.doctor();
+        assert!(findings.iter().any(|f| f.code == "hooks.claude.complete" && f.ok));
+        assert!(!findings.iter().any(|f| f.code.starts_with("hooks.codex")));
 
         fs::remove_dir_all(&home).ok();
     }

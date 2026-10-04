@@ -18,3 +18,16 @@
 - 버그 수정: `begin_turn`이 `last_seen`을 갱신하지 않아 새 항목이 즉시 만료 정리될 수 있었다(운영 경로에선 touch가 앞서 가려짐).
 - 보류: `SessionVoiceStore`와 `SessionStateStore`의 잠금 코드가 비슷하다. 기존 코드를 건드리지 않으려고 합치지 않았다.
 - 한계: 긴 턴 알림은 에이전트가 `session`을 넘겨 speak를 호출해야 `spoken`이 표시된다(훅이 주입하는 컨텍스트에 session이 들어 있다).
+
+## 2차 (나머지 훅 이벤트)
+- 사용자 요청: 추천한 6개 모두 구현. 문서가 잘려 일부 필드명(Claude의 notification_type·error_type·SessionEnd 사유)은
+  확인하지 못했다. 결정: 필드가 없으면 침묵하도록 읽는다(잘못된 알림보다 무음이 안전).
+- 정정: `stop_hook_active` 기반 Stop 오탐 방지는 효과가 없다고 판단해 구현하지 않았다. `finish_turn`이 한 턴을 한 번만
+  마감하기 때문이다. 추천 때 과장해서 말했다.
+- 결정: 이벤트 목록을 호스트별로 분리했다. Codex에는 Claude 전용 이벤트를 넣지 않는다(알 수 없는 키가 Codex 설정을 깰 위험).
+- 결정: Notification은 idle_prompt·agent_needs_input만. permission_prompt는 PermissionRequest와 중복, elicitation_*는
+  Elicitation 훅과 중복이라 제외.
+- 결정: 팀 이벤트(TeammateIdle·TaskCompleted)는 잦을 수 있어 `teamNotices` 기본 꺼짐 + 120초 쿨다운. 훅은 항상 설치하고
+  런타임에 설정을 읽으므로 켜고 끄는 데 `install --repair`가 필요 없다.
+- 테스트 수정: Claude가 Notification 훅을 설치하게 되어 설치기 테스트의 "사용자 무관 훅" 예시를 Notification → PreToolUse로 바꿨다.
+- 위험: Codex의 SessionEnd 지원은 문서 요약 기준이다. 실제 Codex가 모르는 이벤트 키를 거부하면 `install --codex --repair` 후 확인 필요.

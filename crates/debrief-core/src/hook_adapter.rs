@@ -42,6 +42,7 @@ impl HookAdapter {
             ),
             last_assistant_message: string_in(payload, &["last_assistant_message", "lastAssistantMessage"]),
             cwd: string_in(payload, &["cwd"]),
+            subtype: string_in(payload, &["notification_type", "error_type"]),
         })
     }
 
@@ -127,6 +128,7 @@ mod tests {
                 agent_type: None,
                 last_assistant_message: None,
                 cwd: None,
+                subtype: None,
             };
             let data = HookAdapter::context_output("context", &event);
             let text = String::from_utf8(data).unwrap();
@@ -171,5 +173,24 @@ mod tests {
         let event = HookAdapter::decode(&data, HostSource::Claude).unwrap();
         assert_eq!(event.name, HookEventName::SubagentStart);
         assert_eq!(event.agent_type, Some("Explore".to_string()));
+    }
+
+    #[test]
+    fn decodes_claude_only_events_with_subtype() {
+        let cases = [
+            (json!({"hook_event_name": "StopFailure", "session_id": "s", "error_type": "rate_limit"}), HookEventName::StopFailure, Some("rate_limit")),
+            (json!({"hook_event_name": "Notification", "session_id": "s", "notification_type": "idle_prompt", "message": "m"}), HookEventName::Notification, Some("idle_prompt")),
+            (json!({"hook_event_name": "SessionEnd", "session_id": "s", "reason": "clear"}), HookEventName::SessionEnd, None),
+            (json!({"hook_event_name": "Elicitation", "session_id": "s"}), HookEventName::Elicitation, None),
+            (json!({"hook_event_name": "PermissionDenied", "session_id": "s"}), HookEventName::PermissionDenied, None),
+            (json!({"hook_event_name": "TeammateIdle", "session_id": "s"}), HookEventName::TeammateIdle, None),
+            (json!({"hook_event_name": "TaskCompleted", "session_id": "s"}), HookEventName::TaskCompleted, None),
+        ];
+        for (payload, name, subtype) in cases {
+            let event = HookAdapter::decode(&serde_json::to_vec(&payload).unwrap(), HostSource::Claude).unwrap();
+            assert_eq!(event.name, name);
+            assert_eq!(event.subtype.as_deref(), subtype, "{name:?}");
+            assert_eq!(HookEventName::from_str_value(name.as_str()), Some(name));
+        }
     }
 }

@@ -65,6 +65,9 @@ pub struct DebriefConfiguration {
     /// macOS 방해금지(집중 모드)가 켜져 있는 동안 유효 모드를 최소 quiet로 올린다. 기본 꺼짐.
     #[serde(default)]
     pub dnd_sync: bool,
+    /// 에이전트 팀의 TeammateIdle·TaskCompleted 알림. 잦을 수 있어 기본 꺼짐.
+    #[serde(default)]
+    pub team_notices: bool,
 }
 
 fn default_mode() -> DebriefMode {
@@ -105,6 +108,7 @@ impl Default for DebriefConfiguration {
             long_turn_seconds: default_long_turn_seconds(),
             session_label: default_session_label(),
             dnd_sync: false,
+            team_notices: false,
         }
     }
 }
@@ -373,6 +377,7 @@ mod tests {
         let defaults: DebriefConfiguration = serde_json::from_str("{}").unwrap();
         assert_eq!(defaults.long_turn_seconds, 60);
         assert!(defaults.session_label);
+        assert!(!defaults.team_notices);
 
         let custom: DebriefConfiguration =
             serde_json::from_str(r#"{"longTurnSeconds": 0, "sessionLabel": false}"#).unwrap();

@@ -65,19 +65,55 @@ impl<'a> HookEngine<'a> {
                 let stdout = HookAdapter::context_output(&context, event);
                 HookResult { stdout, submitted: false, delivery_error: None, notice }
             }
-            HookEventName::Stop | HookEventName::SubagentStop | HookEventName::PermissionRequest => {
+            _ => {
                 HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice }
             }
         }
     }
 
+    /// 같은 종류 알림 사이에 두는 최소 간격(초). 잦을 수 있는 이벤트에만 둔다.
+    fn cooldown_seconds(name: HookEventName) -> Option<u64> {
+        match name {
+            HookEventName::Notification => Some(300),
+            HookEventName::PermissionDenied | HookEventName::TeammateIdle | HookEventName::TaskCompleted => Some(120),
+            _ => None,
+        }
+    }
+
+    fn failure_text(error_type: Option<&str>) -> &'static str {
+        match error_type {
+            Some("rate_limit" | "overloaded") => "사용 한도나 서버 과부하로 작업이 멈췄습니다.",
+            Some("authentication_failed" | "oauth_org_not_allowed" | "account_on_hold" | "billing_error") => {
+                "계정 문제로 작업이 멈췄습니다."
+            }
+            _ => "API 오류로 작업이 멈췄습니다.",
+        }
+    }
+
     /// 세션 상태를 갱신하고, 이 이벤트가 알림을 내야 하면 요청을 만든다.
     fn notice_for(&self, event: &HookEvent, now: u64) -> Option<SpeechRequest> {
+        // 알림을 내는 이벤트인지 먼저 정한다(쿨다운은 실제로 말할 때만 소모한다).
+        let wants_notice = match event.name {
+            HookEventName::Notification => matches!(event.subtype.as_deref(), Some("idle_prompt" | "agent_needs_input")),
+            HookEventName::TeammateIdle | HookEventName::TaskCompleted => self.configuration.team_notices,
+            HookEventName::PermissionRequest
+            | HookEventName::Stop
+            | HookEventName::StopFailure
+            | HookEventName::Elicitation
+            | HookEventName::PermissionDenied => true,
+            _ => false,
+        };
+        let cooldown = Self::cooldown_seconds(event.name).filter(|_| wants_notice);
+
         let tracked = self.state.and_then(|state| {
             let project = event.cwd.as_deref().and_then(project_label);
             let threshold = self.configuration.long_turn_seconds;
             state
                 .update(now, |states| {
+                    if event.name == HookEventName::SessionEnd {
+                        states.remove(&event.session_id);
+                        return (None, None, false);
+                    }
                     states.touch(&event.session_id, project, now);
                     let mut long_turn_elapsed = None;
                     match event.name {
@@ -88,14 +124,25 @@ impl<'a> HookEngine<'a> {
                                 .filter(|(elapsed, spoken)| !spoken && threshold > 0 && *elapsed >= threshold)
                                 .map(|(elapsed, _)| elapsed);
                         }
+                        // 실패로 끝난 턴은 이후 Stop의 완료 알림 대상에서 뺀다.
+                        HookEventName::StopFailure => {
+                            states.finish_turn(&event.session_id, now);
+                        }
                         _ => {}
                     }
+                    let allowed = cooldown
+                        .map(|seconds| states.allow_notice(&event.session_id, event.name.as_str(), now, seconds))
+                        .unwrap_or(true);
                     let label = self.configuration.session_label.then(|| states.label_for(&event.session_id, now));
-                    (long_turn_elapsed, label.flatten())
+                    (long_turn_elapsed, label.flatten(), allowed)
                 })
                 .ok()
         });
-        let (long_turn_elapsed, label) = tracked.unwrap_or((None, None));
+        // 상태 저장소를 쓸 수 없으면 쿨다운이 필요한 알림은 조용히 건너뛴다.
+        let (long_turn_elapsed, label, allowed) = tracked.unwrap_or((None, None, cooldown.is_none()));
+        if !wants_notice || !allowed {
+            return None;
+        }
 
         let (body, emotion) = match event.name {
             HookEventName::PermissionRequest => ("권한 승인을 기다리고 있습니다.".to_string(), SpeechEmotion::Concerned),
@@ -103,6 +150,14 @@ impl<'a> HookEngine<'a> {
                 let minutes = ((long_turn_elapsed? + 30) / 60).max(1);
                 (format!("{minutes}분 걸린 작업이 끝났습니다."), SpeechEmotion::Neutral)
             }
+            HookEventName::StopFailure => (Self::failure_text(event.subtype.as_deref()).to_string(), SpeechEmotion::Concerned),
+            HookEventName::Notification => ("입력을 기다리고 있습니다.".to_string(), SpeechEmotion::Neutral),
+            HookEventName::Elicitation => ("추가 입력이 필요합니다.".to_string(), SpeechEmotion::Concerned),
+            HookEventName::PermissionDenied => {
+                ("자동 모드가 도구 호출을 거부했습니다.".to_string(), SpeechEmotion::Concerned)
+            }
+            HookEventName::TeammateIdle => ("팀원이 대기 중입니다.".to_string(), SpeechEmotion::Neutral),
+            HookEventName::TaskCompleted => ("작업 항목이 하나 끝났습니다.".to_string(), SpeechEmotion::Neutral),
             _ => return None,
         };
         let text = match label {
@@ -142,6 +197,7 @@ mod tests {
             agent_type: agent_type.map(|s| s.to_string()),
             last_assistant_message: last_assistant_message.map(|s| s.to_string()),
             cwd: None,
+            subtype: None,
         }
     }
 
@@ -348,6 +404,121 @@ mod tests {
         let engine = HookEngine::new(None).with_state(&state, off);
         let unlabeled = engine.handle_at(&event_in(HookEventName::PermissionRequest, "a", "/w/debrief"), HostSource::Claude, 40);
         assert_eq!(unlabeled.notice.unwrap().envelope.text, "권한 승인을 기다리고 있습니다.");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn with_subtype(name: HookEventName, subtype: &str) -> HookEvent {
+        HookEvent { subtype: Some(subtype.to_string()), ..event_in(name, "s", "/w/p") }
+    }
+
+    fn engine_with<'a>(state: &'a SessionStateStore, configuration: DebriefConfiguration) -> HookEngine<'a> {
+        HookEngine::new(None).with_state(state, configuration)
+    }
+
+    #[test]
+    fn stop_failure_notice_depends_on_error_type_and_ends_the_turn() {
+        let dir = state_dir("failure");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let engine = engine_with(&state, DebriefConfiguration::default());
+        let text = |subtype: &str, at: u64| {
+            engine
+                .handle_at(&with_subtype(HookEventName::StopFailure, subtype), HostSource::Claude, at)
+                .notice
+                .unwrap()
+                .envelope
+                .text
+        };
+        assert_eq!(text("rate_limit", 1), "사용 한도나 서버 과부하로 작업이 멈췄습니다.");
+        assert_eq!(text("billing_error", 2), "계정 문제로 작업이 멈췄습니다.");
+        assert_eq!(text("unknown", 3), "API 오류로 작업이 멈췄습니다.");
+
+        engine.handle_at(&event_in(HookEventName::UserPromptSubmit, "s", "/w/p"), HostSource::Claude, 100);
+        engine.handle_at(&with_subtype(HookEventName::StopFailure, "server_error"), HostSource::Claude, 400);
+        let stop = engine.handle_at(&event_in(HookEventName::Stop, "s", "/w/p"), HostSource::Claude, 500);
+        assert!(stop.notice.is_none(), "실패로 끝난 턴을 완료 알림이 다시 말하지 않는다");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn notification_notices_only_for_waiting_for_input_types() {
+        let dir = state_dir("notification");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let engine = engine_with(&state, DebriefConfiguration::default());
+        let notify = |subtype: &str, at: u64| {
+            engine.handle_at(&with_subtype(HookEventName::Notification, subtype), HostSource::Claude, at).notice
+        };
+
+        assert_eq!(notify("idle_prompt", 1000).unwrap().envelope.text, "입력을 기다리고 있습니다.");
+        assert!(notify("permission_prompt", 1000).is_none(), "권한 요청은 PermissionRequest 훅이 맡는다");
+        assert!(notify("elicitation_dialog", 1000).is_none(), "Elicitation 훅이 맡는다");
+        assert!(notify("idle_prompt", 1100).is_none(), "5분 쿨다운 안");
+        assert!(notify("agent_needs_input", 1400).is_some());
+
+        let missing = HookEvent { subtype: None, ..event_in(HookEventName::Notification, "s", "/w/p") };
+        assert!(engine.handle_at(&missing, HostSource::Claude, 9000).notice.is_none(), "유형을 모르면 침묵");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn elicitation_and_permission_denied_notices_with_cooldown_for_the_latter() {
+        let dir = state_dir("elicit");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let engine = engine_with(&state, DebriefConfiguration::default());
+        let at =
+            |name: HookEventName, t: u64| engine.handle_at(&event_in(name, "s", "/w/p"), HostSource::Claude, t).notice;
+
+        assert_eq!(at(HookEventName::Elicitation, 10).unwrap().envelope.text, "추가 입력이 필요합니다.");
+        assert!(at(HookEventName::PermissionDenied, 20).is_some());
+        assert!(at(HookEventName::PermissionDenied, 100).is_none(), "120초 쿨다운 안");
+        assert!(at(HookEventName::PermissionDenied, 141).is_some());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn team_events_are_silent_unless_enabled_and_rate_limited() {
+        let dir = state_dir("team");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let off = engine_with(&state, DebriefConfiguration::default());
+        assert!(off
+            .handle_at(&event_in(HookEventName::TeammateIdle, "s", "/w/p"), HostSource::Claude, 10)
+            .notice
+            .is_none());
+
+        let on = engine_with(&state, DebriefConfiguration { team_notices: true, ..DebriefConfiguration::default() });
+        let at = |name: HookEventName, t: u64| on.handle_at(&event_in(name, "s", "/w/p"), HostSource::Claude, t).notice;
+        assert_eq!(at(HookEventName::TeammateIdle, 20).unwrap().envelope.text, "팀원이 대기 중입니다.");
+        assert!(at(HookEventName::TeammateIdle, 30).is_none(), "쿨다운");
+        assert_eq!(at(HookEventName::TaskCompleted, 30).unwrap().envelope.text, "작업 항목이 하나 끝났습니다.");
+        assert!(at(HookEventName::TaskCompleted, 40).is_none(), "쿨다운");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn cooldown_events_stay_quiet_without_a_state_store() {
+        let engine = HookEngine::new(None);
+        let result = engine.handle_at(&event_in(HookEventName::PermissionDenied, "s", "/w/p"), HostSource::Claude, 5);
+        assert!(result.notice.is_none());
+    }
+
+    #[test]
+    fn session_end_forgets_the_session_without_a_notice() {
+        let dir = state_dir("end");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let engine = engine_with(&state, DebriefConfiguration::default());
+        engine.handle_at(&event_in(HookEventName::SessionStart, "a", "/w/debrief"), HostSource::Claude, 10);
+        engine.handle_at(&event_in(HookEventName::SessionStart, "b", "/w/richell"), HostSource::Claude, 10);
+        let both = engine.handle_at(&event_in(HookEventName::PermissionRequest, "a", "/w/debrief"), HostSource::Claude, 20);
+        assert!(both.notice.unwrap().envelope.text.starts_with("debrief. "));
+
+        let end = engine.handle_at(&event_in(HookEventName::SessionEnd, "b", "/w/richell"), HostSource::Claude, 30);
+        assert_eq!(end.stdout, b"{}");
+        assert!(end.notice.is_none());
+        let alone = engine.handle_at(&event_in(HookEventName::PermissionRequest, "a", "/w/debrief"), HostSource::Claude, 40);
+        assert_eq!(
+            alone.notice.unwrap().envelope.text,
+            "권한 승인을 기다리고 있습니다.",
+            "끝난 세션 때문에 접두가 남지 않는다"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }
