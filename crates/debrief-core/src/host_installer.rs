@@ -317,13 +317,17 @@ impl HostInstaller {
         let mcp_path = Self::mcp_ownership_path(host);
         let fragment = EmbeddedTemplates::mcp_toml_fragment(&self.executable).trim_matches('\n').to_string();
         let digest = InstallerDigest::data(fragment.as_bytes());
-        let existing = if config_url.exists() { fs::read_to_string(&config_url)? } else { String::new() };
+        let mut existing = if config_url.exists() { fs::read_to_string(&config_url)? } else { String::new() };
+        let has_install_record = previous_files.iter().any(|f| f.path == mcp_path);
 
         let mut should_write_config = true;
+        let mut loose_table_healed = false;
         if let Some(current_fragment) = McpTomlConfig::owned_fragment(&existing) {
             let current = InstallerDigest::data(current_fragment.as_bytes());
             let previously_owned = previous_files.iter().any(|f| f.path == mcp_path && f.sha256 == current);
-            if current != digest && !previously_owned {
+            // 이전에 설치한 블록에서 경로(command)만 달라졌다면 사용자 수정이 아니라 낡은 경로이므로 고친다.
+            let path_drift_only = has_install_record && McpTomlConfig::same_except_command(&current_fragment, &fragment);
+            if current != digest && !previously_owned && !path_drift_only {
                 preserved.push(config_url.to_string_lossy().to_string());
                 if let Some(previous) = previous_files.iter().find(|f| f.path == mcp_path) {
                     owned_files.push(previous.clone());
@@ -331,17 +335,27 @@ impl HostInstaller {
                 should_write_config = false;
             }
         } else if McpTomlConfig::has_debrief_table(&existing) && !McpTomlConfig::has_markers(&existing) {
-            // 소유하지 않는 외부 테이블 — 덮어쓰지 않는다.
-            preserved.push(config_url.to_string_lossy().to_string());
-            if let Some(previous) = previous_files.iter().find(|f| f.path == mcp_path) {
-                owned_files.push(previous.clone());
+            // 마커가 깨졌어도 이전에 설치한 기록이 있고 경로만 다른 테이블이면 그 자리에서 복구한다.
+            // 그 밖의 테이블은 소유하지 않는 외부 테이블이므로 덮어쓰지 않는다.
+            let healed = has_install_record
+                .then(|| McpTomlConfig::replace_loose_table(&existing, &fragment))
+                .flatten()
+                .filter(|(body, _)| McpTomlConfig::same_except_command(body, &fragment));
+            if let Some((_, merged)) = healed {
+                existing = merged;
+                loose_table_healed = true;
+            } else {
+                preserved.push(config_url.to_string_lossy().to_string());
+                if let Some(previous) = previous_files.iter().find(|f| f.path == mcp_path) {
+                    owned_files.push(previous.clone());
+                }
+                should_write_config = false;
             }
-            should_write_config = false;
         }
 
         if should_write_config {
             Self::backup_if_needed(&config_url)?;
-            let merged = McpTomlConfig::upsert(&existing, &fragment);
+            let merged = if loose_table_healed { existing.clone() } else { McpTomlConfig::upsert(&existing, &fragment) };
             AtomicInstallerFile::write(merged.as_bytes(), &config_url, 0o600)?;
             owned_files.push(OwnedInstalledFile { host, path: mcp_path, sha256: digest });
         }
@@ -973,6 +987,75 @@ mod tests {
         for name in EmbeddedTemplates::SKILL_NAMES {
             assert!(home.join(format!(".grok/skills/debrief-{name}/SKILL.md")).exists());
         }
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    fn install_codex(home: &Path, executable: &str) -> HostInstallResult {
+        HostInstaller::new(home.to_path_buf(), PathBuf::from(executable), None)
+            .install(&[HostSource::Codex].into_iter().collect())
+            .unwrap()
+    }
+
+    #[test]
+    fn install_heals_path_drift_inside_owned_toml_block() {
+        let home = temporary_home();
+        let codex_config = home.join(".codex/config.toml");
+        install_codex(&home, "/tmp/debrief-bin");
+        let drifted = fs::read_to_string(&codex_config).unwrap().replace("/tmp/debrief-bin", "/opt/homebrew/bin/debrief");
+        fs::write(&codex_config, drifted).unwrap();
+
+        let result = install_codex(&home, "/tmp/debrief-bin");
+
+        let toml = fs::read_to_string(&codex_config).unwrap();
+        assert!(toml.contains("command = \"/tmp/debrief-bin\""));
+        assert!(!toml.contains("/opt/homebrew/bin/debrief"));
+        assert_eq!(toml.matches("[mcp_servers.debrief]").count(), 1);
+        assert!(result.preserved_modified_files.is_empty(), "{:?}", result.preserved_modified_files);
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn install_heals_markerless_table_left_by_a_previous_install() {
+        let home = temporary_home();
+        let codex_config = home.join(".codex/config.toml");
+        install_codex(&home, "/tmp/debrief-bin");
+        // 설치 뒤 BEGIN 마커만 사라지고 경로가 바뀐 실제 사례를 재현한다.
+        let installed = fs::read_to_string(&codex_config).unwrap();
+        let broken = installed
+            .replace("# BEGIN debrief-mcp\n", "")
+            .replace("/tmp/debrief-bin", "/opt/homebrew/bin/debrief");
+        let broken = format!("[mcp_servers.keep]\ncommand = \"keep\"\n\n{broken}\n[mcp_servers.after]\ncommand = \"after\"\n");
+        fs::write(&codex_config, broken).unwrap();
+
+        let result = install_codex(&home, "/tmp/debrief-bin");
+
+        let toml = fs::read_to_string(&codex_config).unwrap();
+        assert_eq!(toml.matches("# BEGIN debrief-mcp").count(), 1);
+        assert_eq!(toml.matches("# END debrief-mcp").count(), 1);
+        assert_eq!(toml.matches("[mcp_servers.debrief]").count(), 1);
+        assert!(toml.contains("command = \"/tmp/debrief-bin\""));
+        assert!(!toml.contains("/opt/homebrew/bin/debrief"));
+        assert!(toml.contains("[mcp_servers.keep]") && toml.contains("[mcp_servers.after]"), "{toml}");
+        assert!(result.preserved_modified_files.is_empty(), "{:?}", result.preserved_modified_files);
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn install_still_preserves_a_customized_owned_toml_block() {
+        let home = temporary_home();
+        let codex_config = home.join(".codex/config.toml");
+        install_codex(&home, "/tmp/debrief-bin");
+        let customized = fs::read_to_string(&codex_config).unwrap().replace("enabled = true", "enabled = false");
+        fs::write(&codex_config, customized).unwrap();
+
+        let result = install_codex(&home, "/tmp/debrief-bin");
+
+        let toml = fs::read_to_string(&codex_config).unwrap();
+        assert!(toml.contains("enabled = false"), "사용자가 바꾼 값은 보존한다");
+        assert!(result.preserved_modified_files.contains(&codex_config.to_string_lossy().to_string()));
 
         fs::remove_dir_all(&home).ok();
     }

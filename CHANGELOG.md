@@ -3,6 +3,12 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [Unreleased]
+
+### 수정
+
+- `debrief install`이 Codex/Grok `config.toml`의 debrief 블록에서 설치 경로(`command`)만 달라진 경우를 고치지 못하고 사용자 수정으로 보존만 하던 문제. 이전에 debrief가 설치한 기록이 있고 `command` 줄을 빼면 우리 조각과 같다면 낡은 경로로 보고 복구합니다. BEGIN 마커만 사라진 블록도 같은 조건에서 제자리에서 복구합니다. 다른 값을 직접 바꾼 블록과 설치 기록이 없는 외부 `debrief` 테이블은 이전처럼 보존합니다. 이 문제로 `debrief doctor`가 권하는 `install --codex --repair`가 `mcp.codex.stalePath`를 고치지 못했습니다.
+
 ## [0.1.3] - 2026-10-04
 
 업그레이드 후 `debrief install --repair`를 한 번 실행해야 새 훅이 호스트 설정에 들어갑니다. `debrief doctor`가 누락된 이벤트를 알려 줍니다.
