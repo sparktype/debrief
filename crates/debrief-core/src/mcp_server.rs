@@ -614,10 +614,10 @@ mod tests {
         let server = McpServer::new(home.clone(), RecordingSink(Default::default()), NoopInstallRunner);
 
         server.call_tool("speak", &speak_args(Some("s1"), "subagent"));
-        assert_eq!(store.update(now, |s| s.sessions["s1"].spoken).unwrap(), false);
+        assert!(!store.update(now, |s| s.sessions["s1"].spoken).unwrap());
 
         server.call_tool("speak", &speak_args(Some("s1"), "main"));
-        assert_eq!(store.update(now, |s| s.sessions["s1"].spoken).unwrap(), true);
+        assert!(store.update(now, |s| s.sessions["s1"].spoken).unwrap());
 
         std::fs::remove_dir_all(&home).ok();
     }

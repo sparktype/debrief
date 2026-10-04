@@ -190,6 +190,15 @@ impl<'a> Diagnostics<'a> {
             recovery: if snapshot.launch_agent_installed { None } else { Some(recovery) },
         });
 
+        if DebriefConfiguration::load(&self.paths.config_url).dnd_sync {
+            let readable = crate::macos_dnd::MacosDnd::is_active(&self.paths.home).is_some();
+            findings.push(DiagnosticFinding {
+                code: if readable { "dnd.readable".to_string() } else { "dnd.unreadable".to_string() },
+                ok: readable,
+                recovery: (!readable).then(|| "방해금지 상태 파일을 읽을 수 없어 연동이 꺼진 것처럼 동작합니다".to_string()),
+            });
+        }
+
         if let Some(error) = self.current_error() {
             findings.push(DiagnosticFinding {
                 code: format!("last_error.{}", error.code),
@@ -569,6 +578,24 @@ mod tests {
         assert!(findings.iter().any(|f| f.code == "mcp.claude.missing" && !f.ok));
         let statuses = Diagnostics::new(&home).host_mcp_statuses();
         assert!(statuses.iter().any(|s| s.host == HostSource::Claude && s.state == crate::host_mcp_status::HostMcpState::Missing));
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn doctor_reports_dnd_readability_only_when_sync_is_on() {
+        let home = temporary_home();
+        let diagnostics = Diagnostics::new(&home);
+        assert!(!diagnostics.doctor().iter().any(|f| f.code.starts_with("dnd.")));
+
+        let config_url = DebriefPaths::for_home(&home).config_url;
+        crate::configuration::DebriefConfiguration { dnd_sync: true, ..Default::default() }.save(&config_url).unwrap();
+        assert!(diagnostics.doctor().iter().any(|f| f.code == "dnd.unreadable" && !f.ok));
+
+        let assertions = crate::macos_dnd::MacosDnd::assertions_url(&home);
+        fs::create_dir_all(assertions.parent().unwrap()).unwrap();
+        fs::write(&assertions, r#"{"data":[{"storeInvalidationRecords":[]}]}"#).unwrap();
+        assert!(diagnostics.doctor().iter().any(|f| f.code == "dnd.readable" && f.ok));
 
         fs::remove_dir_all(&home).ok();
     }

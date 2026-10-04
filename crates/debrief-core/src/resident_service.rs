@@ -150,6 +150,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
 
         let home_for_diagnostics = self.home.clone();
         let config_url = paths.config_url.clone();
+        let home_for_dnd = self.home.clone();
         let intentional_stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let record_error_intentional = intentional_stop.clone();
         let record_error: Arc<crate::debrief_daemon::ErrorRecorder> = Arc::new(move |component, code, message| {
@@ -172,7 +173,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
             SpeechQueue::default(),
             backend,
             (self.audio_factory)(),
-            move || DebriefConfiguration::load(&config_url),
+            move || DebriefConfiguration::load_effective(&config_url, &home_for_dnd),
             Some(record_error),
         ));
 

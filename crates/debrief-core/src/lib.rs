@@ -14,6 +14,7 @@ pub mod host_installer;
 pub mod host_mcp_status;
 pub mod install_manifest;
 pub mod launch_agent_control;
+pub mod macos_dnd;
 pub mod mcp_install_tool;
 pub mod mcp_server;
 pub mod mcp_speak_tool;
