@@ -641,7 +641,8 @@ mod tests {
             for event in EmbeddedTemplates::HOOK_EVENTS {
                 assert_eq!(hooks[event.as_str()].as_array().unwrap().len(), 1);
             }
-            assert!(hooks.get("Stop").is_none());
+            assert!(hooks["Stop"].is_array());
+            assert!(hooks["PermissionRequest"].is_array());
             assert!(hooks.get("SubagentStop").is_none());
         }
 
@@ -696,7 +697,8 @@ mod tests {
         assert!(hooks["SessionStart"].is_array());
         assert!(hooks["UserPromptSubmit"].is_array());
         assert!(hooks["SubagentStart"].is_array());
-        assert!(hooks.get("Stop").is_none());
+        assert!(hooks["Stop"].is_array());
+        assert!(hooks["PermissionRequest"].is_array());
         assert!(hooks.get("SubagentStop").is_none());
         assert!(hooks["PreToolUse"].is_array());
 
@@ -852,7 +854,7 @@ mod tests {
     }
 
     #[test]
-    fn install_removes_retired_owned_stop_hooks() {
+    fn install_removes_retired_owned_subagent_stop_hook_and_keeps_stop_single() {
         let home = temporary_home();
         let executable = PathBuf::from("/tmp/debrief-retired-hooks");
         let codex = home.join(".codex/hooks.json");
@@ -874,7 +876,6 @@ mod tests {
         HostInstaller::new(home.clone(), executable, None).install(&[HostSource::Codex].into_iter().collect()).unwrap();
 
         let hooks = json_at(&codex)["hooks"].clone();
-        assert!(hooks.get("Stop").is_none());
         assert!(hooks.get("SubagentStop").is_none());
         let keys: HashSet<_> = hooks.as_object().unwrap().keys().cloned().collect();
         let expected: HashSet<_> = EmbeddedTemplates::HOOK_EVENTS.iter().map(|e| e.as_str().to_string()).collect();

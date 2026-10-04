@@ -18,9 +18,14 @@ pub struct EmbeddedHookEntry {
 pub struct EmbeddedTemplates;
 
 impl EmbeddedTemplates {
-    /// 시작 계열 훅만 설치한다 — 발화는 Stop 추출이 아니라 MCP `speak`다.
-    pub const HOOK_EVENTS: [HookEventName; 3] =
-        [HookEventName::SessionStart, HookEventName::UserPromptSubmit, HookEventName::SubagentStart];
+    /// 시작 계열 훅 + 권한 요청·Stop(고정 문구 알림용). 브리핑 발화는 Stop 추출이 아니라 MCP `speak`다.
+    pub const HOOK_EVENTS: [HookEventName; 5] = [
+        HookEventName::SessionStart,
+        HookEventName::UserPromptSubmit,
+        HookEventName::SubagentStart,
+        HookEventName::PermissionRequest,
+        HookEventName::Stop,
+    ];
     /// setup = 안내, install = MCP/셸 설치 동작, speak = MCP speak 계약.
     pub const SKILL_NAMES: [&'static str; 3] = ["setup", "install", "speak"];
 
@@ -250,7 +255,7 @@ mod tests {
             EmbeddedTemplates::HOOK_EVENTS.iter().map(|e| e.as_str()).collect();
         assert_eq!(
             event_names,
-            ["SessionStart", "UserPromptSubmit", "SubagentStart"].into_iter().collect()
+            ["SessionStart", "UserPromptSubmit", "SubagentStart", "PermissionRequest", "Stop"].into_iter().collect()
         );
         let skill_keys: std::collections::HashSet<_> =
             EmbeddedTemplates::skills(executable).into_iter().map(|(k, _)| k).collect();
