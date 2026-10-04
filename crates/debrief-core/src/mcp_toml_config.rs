@@ -31,6 +31,40 @@ impl McpTomlConfig {
         }
     }
 
+    /// `command =` 줄을 빼면 두 조각이 같은가. 설치 경로만 달라진 경우를 사용자 수정과 구분한다.
+    pub fn same_except_command(a: &str, b: &str) -> bool {
+        let significant = |text: &str| -> Vec<String> {
+            text.lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with("command ="))
+                .map(str::to_string)
+                .collect()
+        };
+        significant(a) == significant(b)
+    }
+
+    /// 마커가 없거나 한쪽만 남은 `[mcp_servers.debrief]` 테이블을 찾아, 그 자리(와 짝 잃은 마커 줄)를
+    /// 마커로 감싼 `fragment`로 바꾼 전체 텍스트와 이전 테이블 본문을 돌려준다. 테이블이 없으면 `None`.
+    pub fn replace_loose_table(existing: &str, fragment: &str) -> Option<(String, String)> {
+        let lines: Vec<&str> = existing.lines().collect();
+        let start = lines.iter().position(|line| line.trim() == "[mcp_servers.debrief]")?;
+        let is_marker = |line: &str| line.trim() == Self::BEGIN || line.trim() == Self::END;
+        let end = (start + 1..lines.len())
+            .find(|&i| lines[i].trim_start().starts_with('[') || is_marker(lines[i]))
+            .unwrap_or(lines.len());
+        let body = lines[start..end].join("\n").trim_end().to_string();
+
+        // 테이블 앞의 BEGIN, 뒤의 END는 짝을 잃은 우리 마커이므로 함께 교체한다.
+        let from = if start > 0 && lines[start - 1].trim() == Self::BEGIN { start - 1 } else { start };
+        let to = if end < lines.len() && lines[end].trim() == Self::END { end + 1 } else { end };
+
+        let block = format!("{}\n{}\n{}", Self::BEGIN, fragment.trim_matches('\n'), Self::END);
+        let mut merged: Vec<&str> = lines[..from].to_vec();
+        merged.push(&block);
+        merged.extend_from_slice(&lines[to..]);
+        Some((body, merged.join("\n") + "\n"))
+    }
+
     /// 소유권 마커 사이의 내부 조각 (있다면)
     pub fn owned_fragment(existing: &str) -> Option<String> {
         let begin_at = existing.find(Self::BEGIN)?;
@@ -112,5 +146,32 @@ mod tests {
         assert!(!McpTomlConfig::has_markers("no markers here"));
         assert!(McpTomlConfig::has_debrief_table("[mcp_servers.debrief]\ncommand=\"x\""));
         assert!(!McpTomlConfig::has_debrief_table("[mcp_servers.other]"));
+    }
+
+    #[test]
+    fn same_except_command_ignores_only_the_command_line() {
+        let a = "[mcp_servers.debrief]\ncommand = \"/a\"\nargs = [\"mcp\"]";
+        assert!(McpTomlConfig::same_except_command(a, "[mcp_servers.debrief]\ncommand = \"/b\"\nargs = [\"mcp\"]"));
+        assert!(!McpTomlConfig::same_except_command(a, "[mcp_servers.debrief]\ncommand = \"/a\"\nargs = [\"mcp\", \"x\"]"));
+        assert!(!McpTomlConfig::same_except_command(a, "[mcp_servers.debrief]\ncommand = \"/a\"\nargs = [\"mcp\"]\nenabled = false"));
+    }
+
+    #[test]
+    fn replace_loose_table_swaps_table_and_stray_markers_in_place() {
+        let fragment = "[mcp_servers.debrief]\ncommand = \"/new\"";
+        // END만 남은 경우
+        let existing = "[a]\nx = 1\n\n[mcp_servers.debrief]\ncommand = \"/old\"\n# END debrief-mcp\n[z]\ny = 2\n";
+        let (body, merged) = McpTomlConfig::replace_loose_table(existing, fragment).unwrap();
+        assert_eq!(body, "[mcp_servers.debrief]\ncommand = \"/old\"");
+        assert_eq!(
+            merged,
+            "[a]\nx = 1\n\n# BEGIN debrief-mcp\n[mcp_servers.debrief]\ncommand = \"/new\"\n# END debrief-mcp\n[z]\ny = 2\n"
+        );
+        // BEGIN만 남은 경우
+        let existing = "# BEGIN debrief-mcp\n[mcp_servers.debrief]\ncommand = \"/old\"\n";
+        let (_, merged) = McpTomlConfig::replace_loose_table(existing, fragment).unwrap();
+        assert_eq!(merged, "# BEGIN debrief-mcp\n[mcp_servers.debrief]\ncommand = \"/new\"\n# END debrief-mcp\n");
+        // 테이블이 없으면 None
+        assert!(McpTomlConfig::replace_loose_table("[a]\nx = 1\n", fragment).is_none());
     }
 }
