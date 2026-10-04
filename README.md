@@ -12,9 +12,9 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 포함되는 것:
 
-- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `start`, `stop`)
+- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `start`, `stop`)
 - MCP `speak`, `install`
-- Claude / Codex 시작 훅 (SessionStart, UserPromptSubmit, SubagentStart)과 세 호스트용 스킬
+- Claude / Codex 훅 (SessionStart, UserPromptSubmit, SubagentStart 컨텍스트 + PermissionRequest, Stop 고정 문구 알림 + SessionEnd 정리. Claude에는 StopFailure, Notification, Elicitation, PermissionDenied, TeammateIdle, TaskCompleted 알림 추가)과 세 호스트용 스킬
 
 범위 밖:
 
@@ -28,7 +28,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 - 소스 설치에는 Rust 툴체인(`rustup`)
 - 선택적 런타임 의존성: `decide`(`jev-style serve`, `http://127.0.0.1:8765`) — 없어도 전부 동작하며, 있으면 침묵 판단·emotion 선택·우선순위 승격·agent_type 분류·모드 추천을 보강합니다
 
-버전은 `0.1.2`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
+버전은 `0.1.3`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
 
@@ -218,7 +218,7 @@ tool_timeout_sec = 120
 | `emotion` | 아니오 | `neutral` `warm` `focused` `concerned` `relieved` `tired`. 재생 성향만 바꿉니다 |
 | `session` | 아니오 | 호스트 세션 아이디. 같으면 도우미 목소리가 유지됩니다. 없으면 이 MCP 프로세스가 받은 목소리를 씁니다 |
 
-서브에이전트는 사용자를 브리핑하지 않습니다. 말해야 하면 `priority=subagent`, `lane=work`, 사실 한 줄입니다.
+서브에이전트는 사용자를 브리핑하지 않지만, 작업이 끝나면 `priority=subagent`, `lane=work`, 사실 한 줄을 한 번 말합니다.
 
 도구 이름:
 

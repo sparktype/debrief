@@ -15,6 +15,7 @@ pub enum DebriefCommand {
     Mute(Option<String>),
     Mode(Option<String>),
     Companion(Option<String>),
+    Dnd(Option<String>),
     Doctor,
     Hook { source: String },
     Mcp,
@@ -39,7 +40,8 @@ impl DebriefCommand {
                 "Controls (written to config.json; applied on the next utterance):\n",
                 "  debrief mute [on|off|toggle]\n",
                 "  debrief mode [normal|focus|quiet|verbose|night]\n",
-                "  debrief companion [on|off|toggle]\n\n",
+                "  debrief companion [on|off|toggle]\n",
+                "  debrief dnd [on|off|toggle]   (follow macOS Do Not Disturb: at least quiet while it is on)\n\n",
                 "Agents:\n",
                 "  debrief mcp\n",
                 "  debrief hook --source <codex|claude>\n",
@@ -102,6 +104,7 @@ impl DebriefCommand {
                 Ok(DebriefCommand::Mode(Self::optional_choice_set(tail, &allowed, name)?))
             }
             "companion" => Ok(DebriefCommand::Companion(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
+            "dnd" => Ok(DebriefCommand::Dnd(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
             "mcp" => {
                 Self::require_empty(tail, name)?;
                 Ok(DebriefCommand::Mcp)
@@ -184,6 +187,8 @@ impl CliMessages {
     pub const UNMUTED: &'static str = "음소거를 해제했습니다.";
     pub const COMPANION_ON: &'static str = "도우미 음성을 켰습니다.";
     pub const COMPANION_OFF: &'static str = "도우미 음성을 껐습니다.";
+    pub const DND_ON: &'static str = "방해금지 연동을 켰습니다.";
+    pub const DND_OFF: &'static str = "방해금지 연동을 껐습니다.";
     pub const STARTED: &'static str = "서비스를 시작했습니다.";
     pub const STOPPED: &'static str = "서비스를 중지했습니다.";
     pub const ALREADY_RUNNING: &'static str = "이미 실행 중입니다.";
@@ -245,6 +250,9 @@ mod tests {
         assert_eq!(parse(&["mode", "night"]), Ok(DebriefCommand::Mode(Some("night".to_string()))));
         assert_eq!(parse(&["companion"]), Ok(DebriefCommand::Companion(None)));
         assert_eq!(parse(&["companion", "off"]), Ok(DebriefCommand::Companion(Some("off".to_string()))));
+        assert_eq!(parse(&["dnd"]), Ok(DebriefCommand::Dnd(None)));
+        assert_eq!(parse(&["dnd", "on"]), Ok(DebriefCommand::Dnd(Some("on".to_string()))));
+        assert!(parse(&["dnd", "maybe"]).is_err());
         assert_eq!(parse(&["hook", "--source", "claude"]), Ok(DebriefCommand::Hook { source: "claude".to_string() }));
     }
 

@@ -18,9 +18,33 @@ pub struct EmbeddedHookEntry {
 pub struct EmbeddedTemplates;
 
 impl EmbeddedTemplates {
-    /// 시작 계열 훅만 설치한다 — 발화는 Stop 추출이 아니라 MCP `speak`다.
-    pub const HOOK_EVENTS: [HookEventName; 3] =
-        [HookEventName::SessionStart, HookEventName::UserPromptSubmit, HookEventName::SubagentStart];
+    /// 두 호스트가 모두 지원하는 훅. 컨텍스트 주입(시작 계열) + 고정 문구 알림(PermissionRequest·Stop)
+    /// + 세션 정리(SessionEnd). 브리핑 발화는 Stop 추출이 아니라 MCP `speak`다.
+    const COMMON_HOOK_EVENTS: [HookEventName; 6] = [
+        HookEventName::SessionStart,
+        HookEventName::UserPromptSubmit,
+        HookEventName::SubagentStart,
+        HookEventName::PermissionRequest,
+        HookEventName::Stop,
+        HookEventName::SessionEnd,
+    ];
+    /// Claude Code에만 있는 이벤트 — 에이전트가 말할 수 없는 순간의 고정 문구 알림.
+    const CLAUDE_ONLY_HOOK_EVENTS: [HookEventName; 6] = [
+        HookEventName::StopFailure,
+        HookEventName::Notification,
+        HookEventName::Elicitation,
+        HookEventName::PermissionDenied,
+        HookEventName::TeammateIdle,
+        HookEventName::TaskCompleted,
+    ];
+
+    pub fn hook_events(host: HostSource) -> Vec<HookEventName> {
+        let mut events = Self::COMMON_HOOK_EVENTS.to_vec();
+        if host == HostSource::Claude {
+            events.extend(Self::CLAUDE_ONLY_HOOK_EVENTS);
+        }
+        events
+    }
     /// setup = 안내, install = MCP/셸 설치 동작, speak = MCP speak 계약.
     pub const SKILL_NAMES: [&'static str; 3] = ["setup", "install", "speak"];
 
@@ -145,7 +169,7 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | priority | no | `main` / `subagent` |\n\
 | lane | no | `companion` (default) / `work` |\n\
 | emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (prosody bias only) |\n\n\
-Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user. If they speak: `priority=subagent`, `lane=work`, one fact.\n\n\
+Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
 Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. Binary: `{executable}`.",
             title = title,
             tool_intro = tool_intro,
@@ -246,12 +270,14 @@ mod tests {
     fn templates_install_start_hooks_only_and_mcp_meta() {
         let executable = Path::new("/Applications/debrief.app/Contents/MacOS/debrief");
 
-        let event_names: std::collections::HashSet<_> =
-            EmbeddedTemplates::HOOK_EVENTS.iter().map(|e| e.as_str()).collect();
-        assert_eq!(
-            event_names,
-            ["SessionStart", "UserPromptSubmit", "SubagentStart"].into_iter().collect()
-        );
+        let names = |host| -> std::collections::HashSet<&'static str> {
+            EmbeddedTemplates::hook_events(host).iter().map(|e| e.as_str()).collect()
+        };
+        let common = ["SessionStart", "UserPromptSubmit", "SubagentStart", "PermissionRequest", "Stop", "SessionEnd"];
+        assert_eq!(names(HostSource::Codex), common.into_iter().collect());
+        let claude_only =
+            ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted"];
+        assert_eq!(names(HostSource::Claude), common.into_iter().chain(claude_only).collect());
         let skill_keys: std::collections::HashSet<_> =
             EmbeddedTemplates::skills(executable).into_iter().map(|(k, _)| k).collect();
         assert_eq!(skill_keys, ["setup", "install", "speak"].into_iter().collect());
@@ -324,6 +350,7 @@ mod tests {
             assert!(skill.contains("next action"));
             assert!(skill.contains("Silence only"));
             assert!(skill.contains("do not brief"));
+            assert!(skill.contains("when their work is done"));
             assert!(skill.contains("ownership"));
             assert!(!skill.to_lowercase().contains("debrief summarizes"));
         }

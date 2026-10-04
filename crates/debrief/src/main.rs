@@ -243,6 +243,11 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             println!("{}", if updated.companion_enabled { CliMessages::COMPANION_ON } else { CliMessages::COMPANION_OFF });
             Ok(())
         }),
+        DebriefCommand::Dnd(action) => print_configuration_result(|| {
+            let updated = ConfigurationCommands::apply_dnd(action.as_deref(), home)?;
+            println!("{}", if updated.dnd_sync { CliMessages::DND_ON } else { CliMessages::DND_OFF });
+            Ok(())
+        }),
         DebriefCommand::Hook { source } => {
             let Some(host) = (match source.as_str() {
                 "codex" => Some(HostSource::Codex),

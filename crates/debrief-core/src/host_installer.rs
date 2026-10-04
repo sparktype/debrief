@@ -128,7 +128,8 @@ impl HostInstaller {
         let mut hooks = Self::hooks_object(&root)?;
 
         // repair 시 이전에 소유했던 Stop/SubagentStop(및 폐지된 이벤트)을 제거한다.
-        let active_events: HashSet<HookEventName> = EmbeddedTemplates::HOOK_EVENTS.into_iter().collect();
+        let host_events = EmbeddedTemplates::hook_events(host);
+        let active_events: HashSet<HookEventName> = host_events.iter().copied().collect();
         for owned in previous_hooks.iter().filter(|owned| !active_events.contains(&owned.event)) {
             let mut entries = Self::event_entries(owned.event, &hooks)?;
             entries.retain(|entry| InstallerDigest::json(entry).ok().as_deref() != Some(owned.sha256.as_str()));
@@ -139,7 +140,7 @@ impl HostInstaller {
             }
         }
 
-        for event in EmbeddedTemplates::HOOK_EVENTS {
+        for event in host_events {
             let entry = EmbeddedTemplates::hook_entry(&self.executable, host);
             let object = Self::hook_entry_json(&entry);
             let digest = InstallerDigest::json(&object).map_err(|_| HostInstallerError::Io)?;
@@ -608,7 +609,7 @@ mod tests {
         write_json(
             &serde_json::json!({
                 "theme": "dark",
-                "hooks": {"Notification": [{"hooks": [{"type": "command", "command": "keep"}]}]},
+                "hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "keep"}]}]},
             }),
             &claude,
         );
@@ -635,15 +636,20 @@ mod tests {
         assert!(claude_mcp["mcpServers"]["debrief"].is_object());
         assert_eq!(claude_json["theme"], "dark");
 
-        for (root, unrelated) in [(&codex_json, "PreToolUse"), (&claude_json, "Notification")] {
+        for (root, host) in [(&codex_json, HostSource::Codex), (&claude_json, HostSource::Claude)] {
             let hooks = &root["hooks"];
-            assert!(hooks[unrelated].is_array());
-            for event in EmbeddedTemplates::HOOK_EVENTS {
+            assert!(hooks["PreToolUse"].is_array());
+            for event in EmbeddedTemplates::hook_events(host) {
                 assert_eq!(hooks[event.as_str()].as_array().unwrap().len(), 1);
             }
-            assert!(hooks.get("Stop").is_none());
+            assert!(hooks["Stop"].is_array());
+            assert!(hooks["PermissionRequest"].is_array());
+            assert!(hooks["SessionEnd"].is_array());
             assert!(hooks.get("SubagentStop").is_none());
         }
+        // Claude 전용 이벤트는 Codex 설정에 들어가지 않는다.
+        assert!(codex_json["hooks"].get("StopFailure").is_none());
+        assert!(claude_json["hooks"]["StopFailure"].is_array());
 
         for source in [HostSource::Codex, HostSource::Claude] {
             let base = if source == HostSource::Codex { home.join(".agents/skills") } else { home.join(".claude/skills") };
@@ -696,7 +702,8 @@ mod tests {
         assert!(hooks["SessionStart"].is_array());
         assert!(hooks["UserPromptSubmit"].is_array());
         assert!(hooks["SubagentStart"].is_array());
-        assert!(hooks.get("Stop").is_none());
+        assert!(hooks["Stop"].is_array());
+        assert!(hooks["PermissionRequest"].is_array());
         assert!(hooks.get("SubagentStop").is_none());
         assert!(hooks["PreToolUse"].is_array());
 
@@ -747,7 +754,7 @@ mod tests {
         assert!(mcp_servers.get("debrief").is_none());
         let hooks = &codex_json["hooks"];
         assert!(hooks["PreToolUse"].is_array());
-        for event in EmbeddedTemplates::HOOK_EVENTS {
+        for event in EmbeddedTemplates::hook_events(HostSource::Codex) {
             assert!(hooks.get(event.as_str()).is_none());
         }
 
@@ -821,9 +828,12 @@ mod tests {
 
         assert!(modified.exists());
         assert_eq!(result.preserved_modified_files, vec![modified.to_string_lossy().to_string()]);
-        for settings in [home.join(".codex/hooks.json"), home.join(".claude/settings.json")] {
+        for (settings, host) in [
+            (home.join(".codex/hooks.json"), HostSource::Codex),
+            (home.join(".claude/settings.json"), HostSource::Claude),
+        ] {
             let hooks = json_at(&settings)["hooks"].clone();
-            for event in EmbeddedTemplates::HOOK_EVENTS {
+            for event in EmbeddedTemplates::hook_events(host) {
                 assert!(hooks.get(event.as_str()).is_none());
             }
         }
@@ -852,7 +862,7 @@ mod tests {
     }
 
     #[test]
-    fn install_removes_retired_owned_stop_hooks() {
+    fn install_removes_retired_owned_subagent_stop_hook_and_keeps_stop_single() {
         let home = temporary_home();
         let executable = PathBuf::from("/tmp/debrief-retired-hooks");
         let codex = home.join(".codex/hooks.json");
@@ -874,12 +884,12 @@ mod tests {
         HostInstaller::new(home.clone(), executable, None).install(&[HostSource::Codex].into_iter().collect()).unwrap();
 
         let hooks = json_at(&codex)["hooks"].clone();
-        assert!(hooks.get("Stop").is_none());
         assert!(hooks.get("SubagentStop").is_none());
         let keys: HashSet<_> = hooks.as_object().unwrap().keys().cloned().collect();
-        let expected: HashSet<_> = EmbeddedTemplates::HOOK_EVENTS.iter().map(|e| e.as_str().to_string()).collect();
+        let expected: HashSet<_> =
+            EmbeddedTemplates::hook_events(HostSource::Codex).iter().map(|e| e.as_str().to_string()).collect();
         assert_eq!(keys, expected);
-        for event in EmbeddedTemplates::HOOK_EVENTS {
+        for event in EmbeddedTemplates::hook_events(HostSource::Codex) {
             assert_eq!(hooks[event.as_str()].as_array().unwrap().len(), 1);
         }
 

@@ -3,6 +3,29 @@
 이 프로젝트의 주요 변경 사항을 버전별로 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
 
+## [0.1.3] - 2026-10-04
+
+업그레이드 후 `debrief install --repair`를 한 번 실행해야 새 훅이 호스트 설정에 들어갑니다. `debrief doctor`가 누락된 이벤트를 알려 줍니다.
+
+### 추가
+
+- 훅 고정 문구 알림. 에이전트가 말할 수 없는 순간에 훅이 데몬으로 짧은 문구를 직접 보냅니다(LLM 생성 없음, `lane=work`, `mute`로만 꺼짐). 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification `idle_prompt`·`agent_needs_input`, Elicitation), 자동 모드의 도구 호출 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60초) 이상 걸린 턴의 완료가 대상입니다. 잦은 유형에는 2~5분 쿨다운이 있습니다.
+- 에이전트 팀 알림(TeammateIdle·TaskCompleted). `teamNotices`를 켠 경우에만 동작합니다(기본 꺼짐).
+- 멀티 세션 구분. 다른 프로젝트 세션이 30분 안에 활성이면 발화 앞에 프로젝트 이름을 붙입니다(`sessionLabel`, 기본 켜짐). 워크트리 경로는 원래 프로젝트 이름을 씁니다.
+- macOS 방해금지 연동 `debrief dnd [on|off|toggle]`(옵트인, 기본 꺼짐). 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(night은 유지, 저장된 모드는 그대로).
+- `debrief doctor`에 `hooks.<host>.missing`/`complete`(호스트별 훅 이벤트 누락 점검)와 `dnd.readable`/`dnd.unreadable`을 추가했습니다.
+
+### 변경
+
+- 서브에이전트는 사용자에게 브리핑하지 않지만, 작업이 끝나면 `priority=subagent`, `lane=work`로 사실 한 줄을 한 번 말합니다(focus/quiet/night에서는 억제).
+- 설치하는 훅 이벤트가 늘었고 호스트별로 나뉩니다. 공통은 SessionStart, UserPromptSubmit, SubagentStart, PermissionRequest, Stop, SessionEnd이고, Claude에는 StopFailure, Notification, Elicitation, PermissionDenied, TeammateIdle, TaskCompleted가 더해집니다. Stop은 완료 알림 판단에만 쓰며 문장 추출은 하지 않습니다.
+- 세션 상태(프로젝트·턴 시작·발화 여부)를 `session-state.json`에 보관하고 SessionEnd에서 정리합니다.
+
+### 알려진 한계
+
+- Claude 훅 문서가 일부 잘려 `notification_type`·`error_type` 필드명은 확인하지 못했습니다. 필드가 없으면 해당 알림은 나가지 않습니다(침묵).
+- 방해금지가 켜진 상태의 `Assertions.json` 구조는 이 개발 환경에서 직접 관찰하지 못했습니다.
+
 ## [0.1.2] - 2026-10-02
 
 ### 추가
@@ -80,6 +103,8 @@
 - 단일 Swift 실행 파일이 Supertonic 3 모델 설치, 헤드리스 `LaunchAgent`, MCP `speak`/`install`, 호스트별 시작 훅·스킬 배선을 전부 담당합니다.
 - Homebrew 설치: `brew install sparktype/tap/chorus`, 이후 `chorus install` (0.0.2부터 `debrief`로 개명).
 
+[0.1.3]: https://github.com/sparktype/debrief/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/sparktype/debrief/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sparktype/debrief/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sparktype/debrief/compare/v0.0.6...v0.1.0
 [0.0.6]: https://github.com/sparktype/debrief/compare/v0.0.5...v0.0.6

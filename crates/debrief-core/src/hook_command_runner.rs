@@ -5,7 +5,9 @@ use crate::hook_adapter::HookAdapter;
 use crate::hook_engine::HookEngine;
 use crate::hook_event::HostSource;
 use crate::paths::DebriefPaths;
+use crate::session_state::SessionStateStore;
 use crate::session_voice_rotation::SessionVoiceStore;
+use crate::unix_socket::UnixSocketClient;
 
 pub struct HookCommandRunner;
 
@@ -19,8 +21,15 @@ impl HookCommandRunner {
         let configuration = DebriefConfiguration::load(&paths.config_url);
         let http_decide = HttpDecideClient::new(configuration.decide_endpoint.clone());
         let decide: &dyn DecideJudge = if configuration.decide_enabled { &http_decide } else { &NoopDecideClient };
-        let engine = HookEngine::with_decide(Some(&session_voices), decide);
-        let result = engine.handle(&event, source);
+        let session_state = SessionStateStore::new(paths.session_state_url.clone());
+        let engine = HookEngine::with_decide(Some(&session_voices), decide).with_state(&session_state, configuration);
+        let mut result = engine.handle(&event, source);
+        if let Some(notice) = result.notice.take() {
+            match UnixSocketClient::new(paths.socket_url.clone()).submit(&notice) {
+                Ok(()) => result.submitted = true,
+                Err(error) => result.delivery_error = Some(format!("{error:?}")),
+            }
+        }
         let diagnostics = crate::diagnostics::Diagnostics::new(home);
         if result.submitted {
             let _ = diagnostics.clear_current_error();
@@ -101,6 +110,39 @@ mod tests {
         assert!(text.contains("M1"));
         assert!(!text.contains("chorus:speak"));
         assert!(!text.contains("<!--"));
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn permission_request_reaches_the_daemon_socket() {
+        let home = temporary_home();
+        let socket_url = DebriefPaths::for_home(&home).socket_url;
+        let server = std::sync::Arc::new(crate::unix_socket::UnixSocketServer::new(socket_url).unwrap());
+        let accepting = server.clone();
+        let received = std::thread::spawn(move || accepting.accept());
+
+        let payload = br#"{"hook_event_name":"PermissionRequest","session_id":"s","cwd":"/w/debrief","tool_name":"Bash"}"#;
+        let output = HookCommandRunner::run(payload, HostSource::Claude, &home);
+
+        assert_eq!(String::from_utf8(output).unwrap(), "{}");
+        let request = received.join().unwrap().unwrap();
+        assert_eq!(request.envelope.text, "권한 승인을 기다리고 있습니다.");
+        assert_eq!(request.lane, crate::speech_lane::SpeechLane::Work);
+        assert!(crate::diagnostics::Diagnostics::new(&home).current_error().is_none());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn notice_without_daemon_still_succeeds_and_records_the_failure() {
+        let home = temporary_home();
+        let payload = br#"{"hook_event_name":"PermissionRequest","session_id":"s"}"#;
+
+        let output = HookCommandRunner::run(payload, HostSource::Codex, &home);
+
+        assert_eq!(String::from_utf8(output).unwrap(), "{}");
+        assert!(crate::diagnostics::Diagnostics::new(&home).current_error().is_some());
 
         fs::remove_dir_all(&home).ok();
     }

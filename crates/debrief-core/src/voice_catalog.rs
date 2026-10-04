@@ -198,11 +198,11 @@ Silence only if nothing new. No file lists or checklists. No HTML/JSON in the bo
             ),
             HookEventName::SubagentStart => format!(
                 "Subagent: do not brief the user. The main agent speaks what changed and the next action. \
-If you speak, use {tool} once with priority=subagent, lane=work, voice {} ({}): one fact only. \
-focus/quiet/night may suppress subagent. No HTML/JSON speech in the body.",
+Speak once when your work is done: use {tool} with priority=subagent, lane=work, voice {} ({}): one fact only. \
+focus/quiet/night suppress subagent. No HTML/JSON speech in the body.",
                 assignment.voice, assignment.name
             ),
-            HookEventName::SessionStart | HookEventName::Stop | HookEventName::SubagentStop => format!(
+            _ => format!(
                 "debrief turn briefing via {tool}. At the end of each user-visible turn, speak once: two short sentences \
 in the user's language — what changed, then the one next action or wait. The agent writes the line. \
 After writing, changing, or analyzing code, keep the user's code ownership and cut cognitive debt: \
@@ -235,6 +235,8 @@ No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and co
             turn_id: None,
             agent_type: agent_type.map(|s| s.to_string()),
             last_assistant_message: None,
+            cwd: None,
+            subtype: None,
         };
         Self::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient)
     }
@@ -250,9 +252,7 @@ No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and co
     fn recommended_priority(event: HookEventName) -> SpeechPriority {
         match event {
             HookEventName::SubagentStart | HookEventName::SubagentStop => SpeechPriority::Subagent,
-            HookEventName::SessionStart | HookEventName::UserPromptSubmit | HookEventName::Stop => {
-                SpeechPriority::Main
-            }
+            _ => SpeechPriority::Main,
         }
     }
 
@@ -435,6 +435,8 @@ mod tests {
             turn_id: None,
             agent_type: None,
             last_assistant_message: None,
+            cwd: None,
+            subtype: None,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.contains("mcp__debrief__speak"));
@@ -450,12 +452,15 @@ mod tests {
             turn_id: Some("t".to_string()),
             agent_type: Some("planner".to_string()),
             last_assistant_message: None,
+            cwd: None,
+            subtype: None,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.contains("subagent"));
         assert!(text.contains("M1"));
         assert!(text.contains("work") || text.contains("priority"));
         assert!(text.contains("do not brief"));
+        assert!(text.contains("when your work is done"));
     }
 
     #[test]
@@ -466,6 +471,8 @@ mod tests {
             turn_id: None,
             agent_type: None,
             last_assistant_message: None,
+            cwd: None,
+            subtype: None,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.chars().count() < 400);
@@ -484,6 +491,8 @@ mod tests {
             turn_id: None,
             agent_type: None,
             last_assistant_message: None,
+            cwd: None,
+            subtype: None,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
         assert!(text.contains("what changed"));
