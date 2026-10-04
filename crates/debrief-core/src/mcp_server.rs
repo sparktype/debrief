@@ -1,6 +1,7 @@
 // MCP stdio JSON-RPC 서버 (speak + install 도구)
 use crate::debrief_version::DebriefVersion;
 use crate::mcp_speak_tool::McpToolCallResult;
+use crate::speech_request::SpeechPriority;
 use serde_json::{json, Value};
 
 /// 순수 JSON-RPC 메소드 디스패치 (FileHandle 없이 테스트 가능).
@@ -327,18 +328,48 @@ where
         store.claim(&key).ok()
     }
 
+    /// 세션 인자가 있을 때만 (저장소, 세션 id, 현재 시각)을 돌려준다.
+    fn session_state(
+        &self,
+        arguments: &crate::mcp_speak_tool::McpSpeakArguments,
+    ) -> Option<(crate::session_state::SessionStateStore, String, u64)> {
+        let session = arguments.session.clone()?;
+        let store = crate::session_state::SessionStateStore::new(
+            crate::paths::DebriefPaths::for_home(&self.home).session_state_url,
+        );
+        Some((store, session, crate::session_state::now_seconds()))
+    }
+
     fn call_tool(&self, name: &str, arguments: &serde_json::Map<String, Value>) -> McpToolCallResult {
         match name {
             "speak" => match crate::mcp_speak_tool::McpSpeakTool::parse_arguments(arguments) {
-                Ok(parsed) => {
+                Ok(mut parsed) => {
+                    let session_state = self.session_state(&parsed);
+                    if let Some((store, session, now)) = &session_state {
+                        let configuration = crate::configuration::DebriefConfiguration::load(
+                            &crate::paths::DebriefPaths::for_home(&self.home).config_url,
+                        );
+                        if configuration.session_label {
+                            if let Ok(Some(label)) = store.update(*now, |states| states.label_for(session, *now)) {
+                                parsed.text = format!("{label}. {}", parsed.text);
+                            }
+                        }
+                    }
                     let companion_voice = self.companion_voice(&parsed);
-                    crate::mcp_speak_tool::McpSpeakTool::execute_with_decide(
+                    let result = crate::mcp_speak_tool::McpSpeakTool::execute_with_decide(
                         &parsed,
                         &self.sink,
                         &self.diagnostics,
                         companion_voice.as_deref(),
                         self.decide.as_ref(),
-                    )
+                    );
+                    // 서브에이전트 발화는 사용자 브리핑이 아니므로 긴 턴 알림을 막지 않는다.
+                    if let (false, SpeechPriority::Main, Some((store, session, now))) =
+                        (result.is_error, parsed.priority, &session_state)
+                    {
+                        let _ = store.update(*now, |states| states.mark_spoken(session));
+                    }
+                    result
                 }
                 Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
             },
@@ -549,6 +580,70 @@ mod tests {
         let response: Value = serde_json::from_slice(&output[..nl]).unwrap();
         assert_eq!(response["id"], 0);
         assert_eq!(response["result"]["serverInfo"]["name"], "debrief");
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    struct RecordingSink(std::cell::RefCell<Vec<crate::speech_request::SpeechRequest>>);
+    impl crate::mcp_speak_tool::SpeechSink for RecordingSink {
+        type Error = ();
+        fn submit(&self, request: crate::speech_request::SpeechRequest) -> Result<(), ()> {
+            self.0.borrow_mut().push(request);
+            Ok(())
+        }
+    }
+
+    fn speak_args(session: Option<&str>, priority: &str) -> serde_json::Map<String, Value> {
+        let mut args = json!({"text": "hi", "voice": "F1", "speed": 1.0, "volume": 0.5, "lane": "work", "priority": priority});
+        if let Some(session) = session {
+            args["session"] = json!(session);
+        }
+        args.as_object().unwrap().clone()
+    }
+
+    fn state_store(home: &std::path::Path) -> crate::session_state::SessionStateStore {
+        crate::session_state::SessionStateStore::new(crate::paths::DebriefPaths::for_home(home).session_state_url)
+    }
+
+    #[test]
+    fn main_speak_marks_the_turn_as_spoken_but_subagent_does_not() {
+        let home = temporary_home();
+        let store = state_store(&home);
+        let now = crate::session_state::now_seconds();
+        store.update(now, |s| s.begin_turn("s1", now)).unwrap();
+        let server = McpServer::new(home.clone(), RecordingSink(Default::default()), NoopInstallRunner);
+
+        server.call_tool("speak", &speak_args(Some("s1"), "subagent"));
+        assert_eq!(store.update(now, |s| s.sessions["s1"].spoken).unwrap(), false);
+
+        server.call_tool("speak", &speak_args(Some("s1"), "main"));
+        assert_eq!(store.update(now, |s| s.sessions["s1"].spoken).unwrap(), true);
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn speak_prefixes_project_label_only_for_concurrent_projects() {
+        let home = temporary_home();
+        let store = state_store(&home);
+        let now = crate::session_state::now_seconds();
+        store.update(now, |s| s.touch("a", Some("debrief".into()), now)).unwrap();
+        let server = McpServer::new(home.clone(), RecordingSink(Default::default()), NoopInstallRunner);
+
+        server.call_tool("speak", &speak_args(Some("a"), "main"));
+        assert_eq!(server.sink.0.borrow().last().unwrap().envelope.text, "hi", "혼자일 때는 그대로");
+
+        store.update(now, |s| s.touch("b", Some("richell".into()), now)).unwrap();
+        server.call_tool("speak", &speak_args(Some("a"), "main"));
+        assert_eq!(server.sink.0.borrow().last().unwrap().envelope.text, "debrief. hi");
+
+        server.call_tool("speak", &speak_args(None, "main"));
+        assert_eq!(server.sink.0.borrow().last().unwrap().envelope.text, "hi", "세션이 없으면 그대로");
+
+        let config = crate::configuration::DebriefConfiguration { session_label: false, ..Default::default() };
+        config.save(&crate::paths::DebriefPaths::for_home(&home).config_url).unwrap();
+        server.call_tool("speak", &speak_args(Some("a"), "main"));
+        assert_eq!(server.sink.0.borrow().last().unwrap().envelope.text, "hi", "설정으로 끈다");
 
         std::fs::remove_dir_all(&home).ok();
     }

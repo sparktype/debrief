@@ -38,6 +38,7 @@ impl SessionStates {
         let entry = self.sessions.entry(session_id.to_string()).or_default();
         entry.turn_started = Some(now);
         entry.spoken = false;
+        entry.last_seen = now;
     }
 
     pub fn mark_spoken(&mut self, session_id: &str) {
@@ -76,6 +77,10 @@ impl SessionStates {
             }
         }
     }
+}
+
+pub fn now_seconds() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|elapsed| elapsed.as_secs()).unwrap_or(0)
 }
 
 /// `cwd`에서 사용자에게 들려줄 프로젝트 이름을 뽑는다. 워크트리(`.claude/worktrees/<이름>`)면

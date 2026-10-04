@@ -5,7 +5,7 @@ use crate::configuration::DebriefConfiguration;
 use crate::decide_client::{DecideJudge, NoopDecideClient};
 use crate::hook_adapter::HookAdapter;
 use crate::hook_event::{HookEvent, HookEventName, HostSource};
-use crate::session_state::{project_label, SessionStateStore};
+use crate::session_state::{now_seconds, project_label, SessionStateStore};
 use crate::session_voice_rotation::SessionVoiceStore;
 use crate::speech_emotion::SpeechEmotion;
 use crate::speech_envelope::SpeechEnvelope;
@@ -48,11 +48,7 @@ impl<'a> HookEngine<'a> {
     }
 
     pub fn handle(&self, event: &HookEvent, source: HostSource) -> HookResult {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_secs())
-            .unwrap_or(0);
-        self.handle_at(event, source, now)
+        self.handle_at(event, source, now_seconds())
     }
 
     pub fn handle_at(&self, event: &HookEvent, source: HostSource, now: u64) -> HookResult {
