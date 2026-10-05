@@ -1,0 +1,1 @@
+{"eventName":"SubagentStop","conversationId":"codex-s1","turnId":"turn-2","agentId":"agent-1","agentType":"planner","last_assistant_message":"계획을 세웠습니다.\n<!-- chorus:speak {\"v\":1,\"text\":\"계획 수립을 완료했습니다.\",\"voice\":\"M1\",\"speed\":1.1,\"volume\":0.75} -->"}
