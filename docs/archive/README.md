@@ -2,7 +2,7 @@
 
 Python-era and pre–MCP-speak design notes live here for historical reference only.
 
-**Active product specs** (current Swift single-binary TTS):
+**Active product specs** (Swift-era designs, superseded by the Rust rewrite; see `2026-09-30-rust-rewrite-design.md`):
 
 - `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — single binary (envelope contract superseded)
 - `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` — menu bar resident

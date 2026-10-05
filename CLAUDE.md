@@ -17,7 +17,7 @@ debrief는 Codex·Claude Code·Grok용 **로컬 TTS 전용** macOS Apple Silicon
 단일 Rust 실행 파일 `debrief`가 모델 설치, 헤드리스 LaunchAgent, MCP (`speak` · `install`), start-family hook/skill 배선, 합성을 담당합니다.
 
 **Python 런타임은 제거되었습니다.** `hook_voice`, `tts_server`, pytest, FastAPI, Whisper, LLM 요약을 재도입하지 마세요.  
-**Swift 소스는 포팅 전 참고용으로만 리포에 남아 있습니다** (`Sources/`, `SwiftTests/`, `Package.swift`). CI는 빌드·테스트하지 않으며 제품 진실이 아닙니다. 재도입하지 마세요.
+**Swift 소스는 제거되었습니다** (`Sources/`, `SwiftTests/`, `Package.swift`). 재도입하지 마세요.
 
 ## 툴체인 (필수)
 

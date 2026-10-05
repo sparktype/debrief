@@ -18,7 +18,7 @@
   "interface": {
     "displayName": "debrief",
     "shortDescription": "Local voice feedback for coding agents",
-    "longDescription": "Speak only explicit text selected by Codex or Claude Code through a local Swift TTS daemon.",
+    "longDescription": "Speak only explicit text selected by Codex or Claude Code through a local TTS daemon.",
     "developerName": "debrief contributors",
     "category": "Developer Tools",
     "capabilities": [

@@ -20,7 +20,6 @@ dist/
 .superpowers/
 .worktrees/
 .codex/
-.swiftpm/
 .omx/
 xcuserdata/
 *.xcuserstate

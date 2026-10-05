@@ -54,7 +54,7 @@ docs/archive/                 superseded Python-era designs (not product truth)
 .github/workflows/release.yml tag push (v*) builds a release tarball
 ```
 
-Swift sources (`Sources/`, `SwiftTests/`, `Package.swift`) remain in the repository as the pre-rewrite reference until the release pipeline cutover is confirmed working; they are not built or tested by CI and are not product truth.
+The pre-rewrite Swift sources (`Sources/`, `SwiftTests/`, `Package.swift`) have been removed; recover them from git history if needed.
 
 ## Process model
 
@@ -159,7 +159,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs `cargo test --workspace`, `carg
 
 The repository is [github.com/sparktype/debrief](https://github.com/sparktype/debrief). `DebriefVersion::CURRENT` is `0.1.3` (reads the workspace `Cargo.toml` version via `env!("CARGO_PKG_VERSION")`), tag `v0.1.3`. The tap formula is `sparktype/tap/debrief` (`class Debrief`, installs a prebuilt release tarball — no source build or Rust toolchain required on the user's machine). Install with `brew install sparktype/tap/debrief`, then `debrief install`. `Formula/chorus.rb` remains on the tap for tag `v0.0.1` and builds the previous `chorus` binary.
 
-Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`DEBRIEF_TEST_MODEL_DIR` for the real-model smoke test, gated the same way the Swift test suite gated it).
+Release verification should also inspect architecture (`arm64`) and run install + offline speech smoke tests from a clean temporary home when models are available (`DEBRIEF_TEST_MODEL_DIR` for the real-model smoke test).
 
 ## Change rules
 
