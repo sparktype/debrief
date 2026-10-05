@@ -216,10 +216,12 @@ impl McpSpeakTool {
 
     fn number(value: Option<&Value>, name: &str) -> Result<f64, CommandError> {
         match value {
-            Some(Value::Number(n)) => n.as_f64().ok_or_else(|| CommandError::Usage(format!("speak requires number {name}"))),
-            Some(Value::Bool(_)) | None => Err(CommandError::Usage(format!("speak requires number {name}"))),
-            _ => Err(CommandError::Usage(format!("speak requires number {name}"))),
+            Some(Value::Number(n)) => n.as_f64(),
+            // 일부 호스트가 숫자 인자를 문자열로 직렬화한다.
+            Some(Value::String(s)) => s.trim().parse::<f64>().ok().filter(|n| n.is_finite()),
+            _ => None,
         }
+        .ok_or_else(|| CommandError::Usage(format!("speak requires number {name}")))
     }
 
     fn short_error<E: std::fmt::Debug>(error: &E) -> String {
@@ -306,6 +308,26 @@ mod tests {
             ("voice", Value::String("F1".to_string())),
             ("speed", serde_json::json!(0.93)),
             ("volume", Value::Bool(false)),
+        ]))
+        .is_err());
+    }
+
+    #[test]
+    fn parse_accepts_numeric_strings_for_speed_and_volume() {
+        let args = McpSpeakTool::parse_arguments(&obj(&[
+            ("text", Value::String("hi".to_string())),
+            ("voice", Value::String("F1".to_string())),
+            ("speed", Value::String("0.93".to_string())),
+            ("volume", Value::String("0.85".to_string())),
+        ]))
+        .unwrap();
+        assert_eq!(args.speed, 0.93);
+        assert_eq!(args.volume, 0.85);
+        assert!(McpSpeakTool::parse_arguments(&obj(&[
+            ("text", Value::String("hi".to_string())),
+            ("voice", Value::String("F1".to_string())),
+            ("speed", Value::String("fast".to_string())),
+            ("volume", serde_json::json!(0.85)),
         ]))
         .is_err());
     }
