@@ -306,9 +306,10 @@ where
 {
     pub fn new(home: std::path::PathBuf, sink: Sink, install_runner: Runner) -> Self {
         let diagnostics = crate::diagnostics::Diagnostics::new(&home);
-        let configuration = crate::configuration::DebriefConfiguration::load(&crate::paths::DebriefPaths::for_home(&home).config_url);
+        let paths = crate::paths::DebriefPaths::for_home(&home);
+        let configuration = crate::configuration::DebriefConfiguration::load(&paths.config_url);
         let decide: Box<dyn crate::decide_client::DecideJudge> = if configuration.decide_enabled {
-            Box::new(crate::decide_client::HttpDecideClient::new(configuration.decide_endpoint))
+            Box::new(crate::decide_client::SocketDecideClient::new(paths.decide_socket_url))
         } else {
             Box::new(crate::decide_client::NoopDecideClient)
         };

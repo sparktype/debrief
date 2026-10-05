@@ -13,6 +13,7 @@ pub struct DebriefPaths {
     pub config_url: PathBuf,
     pub models_directory: PathBuf,
     pub socket_url: PathBuf,
+    pub decide_socket_url: PathBuf,
     pub pid_url: PathBuf,
     pub executable_url: PathBuf,
     pub launch_agent_url: PathBuf,
@@ -33,6 +34,7 @@ impl DebriefPaths {
             config_url: data_directory.join("config.json"),
             models_directory: data_directory.join("models"),
             socket_url: cache_directory.join("debrief.sock"),
+            decide_socket_url: home.join(".cache/decide/decide.sock"),
             pid_url: cache_directory.join("daemon.pid"),
             executable_url: home.join(".local/bin/debrief"),
             launch_agent_url: home.join("Library/LaunchAgents/com.debrief.tts.plist"),
@@ -57,6 +59,7 @@ mod tests {
         assert_eq!(paths.cache_directory, PathBuf::from("/Users/example/Library/Caches/debrief"));
         assert_eq!(paths.config_url, PathBuf::from("/Users/example/Library/Application Support/debrief/config.json"));
         assert_eq!(paths.socket_url, PathBuf::from("/Users/example/Library/Caches/debrief/debrief.sock"));
+        assert_eq!(paths.decide_socket_url, PathBuf::from("/Users/example/.cache/decide/decide.sock"));
         assert_eq!(paths.launch_agent_url, PathBuf::from("/Users/example/Library/LaunchAgents/com.debrief.tts.plist"));
         assert_eq!(paths.pid_url, PathBuf::from("/Users/example/Library/Caches/debrief/daemon.pid"));
         assert_eq!(paths.last_error_url, PathBuf::from("/Users/example/Library/Caches/debrief/last-error.json"));

@@ -54,8 +54,6 @@ pub struct DebriefConfiguration {
     pub voice_speeds: HashMap<String, f64>,
     #[serde(default = "default_decide_enabled")]
     pub decide_enabled: bool,
-    #[serde(default = "default_decide_endpoint")]
-    pub decide_endpoint: String,
     /// 에이전트가 말하지 않은 턴이 이 시간(초) 이상 걸렸으면 Stop 훅이 알린다. 0이면 끈다.
     #[serde(default = "default_long_turn_seconds")]
     pub long_turn_seconds: u64,
@@ -90,10 +88,6 @@ fn default_session_label() -> bool {
     true
 }
 
-fn default_decide_endpoint() -> String {
-    "http://127.0.0.1:8765".to_string()
-}
-
 impl Default for DebriefConfiguration {
     fn default() -> Self {
         DebriefConfiguration {
@@ -104,7 +98,6 @@ impl Default for DebriefConfiguration {
             category_voices: HashMap::new(),
             voice_speeds: HashMap::new(),
             decide_enabled: default_decide_enabled(),
-            decide_endpoint: default_decide_endpoint(),
             long_turn_seconds: default_long_turn_seconds(),
             session_label: default_session_label(),
             dnd_sync: false,
@@ -285,10 +278,9 @@ mod tests {
     }
 
     #[test]
-    fn decide_fields_default_to_enabled_local_endpoint() {
+    fn decide_enabled_defaults_to_true() {
         let configuration = DebriefConfiguration::default();
         assert!(configuration.decide_enabled);
-        assert_eq!(configuration.decide_endpoint, "http://127.0.0.1:8765");
     }
 
     #[test]
@@ -299,7 +291,6 @@ mod tests {
 
         let loaded = DebriefConfiguration::load(&url);
         assert!(loaded.decide_enabled);
-        assert_eq!(loaded.decide_endpoint, "http://127.0.0.1:8765");
 
         fs::remove_dir_all(&directory).ok();
     }
@@ -311,14 +302,12 @@ mod tests {
 
         let configuration = DebriefConfiguration {
             decide_enabled: false,
-            decide_endpoint: "http://127.0.0.1:9000".to_string(),
             ..Default::default()
         };
         configuration.save(&url).unwrap();
 
         let loaded = DebriefConfiguration::load(&url);
         assert!(!loaded.decide_enabled);
-        assert_eq!(loaded.decide_endpoint, "http://127.0.0.1:9000");
 
         fs::remove_dir_all(&directory).ok();
     }

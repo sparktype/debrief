@@ -14,7 +14,7 @@ debrief is a macOS 14+ Apple Silicon TTS service delivered as one Rust executabl
 
 The coding agent owns summarization and selects spoken text and voice parameters.
 
-Optional runtime dependency: `decide` (`jev-style serve`, `http://127.0.0.1:8765`) — a local judgment model returning only probabilities/choices, never generated text. When reachable it augments silence gating, `emotion: "auto"` selection, subagent→main priority promotion, unregistered `agent_type` classification, and `debrief doctor`'s mode recommendation (`DebriefConfiguration.decideEnabled`/`decideEndpoint`). Every call fails open: unreachable, timed out, or disabled falls straight back to existing behavior.
+Optional runtime dependency: `decide` (`decide daemon`, Unix socket `~/.cache/decide/decide.sock`; requests carry `client_version`, which must match the installed `decide` — a stale reply falls back like any failure) — a local judgment model returning only probabilities/choices, never generated text. When reachable it augments silence gating, `emotion: "auto"` selection, subagent→main priority promotion, unregistered `agent_type` classification, and `debrief doctor`'s mode recommendation (`DebriefConfiguration.decideEnabled`). Every call fails open: unreachable, timed out, or disabled falls straight back to existing behavior.
 
 ## Source layout
 

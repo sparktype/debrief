@@ -65,7 +65,7 @@ cargo build --release
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
 - 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
-- `decide`(로컬 판단 모델, `jev-style serve` `http://127.0.0.1:8765`) 선택적 연동 — 텍스트를 생성하지 않고 확률/선택만 반환하는 보강 전용. `DebriefConfiguration.decideEnabled`/`decideEndpoint`로 토글(기본 활성화). `decide` 불가·타임아웃·연결 끊김 시 전부 기존 동작으로 즉시 폴백(fail-open). 적용 지점:
+- `decide`(로컬 판단 모델, `decide daemon`의 UDS `~/.cache/decide/decide.sock`) 선택적 연동 — 텍스트를 생성하지 않고 확률/선택만 반환하는 보강 전용. `DebriefConfiguration.decideEnabled`로 토글(기본 활성화). `decide` 불가·타임아웃·연결 끊김 시 전부 기존 동작으로 즉시 폴백(fail-open). 적용 지점:
   - 미등록 `agent_type` 역할 분류 (`voice_catalog.rs::assignment_with_decide`) — 정적 매핑에 없을 때만 호출
   - MCP `speak`(`mcp_speak_tool.rs::execute_with_decide`): main+companion 브리핑의 침묵 판단, `emotion: "auto"` 선택, subagent→main priority 승격
   - `debrief doctor`(`diagnostics.rs::doctor_report_text_with_decide`): `decide.reachable` 상태 + 참고용 모드 추천(자동 적용 없음, `debrief mode`는 사용자가 직접)
