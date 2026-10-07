@@ -17,3 +17,10 @@
 - [x] cargo test --workspace 253건 통과, clippy -D warnings 통과, release 빌드 성공
 - [ ] 릴리스 후 sparktype/claude-plugins의 debrief-tune·debrief-voices 스킬을 "동작함"으로 정정
 - [ ] voiceSpeeds 연결 여부 결정
+
+## 2026-10-07 의존성 업그레이드
+- [x] cargo-audit 설치, 업그레이드 전 `cargo audit` 취약점·경고 없음(197개 크레이트, 권고 1293건)
+- [x] `cargo update`로 호환 업데이트 5개 반영(cc, libc, objc2, powerfmt, zeroize)
+- [x] ort 요구 버전을 잠금과 같은 rc.13으로 맞춤
+- [x] 업그레이드 후 test 253건·clippy·release 빌드·`cargo audit` 통과
+- [ ] sha2 0.11 업그레이드는 보류(7개 파일 약 54곳, 설치·무결성 경로)
