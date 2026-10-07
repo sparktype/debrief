@@ -8,3 +8,12 @@
 - [x] 문서: CLAUDE.md, README/DEVELOPER/ONBOARDING, reflective-companion 스펙 errata
 - [x] `./scripts/with-xcode.sh swift test` + release 빌드
 - [x] 커밋
+
+## 2026-10-07 categoryVoices 연결
+- [x] 실패하는 테스트 먼저(voice_catalog 5건, hook_engine 1건)
+- [x] `VoiceCatalog::context_with_voices` 추가, `context`는 빈 맵으로 위임
+- [x] `HookEngine`이 설정의 `category_voices`를 넘김
+- [x] README 설정 표 갱신
+- [x] cargo test --workspace 253건 통과, clippy -D warnings 통과, release 빌드 성공
+- [ ] 릴리스 후 sparktype/claude-plugins의 debrief-tune·debrief-voices 스킬을 "동작함"으로 정정
+- [ ] voiceSpeeds 연결 여부 결정

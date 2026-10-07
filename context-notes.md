@@ -15,3 +15,11 @@
 - CI(Swift 6.1.2, 적은 코어)에서만 실패한 이유는 미확정. CI 통과 여부로 확인한다.
 - 정정: 1차 수정(ACK 2초)만으로는 CI가 실패했고 오히려 더 오래 막혔다. 존재하지 않는 소켓 연결 테스트가 4초 걸린 것은 클라이언트 Task.detached가 협력 스레드 풀 고갈로 시작하지 못했다는 뜻이다. 150ms는 원인이 아니라 증상.
 - 2차 수정: 클라이언트의 블로킹 syscall을 서버 accept처럼 DispatchQueue.global로 옮겨 협력 풀을 붙잡지 않게 한다.
+
+## 2026-10-07 categoryVoices 연결
+- 역할 목소리는 재생 경로가 아니라 훅이 에이전트에게 안내하는 문구(SubagentStart·시작 훅의 "role voice")에만 쓰인다. 실제 재생 목소리는 에이전트가 speak에 넘기는 `voice`다. 그래서 연결 지점은 `voice_catalog.rs`의 context 생성 하나이고 MCP·데몬은 건드리지 않았다.
+- `context` 시그니처를 바꾸면 기존 호출과 테스트가 줄줄이 깨져서, 새 `context_with_voices`를 만들고 `context`는 빈 맵으로 위임하게 했다.
+- 덮어쓰는 것은 voice와 name뿐이고 baseline_speed는 역할 값을 유지한다(속도는 voiceSpeeds의 몫이며 아직 연결하지 않았다).
+- 허용 목록(F1–M5)에 없는 값, 알 수 없는 역할 키는 조용히 무시한다(fail-open, 기존 동작).
+- 도우미(companion) 세션 목소리 로테이션은 건드리지 않는다. `default` 키로 미등록 에이전트의 목소리는 바꿀 수 있다.
+- 플러그인 스킬(sparktype/claude-plugins)은 아직 "효과 없음"으로 적혀 있다. 이 변경이 릴리스되기 전에는 그 설명이 현재 배포본에 맞다.

@@ -169,6 +169,13 @@ impl VoiceCatalog {
         }
     }
 
+    fn with_category_voice(assignment: VoiceAssignment, category_voices: &HashMap<String, String>) -> VoiceAssignment {
+        let Some(voice) = category_voices.get(&assignment.category).filter(|v| ALLOWED_VOICE_IDS.contains(*v)) else {
+            return assignment;
+        };
+        VoiceAssignment { voice: voice.clone(), name: Self::persona_for_voice(voice).name, ..assignment }
+    }
+
     pub fn persona_for_voice(voice: &str) -> VoiceAssignment {
         ASSIGNMENTS
             .values()
@@ -183,7 +190,22 @@ impl VoiceCatalog {
         session_voice: Option<&str>,
         decide: &dyn crate::decide_client::DecideJudge,
     ) -> String {
-        let assignment = Self::assignment_with_decide(event.agent_type.as_deref(), decide);
+        Self::context_with_voices(event, source, session_voice, decide, &HashMap::new())
+    }
+
+    /// `context`와 같지만 설정의 `categoryVoices`(역할 이름 → 보이스)로 역할 보이스를 덮어쓴다.
+    /// 허용 목록에 없는 보이스나 알 수 없는 역할 키는 무시한다. 도우미(세션) 보이스는 바꾸지 않는다.
+    pub fn context_with_voices(
+        event: &HookEvent,
+        source: HostSource,
+        session_voice: Option<&str>,
+        decide: &dyn crate::decide_client::DecideJudge,
+        category_voices: &HashMap<String, String>,
+    ) -> String {
+        let assignment = Self::with_category_voice(
+            Self::assignment_with_decide(event.agent_type.as_deref(), decide),
+            category_voices,
+        );
         let tool = Self::tool_reference(source);
         let priority = Self::recommended_priority(event.name);
         let companion = Self::persona_for_voice(session_voice.unwrap_or("F1"));
@@ -504,5 +526,72 @@ mod tests {
         assert!(!text.to_lowercase().contains("menu bar"));
         assert!(!text.contains("menubar"));
         assert!(!text.to_lowercase().contains("debrief summarizes"));
+    }
+
+    fn subagent_event(agent_type: &str) -> HookEvent {
+        HookEvent {
+            name: HookEventName::SubagentStart,
+            session_id: "s".to_string(),
+            turn_id: None,
+            agent_type: Some(agent_type.to_string()),
+            last_assistant_message: None,
+            cwd: None,
+            subtype: None,
+        }
+    }
+
+    fn voices(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    fn subagent_context(agent_type: &str, category_voices: &HashMap<String, String>) -> String {
+        VoiceCatalog::context_with_voices(
+            &subagent_event(agent_type),
+            HostSource::Claude,
+            None,
+            &crate::decide_client::NoopDecideClient,
+            category_voices,
+        )
+    }
+
+    #[test]
+    fn category_voices_override_the_role_voice_and_name() {
+        let text = subagent_context("code-reviewer", &voices(&[("reviewer", "F3")]));
+        assert!(text.contains("voice F3 (제인)"), "{text}");
+        assert!(!text.contains("M2"), "{text}");
+    }
+
+    #[test]
+    fn category_voices_ignore_unknown_voice_ids_and_other_categories() {
+        let invalid = subagent_context("code-reviewer", &voices(&[("reviewer", "X9")]));
+        assert!(invalid.contains("voice M2 (빌)"), "{invalid}");
+        let other = subagent_context("code-reviewer", &voices(&[("planner", "F3")]));
+        assert!(other.contains("voice M2 (빌)"), "{other}");
+    }
+
+    #[test]
+    fn category_voices_can_override_the_default_category() {
+        let text = subagent_context("unknown-agent", &voices(&[("default", "M5")]));
+        assert!(text.contains("voice M5 (팀)"), "{text}");
+    }
+
+    #[test]
+    fn empty_category_voices_match_the_plain_context() {
+        let event = subagent_event("code-reviewer");
+        let plain = VoiceCatalog::context(&event, HostSource::Claude, None, &crate::decide_client::NoopDecideClient);
+        assert_eq!(plain, subagent_context("code-reviewer", &HashMap::new()));
+    }
+
+    #[test]
+    fn category_voices_do_not_change_the_companion_voice() {
+        let event = HookEvent { name: HookEventName::UserPromptSubmit, ..subagent_event("code-reviewer") };
+        let text = VoiceCatalog::context_with_voices(
+            &event,
+            HostSource::Claude,
+            Some("F4"),
+            &crate::decide_client::NoopDecideClient,
+            &voices(&[("reviewer", "F3")]),
+        );
+        assert!(text.contains("voice F4 (셰릴)"), "{text}");
     }
 }

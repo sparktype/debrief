@@ -61,7 +61,13 @@ impl<'a> HookEngine<'a> {
                 } else {
                     self.session_voices.and_then(|store| store.claim(&event.session_id).ok())
                 };
-                let context = VoiceCatalog::context(event, source, session_voice.as_deref(), self.decide);
+                let context = VoiceCatalog::context_with_voices(
+                    event,
+                    source,
+                    session_voice.as_deref(),
+                    self.decide,
+                    &self.configuration.category_voices,
+                );
                 let stdout = HookAdapter::context_output(&context, event);
                 HookResult { stdout, submitted: false, delivery_error: None, notice }
             }
@@ -413,6 +419,29 @@ mod tests {
 
     fn engine_with<'a>(state: &'a SessionStateStore, configuration: DebriefConfiguration) -> HookEngine<'a> {
         HookEngine::new(None).with_state(state, configuration)
+    }
+
+    #[test]
+    fn category_voices_setting_changes_the_subagent_role_voice() {
+        let dir = state_dir("category-voices");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let event = HookEvent {
+            agent_type: Some("code-reviewer".to_string()),
+            ..event_in(HookEventName::SubagentStart, "s", "/w/p")
+        };
+        let spoken = |configuration: DebriefConfiguration| {
+            let result = engine_with(&state, configuration).handle_at(&event, HostSource::Claude, 1);
+            String::from_utf8(result.stdout).unwrap()
+        };
+
+        assert!(spoken(DebriefConfiguration::default()).contains("M2"));
+        let configured = DebriefConfiguration {
+            category_voices: [("reviewer".to_string(), "F3".to_string())].into(),
+            ..DebriefConfiguration::default()
+        };
+        let text = spoken(configured);
+        assert!(text.contains("F3") && text.contains("제인") && !text.contains("M2"), "{text}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

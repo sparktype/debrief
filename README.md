@@ -172,7 +172,7 @@ debrief status
 | `mode` | `normal` `focus` `quiet` `verbose` `night` | `debrief mode` |
 | `companionEnabled` | 끄면 companion lane만 빠집니다 | `debrief companion` |
 | `volumeCeilings` | 모드별 볼륨 상한. 위 표의 기본값 | CLI는 이 맵을 바꾸지 않습니다 |
-| `categoryVoices` | 역할 이름과 목소리. 비어 있으면 아래 역할 기본값 | 설치가 비워 둡니다 |
+| `categoryVoices` | 역할 이름 → 목소리(`F1`–`M5`). 훅이 서브에이전트·작업 레인에 안내하는 역할 목소리를 덮어씁니다. 비어 있거나 알 수 없는 역할·목소리는 아래 역할 기본값 | 설정 파일을 직접 고칩니다 |
 | `voiceSpeeds` | 역할별 속도. 비어 있으면 요청의 `speed` | 설치가 비워 둡니다 |
 
 호스트 배선은 설정 파일과 별개입니다. `debrief install`이 절대 경로로 넣고, `debrief install --repair`가 소유한 파일만 다시 맞춥니다. 직접 고친 파일은 다이제스트가 다르면 남습니다.
