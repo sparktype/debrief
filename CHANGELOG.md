@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-14
+
+업그레이드 후 `debrief install --repair`(또는 `debrief stop` 후 `debrief start`)로 데몬을 재시작하세요. 재시작 전의 구버전 데몬은 `skip`·`replay`에 "지원하지 않습니다"로 답하고, 자동 압축 완료음 요청을 빈 발화로 받아 합성 오류를 한 번 기록할 수 있습니다.
+
+### 변경
+
+- MCP `speak` 성공 응답이 `{"ok":true}`에서 `{"ok":true,"mode":"<유효 모드>"}`로 바뀌었습니다(음소거면 `"muted":true` 추가). `ok`는 그대로입니다.
+
 ### 추가
 
 - `debrief replay [n]`·`debrief skip [--all]`: 최근 재생한 발화(최대 10개, 데몬 메모리)를 다시 듣고, 재생 중인 발화를 끊거나 대기열까지 비웁니다. 데몬 소켓에 제어 명령을 더했습니다.
@@ -121,6 +129,7 @@
 - 단일 Swift 실행 파일이 Supertonic 3 모델 설치, 헤드리스 `LaunchAgent`, MCP `speak`/`install`, 호스트별 시작 훅·스킬 배선을 전부 담당합니다.
 - Homebrew 설치: `brew install sparktype/tap/chorus`, 이후 `chorus install` (0.0.2부터 `debrief`로 개명).
 
+[0.2.0]: https://github.com/sparktype/debrief/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/sparktype/debrief/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/sparktype/debrief/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sparktype/debrief/compare/v0.1.0...v0.1.1
