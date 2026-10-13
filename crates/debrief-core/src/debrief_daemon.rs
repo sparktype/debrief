@@ -100,7 +100,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             }
         }
         let configuration = (self.configuration)();
-        ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration)?;
+        ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration, request.decision)?;
 
         {
             let mut state = self.state.lock().unwrap();
@@ -180,7 +180,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                     let discard = state.lock().unwrap().discard_active;
                     if !discard {
                         if let Some(gain) =
-                            ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration())
+                            ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration(), request.decision)
                         {
                             let _ = audio.play(&buffer, gain);
                         }
