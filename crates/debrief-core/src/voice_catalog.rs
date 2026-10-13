@@ -198,7 +198,8 @@ an assumption you made, how to check or undo). Skip it for trivial changes. \
 Silence only if nothing new and no next action. Voice {} ({}), \
 speed ~{}, volume ~0.85, lane=companion, session={}. \
 The server keeps that companion voice for this session. \
-emotion from neutral|warm|focused|concerned|relieved|tired (prosody only). \
+emotion: concerned when blocked or failing, relieved when a blocker clears, warm after long work, \
+focused mid-task, tired rarely, else neutral (relieved adds a light laugh, warm a breath, tired a sigh). \
 Optional work lane for pure facts with role voice {} ({}), speed ~{}. \
 Required args: text, voice, speed, volume. Optional: priority ({} default here), lane, emotion, session. \
 No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and companion: debrief mute, debrief mode, debrief companion.",
@@ -440,6 +441,24 @@ mod tests {
         assert!(!text.to_lowercase().contains("menu bar"));
         assert!(!text.contains("menubar"));
         assert!(!text.to_lowercase().contains("debrief summarizes"));
+    }
+
+    #[test]
+    fn session_start_says_when_to_pick_each_emotion() {
+        let event = HookEvent {
+            name: HookEventName::SessionStart,
+            session_id: "s".to_string(),
+            turn_id: None,
+            agent_type: None,
+            last_assistant_message: None,
+            cwd: None,
+            subtype: None,
+        };
+        let text = VoiceCatalog::context(&event, HostSource::Claude, None);
+        assert!(text.contains("concerned when blocked or failing"));
+        assert!(text.contains("relieved when a blocker clears"));
+        assert!(text.contains("warm after long work"));
+        assert!(!text.contains("prosody only"));
     }
 
     fn subagent_event(agent_type: &str) -> HookEvent {

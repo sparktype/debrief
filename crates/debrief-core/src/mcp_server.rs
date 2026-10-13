@@ -72,7 +72,7 @@ impl McpJsonRpc {
                 "At the end of each user-visible turn, speak once: two short sentences — what changed, then the one next action. \
 The agent writes the line. After code work, the next action names what the user must verify to keep code ownership. \
 Silence only if nothing new. \
-lane=companion rotates one voice per session across F1–M5 (pass session to keep it) or work uses the voice you pass; emotion biases prosody only. \
+lane=companion rotates one voice per session across F1–M5 (pass session to keep it) or work uses the voice you pass; emotion sets pace, sentence pauses, and a soft cue (relieved laugh, warm breath, tired sigh). \
 On Claude Code: mcp__debrief__speak; on Grok: debrief__speak (search_tool/use_tool). \
 Do not put HTML comments or JSON speech metadata in the assistant message body.",
             "inputSchema": {
@@ -94,7 +94,7 @@ Do not put HTML comments or JSON speech metadata in the assistant message body."
                     },
                     "emotion": {
                         "type": "string",
-                        "description": "restrained affect for companion: neutral (default), warm, focused, concerned, relieved, tired",
+                        "description": "restrained affect for companion: neutral (default), warm (after long work), focused (mid-task), concerned (blocked or failing), relieved (a blocker clears), tired (rarely)",
                         "enum": ["neutral", "warm", "focused", "concerned", "relieved", "tired"],
                     },
                     "session": {

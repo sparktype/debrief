@@ -170,7 +170,7 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | volume | yes | 0.0–1.0 |\n\
 | priority | no | `main` / `subagent` |\n\
 | lane | no | `companion` (default) / `work` |\n\
-| emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (prosody bias only) |\n\
+| emotion | no | `neutral` `warm` (long work done) `focused` (mid-task) `concerned` (blocked or failing) `relieved` (a blocker clears) `tired` (rarely). Sets pace, sentence pauses, and a soft cue: relieved laugh, warm breath, tired sigh |\n\
 | intent | no | `decision` only: the user must decide or approve before work can continue. Plays through quiet/night/companion-off with a chime; mute still silences it. Main priority only. |\n\n\
 Hooks append the effective mode: focus = one sentence, quiet = one short sentence or silence, night = speak only with intent=decision, muted = do not call speak. Grok has no hooks: the speak reply includes `mode` (and `muted`) — follow it next turn.\n\n\
 Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
