@@ -20,6 +20,8 @@ pub struct McpSpeakArguments {
     pub priority: SpeechPriority,
     pub lane: SpeechLane,
     pub emotion: SpeechEmotion,
+    /// 사용자 결정 대기 — main에서만 인정한다.
+    pub decision: bool,
     /// 호스트 세션 id. 도우미 재생은 이 id에 할당된 로테이션 보이스를 쓴다.
     pub session: Option<String>,
 }
@@ -34,6 +36,7 @@ impl McpSpeakArguments {
             priority: SpeechPriority::Main,
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
+            decision: false,
             session: None,
         }
     }
@@ -70,7 +73,8 @@ impl McpSpeakTool {
         let lane = Self::optional_lane(object.get("lane"))?;
         let emotion = Self::optional_emotion(object.get("emotion"))?;
         let session = Self::optional_session(object.get("session"))?;
-        Ok(McpSpeakArguments { text, voice, speed, volume, priority, lane, emotion, session })
+        let decision = Self::optional_intent(object.get("intent"))? && matches!(priority, SpeechPriority::Main);
+        Ok(McpSpeakArguments { text, voice, speed, volume, priority, lane, emotion, decision, session })
     }
 
     pub fn execute<S: SpeechSink>(
@@ -87,7 +91,16 @@ impl McpSpeakTool {
         if envelope.validate().is_err() {
             return McpToolCallResult { is_error: true, message: "잘못된 speak 인자입니다.".to_string() };
         }
-        let request = SpeechRequest { envelope, priority: arguments.priority, lane: arguments.lane, emotion: arguments.emotion, agent_type: None , decision: false, cue: None, replayed: false };
+        let request = SpeechRequest {
+            envelope,
+            priority: arguments.priority,
+            lane: arguments.lane,
+            emotion: arguments.emotion,
+            agent_type: None,
+            decision: arguments.decision,
+            cue: arguments.decision.then_some(crate::earcon::Earcon::Decision),
+            replayed: false,
+        };
         match sink.submit(request) {
             Ok(()) => {
                 let _ = diagnostics.clear_current_error();
@@ -118,6 +131,14 @@ impl McpSpeakTool {
         let raw = value.as_str().ok_or_else(|| CommandError::Usage("speak session must be a string".to_string()))?;
         let trimmed = raw.trim();
         Ok(if trimmed.is_empty() { None } else { Some(trimmed.to_string()) })
+    }
+
+    fn optional_intent(value: Option<&Value>) -> Result<bool, CommandError> {
+        let Some(value) = value else { return Ok(false) };
+        match value.as_str() {
+            Some("decision") => Ok(true),
+            _ => Err(CommandError::Usage("speak intent must be \"decision\"".to_string())),
+        }
     }
 
     fn optional_priority(value: Option<&Value>) -> Result<SpeechPriority, CommandError> {
@@ -425,6 +446,34 @@ mod tests {
         };
         McpSpeakTool::execute(&args, &sink, &crate::diagnostics::Diagnostics::new(&home), None);
         assert_eq!(sink.recorded()[0].priority, SpeechPriority::Subagent);
+        fs::remove_dir_all(&home).ok();
+    }
+
+    fn parse(value: serde_json::Value) -> Result<McpSpeakArguments, CommandError> {
+        McpSpeakTool::parse_arguments(value.as_object().unwrap())
+    }
+
+    #[test]
+    fn intent_decision_marks_main_requests_only() {
+        let base = serde_json::json!({"text": "x", "voice": "F1", "speed": 1.0, "volume": 1.0, "intent": "decision"});
+        assert!(parse(base.clone()).unwrap().decision);
+        let mut subagent = base.clone();
+        subagent["priority"] = "subagent".into();
+        assert!(!parse(subagent).unwrap().decision, "서브에이전트는 결정을 요청하지 않는다");
+        let mut bad = base;
+        bad["intent"] = "urgent".into();
+        assert!(parse(bad).is_err());
+    }
+
+    #[test]
+    fn decision_request_carries_decision_cue() {
+        let home = temporary_home();
+        let sink = RecordingSink::new(false);
+        let args = McpSpeakArguments { decision: true, ..McpSpeakArguments::new("결정해 주세요".to_string(), "F1".to_string(), 0.93, 0.85) };
+        McpSpeakTool::execute(&args, &sink, &crate::diagnostics::Diagnostics::new(&home), None);
+        let recorded = sink.recorded();
+        assert!(recorded[0].decision);
+        assert_eq!(recorded[0].cue, Some(crate::earcon::Earcon::Decision));
         fs::remove_dir_all(&home).ok();
     }
 }

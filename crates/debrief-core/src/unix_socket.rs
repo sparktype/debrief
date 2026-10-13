@@ -572,7 +572,7 @@ mod tests {
         let server = std::sync::Arc::new(UnixSocketServer::new(socket_url.clone()).unwrap());
         let client = UnixSocketClient::new(socket_url.clone());
         let envelope = SpeechEnvelope { v: 1, text: "완료".to_string(), voice: "F1".to_string(), speed: 0.93, volume: 0.6 };
-        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None , decision: false, cue: None, replayed: false };
+        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None, decision: false, cue: None, replayed: false };
 
         let server_clone = server.clone();
         let received = std::thread::spawn(move || server_clone.accept());

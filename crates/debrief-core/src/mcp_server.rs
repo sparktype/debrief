@@ -101,6 +101,11 @@ Do not put HTML comments or JSON speech metadata in the assistant message body."
                         "type": "string",
                         "description": "Host session id. Companion voice rotates across F1–M5 and stays on this id. Omit to use this MCP process.",
                     },
+                    "intent": {
+                        "type": "string",
+                        "description": "decision: the user must decide or approve before work can continue; plays through quiet/night/companion-off (not mute)",
+                        "enum": ["decision"],
+                    },
                 },
                 "required": ["text", "voice", "speed", "volume"],
             },
@@ -349,12 +354,24 @@ where
                         }
                     }
                     let companion_voice = self.companion_voice(&parsed);
-                    let result = crate::mcp_speak_tool::McpSpeakTool::execute(
+                    let mut result = crate::mcp_speak_tool::McpSpeakTool::execute(
                         &parsed,
                         &self.sink,
                         &self.diagnostics,
                         companion_voice.as_deref(),
                     );
+                    // 훅이 없는 호스트(Grok)도 다음 턴 말투를 맞추도록 유효 모드를 돌려준다.
+                    if !result.is_error {
+                        let effective = crate::configuration::DebriefConfiguration::load_effective(
+                            &crate::paths::DebriefPaths::for_home(&self.home).config_url,
+                            &self.home,
+                        );
+                        let mut reply = json!({"ok": true, "mode": effective.mode.as_str()});
+                        if effective.muted {
+                            reply["muted"] = json!(true);
+                        }
+                        result.message = reply.to_string();
+                    }
                     // 서브에이전트 발화는 사용자 브리핑이 아니므로 긴 턴 알림을 막지 않는다.
                     if let (false, SpeechPriority::Main, Some((store, session, now))) =
                         (result.is_error, parsed.priority, &session_state)
@@ -637,6 +654,27 @@ mod tests {
         server.call_tool("speak", &speak_args(Some("a"), "main"));
         assert_eq!(server.sink.0.borrow().last().unwrap().envelope.text, "hi", "설정으로 끈다");
 
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn speak_schema_has_intent_and_reply_reports_mode() {
+        let tool = McpJsonRpc::speak_tool_definition();
+        assert_eq!(tool["inputSchema"]["properties"]["intent"]["enum"], json!(["decision"]));
+
+        let home = temporary_home();
+        let server = McpServer::new(home.clone(), NoopSink, NoopInstallRunner);
+        let result = server.call_tool("speak", &speak_args(None, "main"));
+        let reply: Value = serde_json::from_str(&result.message).unwrap();
+        assert_eq!(reply["ok"], true);
+        assert_eq!(reply["mode"], "normal");
+        assert!(reply.get("muted").is_none());
+
+        crate::configuration::DebriefConfiguration { muted: true, ..Default::default() }
+            .save(&crate::paths::DebriefPaths::for_home(&home).config_url)
+            .unwrap();
+        let reply: Value = serde_json::from_str(&server.call_tool("speak", &speak_args(None, "main")).message).unwrap();
+        assert_eq!(reply["muted"], true);
         std::fs::remove_dir_all(&home).ok();
     }
 }
