@@ -478,6 +478,14 @@ mod tests {
         (daemon, audio)
     }
 
+    /// 기록은 재생 스레드가 끝난 뒤에 남으므로, 재생 횟수만 기다리면 검사가 먼저 실행될 수 있다.
+    fn wait_for_history<B: TtsBackend + 'static, A: AudioPlaying + 'static>(daemon: &DebriefDaemon<B, A>, count: usize) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while daemon.history_texts().len() < count && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn plays_the_first_sentence_while_the_next_is_still_synthesizing() {
         let (daemon, audio) = sentence_daemon();
@@ -486,6 +494,7 @@ mod tests {
 
         assert_eq!(*daemon.backend.saw_first_playing.lock().unwrap(), Some(true));
         assert_eq!(audio.buffers.lock().unwrap().iter().map(|b| *b.last().unwrap()).collect::<Vec<_>>(), vec![1.0, 2.0]);
+        wait_for_history(&daemon, 1);
         assert_eq!(daemon.history_texts(), vec!["첫 문장. 둘째 문장.".to_string()]);
         daemon.shutdown();
     }
@@ -515,6 +524,7 @@ mod tests {
         audio.wait_until_count(2);
 
         assert_eq!(daemon.backend.texts.lock().unwrap().clone(), vec!["<laugh> 끝났습니다.".to_string()]);
+        wait_for_history(&daemon, 1);
         assert_eq!(daemon.history_texts(), vec!["끝<났>습니다.".to_string()]);
         daemon.shutdown();
     }
