@@ -213,7 +213,7 @@ impl SupertonicEngine {
         })
     }
 
-    fn synthesize_impl(&self, text: &str, voice: &str, speed: f64) -> Result<PcmBuffer, SupertonicError> {
+    fn validated_style(&self, text: &str, voice: &str, speed: f64) -> Result<SupertonicStyle, SupertonicError> {
         if text.trim().is_empty() {
             return Err(SupertonicError::InvalidText);
         }
@@ -223,8 +223,32 @@ impl SupertonicEngine {
         if !speed.is_finite() || !(0.7..=2.0).contains(&speed) {
             return Err(SupertonicError::InvalidSpeed);
         }
+        self.style_for(voice)
+    }
 
-        let style = self.style_for(voice)?;
+    fn synthesize_sentences_impl(
+        &self,
+        text: &str,
+        voice: &str,
+        speed: f64,
+        sink: &mut dyn FnMut(PcmBuffer) -> bool,
+    ) -> Result<(), SupertonicError> {
+        let style = self.validated_style(text, voice, speed)?;
+        let chunks = SupertonicTensor::split_sentences(text, 120);
+        if chunks.is_empty() {
+            return Err(SupertonicError::InvalidText);
+        }
+        for chunk in &chunks {
+            let samples = self.infer(chunk, &style, speed as f32)?;
+            if !sink(PcmBuffer { sample_rate: Self::SAMPLE_RATE as f64, channels: 1, samples }) {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn synthesize_impl(&self, text: &str, voice: &str, speed: f64) -> Result<PcmBuffer, SupertonicError> {
+        let style = self.validated_style(text, voice, speed)?;
         let chunks = SupertonicTensor::split_text(text, 120);
         let mut audio_chunks: Vec<Vec<f32>> = Vec::new();
         for chunk in chunks.iter().filter(|c| !c.is_empty()) {
@@ -407,6 +431,16 @@ fn rand_uniform(min: f32, max: f32) -> f32 {
 impl TtsBackend for SupertonicEngine {
     fn synthesize(&self, text: &str, voice: &str, speed: f64) -> Result<PcmBuffer, TtsBackendError> {
         self.synthesize_impl(text, voice, speed).map_err(|_| TtsBackendError::SynthesisFailed)
+    }
+
+    fn synthesize_sentences(
+        &self,
+        text: &str,
+        voice: &str,
+        speed: f64,
+        sink: &mut dyn FnMut(PcmBuffer) -> bool,
+    ) -> Result<(), TtsBackendError> {
+        self.synthesize_sentences_impl(text, voice, speed, sink).map_err(|_| TtsBackendError::SynthesisFailed)
     }
 }
 

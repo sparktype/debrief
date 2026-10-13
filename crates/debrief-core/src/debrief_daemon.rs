@@ -3,9 +3,10 @@ use crate::audio_player::AudioPlaying;
 use crate::configuration::DebriefConfiguration;
 use crate::daemon_control::{Control, Inbound};
 use crate::mode_policy::ModePolicy;
+use crate::speech_emotion::EmotionProsody;
 use crate::speech_queue::{QueueDecision, SpeechQueue};
 use crate::speech_request::SpeechRequest;
-use crate::tts_backend::TtsBackend;
+use crate::tts_backend::{PcmBuffer, TtsBackend};
 use crate::unix_socket::{is_recoverable_accept_error, UnixSocketError};
 use std::sync::{Arc, Mutex};
 
@@ -234,43 +235,60 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 guard.discard_active = false;
             }
 
-            let buffer = if request.is_cue_only() {
-                None
-            } else {
-                match backend.synthesize(&request.envelope.text, &request.envelope.voice, request.envelope.speed) {
-                    Ok(buffer) => Some(buffer),
-                    Err(error) => {
-                        // 실패한 항목은 버리고 계속한다; 메뉴 진단을 위해 표면화한다.
-                        if let Some(record_error) = &record_error {
-                            let detail: String = format!("{error:?}").chars().take(80).collect();
-                            record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
-                        }
-                        let mut guard = state.lock().unwrap();
-                        guard.active = None;
-                        guard.discard_active = false;
-                        continue;
-                    }
-                }
-            };
-
-            let current = configuration();
-            let admitted =
-                ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &current, request.decision);
             // `if let` 조건에 락을 두면 재생 내내 잡혀 skip이 교착된다 — 매번 짧게 잡고 놓는다.
             let discarded = || state.lock().unwrap().discard_active;
-            if let Some(gain) = admitted.filter(|_| !discarded()) {
+            // 재생 직전 모드로 판정한다(합성 중 mute·mode가 바뀔 수 있다). 효과음 도중 skip되면 발화도 버린다.
+            let admit_and_cue = || -> Option<f64> {
+                let current = configuration();
+                let gain = ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &current, request.decision)
+                    .filter(|_| !discarded())?;
                 if let (Some(cue), true) = (request.cue, current.earcons) {
                     let _ = audio.play(&cue.buffer(), gain * Self::CUE_GAIN_RATIO);
                 }
-                // 효과음 도중 skip되면 발화도 버린다.
-                if let Some(buffer) = buffer.as_ref().filter(|_| !discarded()) {
-                    let _ = audio.play(buffer, gain);
-                    if !request.replayed {
-                        let mut history = history.lock().unwrap();
-                        history.push_back(request.clone());
-                        while history.len() > Self::HISTORY_CAPACITY {
-                            history.pop_front();
+                (!discarded()).then_some(gain)
+            };
+
+            if request.is_cue_only() {
+                admit_and_cue();
+            } else {
+                let text = EmotionProsody::spoken_text(request.emotion, &request.envelope.text);
+                let pause_seconds = EmotionProsody::pause_seconds(request.emotion);
+                let (sender, receiver) = std::sync::mpsc::channel::<PcmBuffer>();
+                // 재생 스레드가 앞 문장을 트는 동안 이 스레드는 다음 문장을 합성한다.
+                let (result, played) = std::thread::scope(|scope| {
+                    let player = scope.spawn(|| {
+                        let (mut gain, mut played) = (None, false);
+                        for (index, mut buffer) in receiver.into_iter().enumerate() {
+                            if index == 0 {
+                                gain = admit_and_cue();
+                            } else if !discarded() {
+                                let silence = (pause_seconds * buffer.sample_rate).round() as usize * buffer.channels;
+                                buffer.samples.splice(0..0, std::iter::repeat_n(0.0, silence));
+                            }
+                            let Some(gain) = gain.filter(|_| !discarded()) else { break };
+                            let _ = audio.play(&buffer, gain);
+                            played = true;
                         }
+                        played
+                    });
+                    let result = backend.synthesize_sentences(&text, &request.envelope.voice, request.envelope.speed, &mut |buffer| {
+                        !discarded() && sender.send(buffer).is_ok()
+                    });
+                    drop(sender);
+                    (result, player.join().unwrap_or(false))
+                });
+                if let Err(error) = result {
+                    // 실패한 항목은 버리고 계속한다; 메뉴 진단을 위해 표면화한다.
+                    if let Some(record_error) = &record_error {
+                        let detail: String = format!("{error:?}").chars().take(80).collect();
+                        record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
+                    }
+                }
+                if played && !request.replayed {
+                    let mut history = history.lock().unwrap();
+                    history.push_back(request.clone());
+                    while history.len() > Self::HISTORY_CAPACITY {
+                        history.pop_front();
                     }
                 }
             }
@@ -324,6 +342,7 @@ mod tests {
     struct RecordingAudio {
         blocking_marker: Option<i64>,
         markers: Mutex<Vec<i64>>,
+        buffers: Mutex<Vec<Vec<f32>>>,
         gains: Mutex<Vec<f64>>,
         stop_count: Mutex<usize>,
         blocked: Mutex<Option<i64>>,
@@ -334,6 +353,7 @@ mod tests {
             RecordingAudio {
                 blocking_marker,
                 markers: Mutex::new(Vec::new()),
+                buffers: Mutex::new(Vec::new()),
                 gains: Mutex::new(Vec::new()),
                 stop_count: Mutex::new(0),
                 blocked: Mutex::new(None),
@@ -366,6 +386,7 @@ mod tests {
         fn play(&self, buffer: &crate::tts_backend::PcmBuffer, gain: f64) -> Result<(), crate::audio_player::AudioPlayerError> {
             let marker = buffer.samples.first().map(|s| *s as i64).unwrap_or(0);
             self.markers.lock().unwrap().push(marker);
+            self.buffers.lock().unwrap().push(buffer.samples.clone());
             self.gains.lock().unwrap().push(gain);
             if Some(marker) == self.blocking_marker {
                 let mut blocked = self.blocked.lock().unwrap();
@@ -395,6 +416,107 @@ mod tests {
             cue: None,
             replayed: false,
         }
+    }
+
+    /// 문장 두 개를 내되, 두 번째 문장은 첫 문장이 재생을 시작한 뒤에만 합성한다(겹치기 검증).
+    struct SentenceBackend {
+        audio: Arc<RecordingAudio>,
+        texts: Mutex<Vec<String>>,
+        saw_first_playing: Mutex<Option<bool>>,
+    }
+    impl SentenceBackend {
+        fn new(audio: Arc<RecordingAudio>) -> Self {
+            SentenceBackend { audio, texts: Mutex::new(Vec::new()), saw_first_playing: Mutex::new(None) }
+        }
+    }
+    impl TtsBackend for SentenceBackend {
+        fn synthesize(&self, _text: &str, _voice: &str, _speed: f64) -> Result<crate::tts_backend::PcmBuffer, crate::tts_backend::TtsBackendError> {
+            unreachable!("daemon must use synthesize_sentences")
+        }
+        fn synthesize_sentences(
+            &self,
+            text: &str,
+            _voice: &str,
+            _speed: f64,
+            sink: &mut dyn FnMut(crate::tts_backend::PcmBuffer) -> bool,
+        ) -> Result<(), crate::tts_backend::TtsBackendError> {
+            self.texts.lock().unwrap().push(text.to_string());
+            let pcm = |value: f32| crate::tts_backend::PcmBuffer { sample_rate: 44_100.0, channels: 1, samples: vec![value] };
+            if !sink(pcm(1.0)) {
+                return Ok(());
+            }
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while !self.audio.markers().contains(&1) && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            *self.saw_first_playing.lock().unwrap() = Some(self.audio.markers().contains(&1));
+            sink(pcm(2.0));
+            Ok(())
+        }
+    }
+
+    struct SharedAudio(Arc<RecordingAudio>);
+    impl AudioPlaying for SharedAudio {
+        fn play(&self, buffer: &crate::tts_backend::PcmBuffer, gain: f64) -> Result<(), crate::audio_player::AudioPlayerError> {
+            self.0.play(buffer, gain)
+        }
+        fn stop(&self) {
+            self.0.stop()
+        }
+    }
+
+    fn sentence_daemon() -> (DebriefDaemon<SentenceBackend, SharedAudio>, Arc<RecordingAudio>) {
+        let audio = Arc::new(RecordingAudio::new(None));
+        let daemon = DebriefDaemon::new(
+            None,
+            SpeechQueue::new(8, Duration::ZERO),
+            SentenceBackend::new(audio.clone()),
+            SharedAudio(audio.clone()),
+            DebriefConfiguration::default,
+            None,
+        );
+        (daemon, audio)
+    }
+
+    #[test]
+    fn plays_the_first_sentence_while_the_next_is_still_synthesizing() {
+        let (daemon, audio) = sentence_daemon();
+        daemon.submit(request(SpeechPriority::Main, "첫 문장. 둘째 문장.", 0.8));
+        audio.wait_until_count(2);
+
+        assert_eq!(*daemon.backend.saw_first_playing.lock().unwrap(), Some(true));
+        assert_eq!(audio.buffers.lock().unwrap().iter().map(|b| *b.last().unwrap()).collect::<Vec<_>>(), vec![1.0, 2.0]);
+        assert_eq!(daemon.history_texts(), vec!["첫 문장. 둘째 문장.".to_string()]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn later_sentences_start_with_the_emotion_pause() {
+        let (daemon, audio) = sentence_daemon();
+        let mut tired = request(SpeechPriority::Main, "a. b.", 0.8);
+        tired.emotion = SpeechEmotion::Tired;
+        daemon.submit(tired);
+        audio.wait_until_count(2);
+
+        let buffers = audio.buffers.lock().unwrap().clone();
+        assert_eq!(buffers[0], vec![1.0]);
+        let pause = (crate::speech_emotion::EmotionProsody::pause_seconds(SpeechEmotion::Tired) * 44_100.0).round() as usize;
+        assert_eq!(buffers[1].len(), pause + 1);
+        assert!(buffers[1][..pause].iter().all(|s| *s == 0.0));
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn synthesizes_the_tagged_text_without_agent_angle_brackets() {
+        let (daemon, audio) = sentence_daemon();
+        let mut relieved = request(SpeechPriority::Main, "끝<났>습니다.", 0.8);
+        relieved.emotion = SpeechEmotion::Relieved;
+        daemon.submit(relieved);
+        audio.wait_until_count(2);
+
+        assert_eq!(daemon.backend.texts.lock().unwrap().clone(), vec!["<laugh> 끝났습니다.".to_string()]);
+        assert_eq!(daemon.history_texts(), vec!["끝<났>습니다.".to_string()]);
+        daemon.shutdown();
     }
 
     #[test]

@@ -87,6 +87,16 @@ impl SupertonicTensor {
         }
     }
 
+    /// 문장 하나를 청크 하나로 둔다(선재생용). `max_length`를 넘는 문장만 더 쪼갠다.
+    pub fn split_sentences(text: &str, max_length: usize) -> Vec<String> {
+        assert!(max_length > 0);
+        Self::sentences(text.trim())
+            .iter()
+            .flat_map(|sentence| Self::fragments(sentence, max_length))
+            .filter(|chunk| !chunk.is_empty())
+            .collect()
+    }
+
     /// `([.!?])(?:\s+|$)` 뒤에서 문장을 자르되, 줄임말(`Dr.` 등)로 끝나면 자르지 않는다.
     fn sentences(text: &str) -> Vec<String> {
         let chars: Vec<char> = text.chars().collect();
@@ -171,6 +181,20 @@ impl SupertonicTensor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_sentences_keeps_each_sentence_in_its_own_chunk() {
+        let chunks = SupertonicTensor::split_sentences("테스트를 통과했습니다. 로그를 확인해 주세요.", 120);
+        assert_eq!(chunks, vec!["테스트를 통과했습니다.".to_string(), "로그를 확인해 주세요.".to_string()]);
+    }
+
+    #[test]
+    fn split_sentences_still_fragments_overlong_sentences() {
+        let long = "가".repeat(30);
+        let chunks = SupertonicTensor::split_sentences(&format!("{long} {long}."), 40);
+        assert!(chunks.len() >= 2);
+        assert!(chunks.iter().all(|c| c.chars().count() <= 40));
+    }
 
     #[test]
     fn pads_rows_and_builds_masks_deterministically() {

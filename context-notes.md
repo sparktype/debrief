@@ -29,3 +29,23 @@
 - sha2 0.11은 0.x 호환 깨짐 가능성에 비해 얻는 기능이 없고 설치 기록·모델 무결성 검증 경로(54곳)라 보류했다. 필요해지면 별도 작업으로 한다.
 - ort는 Cargo.toml이 rc.7로 적혀 있었으나 프리릴리스 캐럿 범위 덕에 잠금은 이미 rc.13이었다. 요구 버전만 rc.13으로 올려 실제와 맞췄다(동작 변화 없음).
 - cargo-audit를 새로 설치했다(~/.cargo/bin). 이후 업그레이드 때 `cargo audit`를 같이 돌린다.
+
+## 2026-10-14 TTS 모델 재검토 → Supertonic 3 유지
+- 후보 실측(M1 Max): Chatterbox Multilingual ONNX RTF 2.3~3.7·4.4GB, MOSS-TTS-Nano RTF 0.28(청취 결과 어울리지 않음), MOSS-TTS-Local v1.5 MLX 복제 RTF 1.25~2.62·12.5GB·감정 지시 시 생성 폭주. 8B·Seamless(비상업)는 문서 검토로 탈락.
+- HF Open TTS Leaderboard 한국어(CV3-Eval)에서 Supertonic 3가 WER 3.6·RTFx 56.7로 1위. 약점은 스트리밍이 없어 첫 소리까지 지연(CPU p50 1.55초).
+- 그래서 모델 교체 대신 (1) 문장 단위 선재생, (2) Supertonic 안의 감정 표현으로 간다.
+
+## 2026-10-14 문장 단위 선재생 + 감정 표현
+- 기존 `split_text(text, 120)`는 120자까지 문장을 한 청크로 묶어 두 문장 브리핑이 청크 하나였다. 선재생하려면 문장마다 청크를 나눠야 한다.
+- 합성과 재생을 겹치기 위해 데몬이 재생 스레드를 두고 채널로 문장 PCM을 받는다. `AudioPlaying::play`는 재생이 끝날 때까지 막히므로, 같은 스레드에서 합성·재생하면 겹치지 않는다.
+- 문장 사이 쉼은 엔진이 아니라 데몬이 두 번째 문장부터 앞에 무음을 붙인다(감정별 길이를 core가 결정). 기존 고정 0.3초는 neutral 값으로 유지.
+- 표현 태그 청취 실험: `<laugh>`는 또렷, `<sigh>`·`<breath>`는 거의 들리지 않음(음성 길이만 0.3~0.5초 늘어남). 사용자는 세 가지 모두 쓰기로 선택.
+- 태그 매핑(가정): relieved→`<laugh>`, warm→`<breath>`, tired→`<sigh>`. concerned에 한숨은 짜증처럼 들릴 수 있어 태그 없음. 표 하나라 바꾸기 쉽다.
+- 태그는 core가 텍스트 맨 앞에 붙인다(Supertonic 전용 문법이 core에 들어가는 대가로 TtsBackend 시그니처 변경을 피함). 에이전트가 태그를 직접 넣지 못하게 사용자 텍스트의 `<` `>`는 지운다.
+- 동작 변화: 중간 문장 합성이 실패하면 앞 문장은 이미 재생된 상태로 오류를 기록한다(기존에는 아무것도 재생하지 않음).
+
+## 2026-10-14 Supertonic 3 모델 미러
+- Supertone Voice Builder 사이트(supertonic.supertone.ai)가 404. 본 사이트·GitHub·HF `Supertone/supertonic-3`(고정 리비전 3cadd1ee)은 살아 있다.
+- 원본 소실에 대비해 `codeguru76/supertonic-3`(공개, 커밋 f26b6b0ac3583e5fc3706cb21d70c3c6cfc3f316)에 원본 리비전을 그대로 미러하고 출처를 밝히는 `MIRROR.md`만 추가했다. 매니페스트 자산 16개의 크기·sha256 일치 확인.
+- OpenRAIL-M 4항: 재배포 허용. 라이선스 사본 제공, 출처 표시 유지, Attachment A 사용 제한 전달이 조건. 파일을 수정하지 않았으므로 4.c(수정 표시)는 해당 없음.
+- 결정: debrief는 계속 원본에서 받는다. 원본이 사라지면 `ModelManifest::supertonic3`의 base URL을 미러로 바꾼다. sha256은 같고 revision만 미러 커밋으로 바뀐다.

@@ -24,3 +24,15 @@
 - [x] ort 요구 버전을 잠금과 같은 rc.13으로 맞춤
 - [x] 업그레이드 후 test 253건·clippy·release 빌드·`cargo audit` 통과
 - [ ] sha2 0.11 업그레이드는 보류(7개 파일 약 54곳, 설치·무결성 경로)
+
+## 2026-10-14 문장 단위 선재생 + 감정 표현
+- [x] EmotionProsody: 감정별 문장 사이 쉼(`pause_seconds`)·표현 태그(`expression_tag`) 실패 테스트 → 구현
+- [x] TtsBackend: 문장 단위 합성 `synthesize_sentences`(기본 구현은 통째 합성 1회) 테스트 → 구현
+- [x] Supertonic: 문장마다 청크(`split_sentences`)로 나눠 준비되는 대로 넘김
+- [x] 데몬: 첫 문장 재생 중 다음 문장 합성(겹치기), 2번째 문장부터 감정별 쉼, 표현 태그 앞붙임, 사용자 텍스트의 `<` `>` 제거
+- [x] 훅 context: emotion 선택 기준 안내(UserPromptSubmit 400자 제한 유지)
+- [x] 문서: CLAUDE.md, debrief-speak 스킬, MCP 도구 설명
+- [x] cargo test --workspace 279건, clippy -D warnings, release 빌드 통과
+- [x] 실제 모델 첫 문장 준비 시간: 1.13→0.72초, 1.76→1.13초, 1.72→0.74초(36~57% 단축)
+- [ ] 설치한 데몬으로 청취 확인(사용자)
+- [ ] 커밋
