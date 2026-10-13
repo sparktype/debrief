@@ -17,9 +17,12 @@ impl HookCommandRunner {
         };
         let paths = DebriefPaths::for_home(home);
         let session_voices = SessionVoiceStore::new(paths.session_voices_url.clone());
-        let configuration = DebriefConfiguration::load(&paths.config_url);
+        // 방해금지로 올라간 유효 모드를 쓰고, 올라갔는지는 저장된 모드와 비교해 안다.
+        let stored = DebriefConfiguration::load(&paths.config_url);
+        let configuration = DebriefConfiguration::load_effective(&paths.config_url, home);
+        let dnd_raised = configuration.mode != stored.mode;
         let session_state = SessionStateStore::new(paths.session_state_url.clone());
-        let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration);
+        let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_dnd_raised(dnd_raised);
         let mut result = engine.handle(&event, source);
         if let Some(notice) = result.notice.take() {
             match UnixSocketClient::new(paths.socket_url.clone()).submit(&notice) {
