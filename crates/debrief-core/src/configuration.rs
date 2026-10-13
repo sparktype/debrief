@@ -64,6 +64,9 @@ pub struct DebriefConfiguration {
     /// 에이전트 팀의 TeammateIdle·TaskCompleted 알림. 잦을 수 있어 기본 꺼짐.
     #[serde(default)]
     pub team_notices: bool,
+    /// 결정·주의·실패·완료 알림 앞의 짧은 효과음. 일반 브리핑에는 없다.
+    #[serde(default = "default_earcons")]
+    pub earcons: bool,
 }
 
 fn default_mode() -> DebriefMode {
@@ -82,6 +85,10 @@ fn default_session_label() -> bool {
     true
 }
 
+fn default_earcons() -> bool {
+    true
+}
+
 impl Default for DebriefConfiguration {
     fn default() -> Self {
         DebriefConfiguration {
@@ -95,6 +102,7 @@ impl Default for DebriefConfiguration {
             session_label: default_session_label(),
             dnd_sync: false,
             team_notices: false,
+            earcons: default_earcons(),
         }
     }
 }
@@ -395,5 +403,17 @@ mod tests {
         // 저장된 설정 자체는 바뀌지 않는다.
         assert_eq!(DebriefConfiguration::load(&paths.config_url).mode, DebriefMode::Normal);
         fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn earcons_default_on_and_load_missing_as_on() {
+        assert!(DebriefConfiguration::default().earcons);
+        let directory = temporary_directory();
+        let url = directory.join("config.json");
+        fs::write(&url, r#"{"earcons":false}"#).unwrap();
+        assert!(!DebriefConfiguration::load(&url).earcons);
+        fs::write(&url, "{}").unwrap();
+        assert!(DebriefConfiguration::load(&url).earcons);
+        fs::remove_dir_all(&directory).ok();
     }
 }

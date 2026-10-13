@@ -37,6 +37,7 @@ pub struct DebriefDaemon<B: TtsBackend, A: AudioPlaying> {
     configuration: Arc<dyn Fn() -> DebriefConfiguration + Send + Sync>,
     record_error: Option<Arc<ErrorRecorder>>,
     state: Arc<Mutex<DaemonState>>,
+    history: Arc<Mutex<std::collections::VecDeque<SpeechRequest>>>,
 }
 
 impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
@@ -56,7 +57,16 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             configuration: Arc::new(configuration),
             record_error,
             state: Arc::new(Mutex::new(DaemonState { active: None, discard_active: false, shutting_down: false, worker: None })),
+            history: Arc::new(Mutex::new(std::collections::VecDeque::new())),
         }
+    }
+
+    pub const HISTORY_CAPACITY: usize = 10;
+    const CUE_GAIN_RATIO: f64 = 0.6;
+
+    /// 다시 듣기 기록의 텍스트(오래된 순).
+    pub fn history_texts(&self) -> Vec<String> {
+        self.history.lock().unwrap().iter().map(|r| r.envelope.text.clone()).collect()
     }
 
     /// 현재 합성/재생 중인 요청의 보이스 id (예: `F1`, `M3`).
@@ -99,6 +109,10 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 return None;
             }
         }
+        // 텍스트도 효과음도 없는 요청은 재생할 것이 없다.
+        if request.envelope.text.is_empty() && request.cue.is_none() {
+            return None;
+        }
         let configuration = (self.configuration)();
         ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration, request.decision)?;
 
@@ -121,8 +135,9 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             let configuration = self.configuration.clone();
             let record_error = self.record_error.clone();
             let shared_state = self.state.clone();
+            let history = self.history.clone();
             state.worker = Some(std::thread::spawn(move || {
-                Self::consume(queue, backend, audio, configuration, record_error, shared_state);
+                Self::consume(queue, backend, audio, configuration, record_error, shared_state, history);
             }));
         } else if decision == QueueDecision::RejectedCapacity {
             if let Some(record_error) = &self.record_error {
@@ -160,6 +175,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
         configuration: Arc<dyn Fn() -> DebriefConfiguration + Send + Sync>,
         record_error: Option<Arc<ErrorRecorder>>,
         state: Arc<Mutex<DaemonState>>,
+        history: Arc<Mutex<std::collections::VecDeque<SpeechRequest>>>,
     ) {
         loop {
             if state.lock().unwrap().shutting_down {
@@ -175,22 +191,43 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 guard.discard_active = false;
             }
 
-            match backend.synthesize(&request.envelope.text, &request.envelope.voice, request.envelope.speed) {
-                Ok(buffer) => {
-                    let discard = state.lock().unwrap().discard_active;
-                    if !discard {
-                        if let Some(gain) =
-                            ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration(), request.decision)
-                        {
-                            let _ = audio.play(&buffer, gain);
+            let buffer = if request.is_cue_only() {
+                None
+            } else {
+                match backend.synthesize(&request.envelope.text, &request.envelope.voice, request.envelope.speed) {
+                    Ok(buffer) => Some(buffer),
+                    Err(error) => {
+                        // 실패한 항목은 버리고 계속한다; 메뉴 진단을 위해 표면화한다.
+                        if let Some(record_error) = &record_error {
+                            let detail: String = format!("{error:?}").chars().take(80).collect();
+                            record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
                         }
+                        let mut guard = state.lock().unwrap();
+                        guard.active = None;
+                        guard.discard_active = false;
+                        continue;
                     }
                 }
-                Err(error) => {
-                    // 실패한 항목은 버리고 계속한다; 메뉴 진단을 위해 표면화한다.
-                    if let Some(record_error) = &record_error {
-                        let detail: String = format!("{error:?}").chars().take(80).collect();
-                        record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
+            };
+
+            let current = configuration();
+            let admitted =
+                ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &current, request.decision);
+            // `if let` 조건에 락을 두면 재생 내내 잡혀 skip이 교착된다 — 매번 짧게 잡고 놓는다.
+            let discarded = || state.lock().unwrap().discard_active;
+            if let Some(gain) = admitted.filter(|_| !discarded()) {
+                if let (Some(cue), true) = (request.cue, current.earcons) {
+                    let _ = audio.play(&cue.buffer(), gain * Self::CUE_GAIN_RATIO);
+                }
+                // 효과음 도중 skip되면 발화도 버린다.
+                if let Some(buffer) = buffer.as_ref().filter(|_| !discarded()) {
+                    let _ = audio.play(buffer, gain);
+                    if !request.replayed {
+                        let mut history = history.lock().unwrap();
+                        history.push_back(request.clone());
+                        while history.len() > Self::HISTORY_CAPACITY {
+                            history.pop_front();
+                        }
                     }
                 }
             }
@@ -534,5 +571,66 @@ mod tests {
         assert!(is_recoverable_accept_error(&UnixSocketError::InvalidFrame));
         assert!(is_recoverable_accept_error(&UnixSocketError::PayloadTooLarge));
         assert!(!is_recoverable_accept_error(&UnixSocketError::Disconnected));
+    }
+
+    fn with_cue(text: &str, cue: crate::earcon::Earcon) -> SpeechRequest {
+        SpeechRequest { cue: Some(cue), ..request(SpeechPriority::Main, text, 0.5) }
+    }
+
+    #[test]
+    fn cue_plays_before_speech_at_reduced_gain() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        daemon.submit(with_cue("hello", crate::earcon::Earcon::Attention));
+        daemon.audio.wait_until_count(2);
+        assert_eq!(daemon.audio.markers(), vec![0, 5]);
+        let gains = daemon.audio.gains();
+        assert!((gains[0] - gains[1] * 0.6).abs() < 1e-9, "{gains:?}");
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn earcons_off_skips_the_cue() {
+        let config = DebriefConfiguration { earcons: false, ..Default::default() };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), move || config.clone(), None);
+        daemon.submit(with_cue("hello", crate::earcon::Earcon::Attention));
+        daemon.audio.wait_until_count(1);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(daemon.audio.markers(), vec![5]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn cue_only_request_skips_synthesis_and_history() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        daemon.submit(with_cue("", crate::earcon::Earcon::Done));
+        daemon.audio.wait_until_count(1);
+        assert!(daemon.backend.texts().is_empty());
+        assert!(daemon.history_texts().is_empty());
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn empty_text_without_cue_is_dropped_silently() {
+        let entries: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = entries.clone();
+        let record: Arc<ErrorRecorder> = Arc::new(move |c, _, _| sink.lock().unwrap().push(c.to_string()));
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, Some(record));
+        assert_eq!(daemon.submit(request(SpeechPriority::Main, "", 0.5)), None);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(daemon.backend.texts().is_empty());
+        assert!(entries.lock().unwrap().is_empty());
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn history_keeps_last_ten_played_requests() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(16, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        for index in 0..12 {
+            daemon.submit(request(SpeechPriority::Main, &format!("t{index:02}"), 0.5));
+            daemon.audio.wait_until_count(index + 1);
+        }
+        let expected: Vec<String> = (2..12).map(|i| format!("t{i:02}")).collect();
+        assert_eq!(daemon.history_texts(), expected);
+        daemon.shutdown();
     }
 }
