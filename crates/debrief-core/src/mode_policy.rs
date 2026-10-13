@@ -12,9 +12,15 @@ impl ModePolicy {
         lane: SpeechLane,
         requested_volume: f64,
         configuration: &DebriefConfiguration,
+        decision: bool,
     ) -> Option<f64> {
         if configuration.muted || !requested_volume.is_finite() {
             return None;
+        }
+
+        // 결정 대기는 main에서만 인정한다 — 서브에이전트는 사용자에게 브리핑하지 않는다.
+        if decision && matches!(priority, SpeechPriority::Main) {
+            return Some(requested_volume.clamp(0.0, 1.0));
         }
 
         if matches!(lane, SpeechLane::Companion) && !configuration.companion_enabled {
@@ -52,15 +58,15 @@ mod tests {
     #[test]
     fn night_caps_main_and_rejects_subagent() {
         let configuration = config(DebriefMode::Night, false);
-        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.9, &configuration), Some(0.20));
-        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.1, &configuration), None);
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.9, &configuration, false), Some(0.20));
+        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.1, &configuration, false), None);
     }
 
     #[test]
     fn mute_rejects_everything() {
         let configuration = config(DebriefMode::Verbose, true);
-        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.8, &configuration), None);
-        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.8, &configuration), None);
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.8, &configuration, false), None);
+        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.8, &configuration, false), None);
     }
 
     #[test]
@@ -68,36 +74,52 @@ mod tests {
         for mode in [DebriefMode::Focus, DebriefMode::Quiet, DebriefMode::Night] {
             let configuration = config(mode, false);
             assert_eq!(
-                ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.1, &configuration),
+                ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.1, &configuration, false),
                 None
             );
-            assert!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.5, &configuration).is_some());
+            assert!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.5, &configuration, false).is_some());
         }
     }
 
     #[test]
     fn verbose_admits_subagents_and_clamps_gain() {
         let configuration = config(DebriefMode::Verbose, false);
-        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.7, &configuration), Some(0.7));
-        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 1.5, &configuration), Some(1.0));
+        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Companion, 0.7, &configuration, false), Some(0.7));
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 1.5, &configuration, false), Some(1.0));
     }
 
     #[test]
     fn quiet_ceilings_main_gain() {
         let configuration = config(DebriefMode::Quiet, false);
-        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 1.0, &configuration), Some(0.45));
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 1.0, &configuration, false), Some(0.45));
     }
 
     #[test]
     fn companion_disabled_rejects_companion_lane_only() {
         let configuration = DebriefConfiguration { mode: DebriefMode::Normal, muted: false, companion_enabled: false, ..Default::default() };
         assert_eq!(
-            ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.8, &configuration),
+            ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.8, &configuration, false),
             None
         );
         assert_eq!(
-            ModePolicy::admit(SpeechPriority::Main, SpeechLane::Work, 0.8, &configuration),
+            ModePolicy::admit(SpeechPriority::Main, SpeechLane::Work, 0.8, &configuration, false),
             Some(0.8)
         );
+    }
+
+    #[test]
+    fn decision_ignores_ceiling_companion_off_and_mode_but_not_mute() {
+        let night = DebriefConfiguration { mode: DebriefMode::Night, companion_enabled: false, ..Default::default() };
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.9, &night, true), Some(0.9));
+        let quiet = config(DebriefMode::Quiet, false);
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 1.5, &quiet, true), Some(1.0));
+        let muted = config(DebriefMode::Normal, true);
+        assert_eq!(ModePolicy::admit(SpeechPriority::Main, SpeechLane::Companion, 0.9, &muted, true), None);
+    }
+
+    #[test]
+    fn decision_on_subagent_is_ignored() {
+        let focus = config(DebriefMode::Focus, false);
+        assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Work, 0.9, &focus, true), None);
     }
 }

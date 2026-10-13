@@ -25,10 +25,21 @@ pub struct SpeechRequest {
     pub lane: SpeechLane,
     pub emotion: SpeechEmotion,
     pub agent_type: Option<String>,
+    /// 사용자 결정 대기 — ModePolicy가 상한·companion off·subagent 억제를 건너뛴다(mute는 아님).
+    pub decision: bool,
+    /// 발화 직전에 낼 효과음.
+    pub cue: Option<crate::earcon::Earcon>,
+    /// 데몬 내부 표시: replay로 다시 넣은 요청은 기록에 쌓지 않는다. 프레임에 실리지 않는다.
+    pub replayed: bool,
 }
 
 impl SpeechRequest {
     pub fn is_main(&self) -> bool {
         matches!(self.priority, SpeechPriority::Main)
+    }
+
+    /// 텍스트 없이 효과음만 내는 요청(훅 전용).
+    pub fn is_cue_only(&self) -> bool {
+        self.envelope.text.is_empty() && self.cue.is_some()
     }
 }

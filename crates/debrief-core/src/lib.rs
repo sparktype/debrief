@@ -1,9 +1,11 @@
 pub mod audio_player;
 pub mod configuration;
+pub mod daemon_control;
 pub mod debrief_command;
 pub mod debrief_daemon;
 pub mod debrief_version;
 pub mod diagnostics;
+pub mod earcon;
 pub mod embedded_templates;
 pub mod hook_adapter;
 pub mod hook_command_runner;
@@ -37,10 +39,12 @@ pub mod voice_catalog;
 
 pub use audio_player::{AudioPlayerError, AudioPlaying};
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
+pub use daemon_control::{Control, Inbound};
 pub use debrief_command::{CliMessages, DebriefCommand};
 pub use debrief_daemon::{DebriefDaemon, DebriefDaemonError, ErrorRecorder, SpeechRequestSource};
 pub use debrief_version::DebriefVersion;
 pub use diagnostics::{CurrentError, DaemonProcessState, DiagnosticFinding, Diagnostics, StatusSnapshot};
+pub use earcon::Earcon;
 pub use embedded_templates::{EmbeddedHookEntry, EmbeddedHookHandler, EmbeddedTemplates};
 pub use hook_adapter::{HookAdapter, HookAdapterError};
 pub use hook_command_runner::HookCommandRunner;

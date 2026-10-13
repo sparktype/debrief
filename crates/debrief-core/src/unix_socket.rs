@@ -84,7 +84,7 @@ impl UnixSocketServer {
         Ok(UnixSocketServer { socket_url, file_descriptor: descriptor, closed: AtomicBool::new(false) })
     }
 
-    pub fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+    pub fn accept(&self) -> Result<crate::daemon_control::Inbound, UnixSocketError> {
         self.accept_one()
     }
 
@@ -95,7 +95,7 @@ impl UnixSocketServer {
         unsafe { libc::shutdown(self.file_descriptor, libc::SHUT_RDWR) };
     }
 
-    fn accept_one(&self) -> Result<SpeechRequest, UnixSocketError> {
+    fn accept_one(&self) -> Result<crate::daemon_control::Inbound, UnixSocketError> {
         let descriptor = loop {
             // SAFETY: `self.file_descriptor` is a valid, non-blocking listening socket.
             let descriptor = unsafe { libc::accept(self.file_descriptor, std::ptr::null_mut(), std::ptr::null_mut()) };
@@ -130,7 +130,7 @@ impl UnixSocketServer {
         outcome
     }
 
-    fn handle_accepted(descriptor: RawFd) -> Result<SpeechRequest, UnixSocketError> {
+    fn handle_accepted(descriptor: RawFd) -> Result<crate::daemon_control::Inbound, UnixSocketError> {
         // SAFETY: `descriptor` is the freshly accepted connection fd; F_GETFL/F_SETFL are
         // well-defined fcntl ops that only touch this fd's flags.
         let accepted_flags = unsafe { libc::fcntl(descriptor, libc::F_GETFL) };
@@ -139,7 +139,7 @@ impl UnixSocketServer {
         }
         Self::configure(descriptor)?;
 
-        let result = (|| -> Result<SpeechRequest, UnixSocketError> {
+        let result = (|| -> Result<crate::daemon_control::Inbound, UnixSocketError> {
             let header = Self::read_exactly(4, descriptor)?;
             let length = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
             if length > Self::MAXIMUM_PAYLOAD_BYTES {
@@ -147,13 +147,13 @@ impl UnixSocketServer {
                 return Err(UnixSocketError::PayloadTooLarge);
             }
             let payload = Self::read_exactly(length, descriptor)?;
-            let request: SpeechRequest = Self::decode_speech_request(&payload).ok_or(UnixSocketError::InvalidFrame)?;
+            let inbound = Self::decode_inbound(&payload).ok_or(UnixSocketError::InvalidFrame)?;
             Self::write_all(&[0x06], descriptor)?;
-            Ok(request)
+            Ok(inbound)
         })();
 
         match result {
-            Ok(request) => Ok(request),
+            Ok(inbound) => Ok(inbound),
             Err(UnixSocketError::PayloadTooLarge) => Err(UnixSocketError::PayloadTooLarge),
             Err(_) => {
                 // 클라이언트별 실패(EOF, 읽기 타임아웃, 잘못된 JSON)가 리스너 자체의 죽음처럼 보이면 안 된다.
@@ -161,6 +161,38 @@ impl UnixSocketServer {
                 Err(UnixSocketError::InvalidFrame)
             }
         }
+    }
+
+    /// `control` 키가 있으면 제어 명령, 없으면 발화로 읽는다.
+    fn decode_inbound(payload: &[u8]) -> Option<crate::daemon_control::Inbound> {
+        use crate::daemon_control::{Control, Inbound};
+        let value: serde_json::Value = serde_json::from_slice(payload).ok()?;
+        let Some(control) = value.get("control") else {
+            return Self::decode_speech_request(payload).map(Inbound::Speech);
+        };
+        let control = match control.as_str()? {
+            "skip" => Control::Skip,
+            "skipAll" => Control::SkipAll,
+            "replay" => {
+                let count = value.get("count")?.as_u64()?;
+                if !(1..=Control::MAXIMUM_REPLAY as u64).contains(&count) {
+                    return None;
+                }
+                Control::Replay(count as u8)
+            }
+            _ => return None,
+        };
+        Some(Inbound::Control(control))
+    }
+
+    fn encode_control(control: &crate::daemon_control::Control) -> Vec<u8> {
+        use crate::daemon_control::Control;
+        let value = match control {
+            Control::Skip => serde_json::json!({"control": "skip"}),
+            Control::SkipAll => serde_json::json!({"control": "skipAll"}),
+            Control::Replay(count) => serde_json::json!({"control": "replay", "count": count}),
+        };
+        serde_json::to_vec(&value).expect("control always serializes")
     }
 
     fn decode_speech_request(payload: &[u8]) -> Option<SpeechRequest> {
@@ -190,7 +222,9 @@ impl UnixSocketServer {
             _ => crate::speech_emotion::SpeechEmotion::Neutral,
         };
         let agent_type = value.get("agentType").and_then(|v| v.as_str()).map(|s| s.to_string());
-        Some(SpeechRequest { envelope, priority, lane, emotion, agent_type })
+        let decision = value.get("decision").and_then(|v| v.as_bool()).unwrap_or(false);
+        let cue = value.get("cue").and_then(|v| v.as_str()).and_then(crate::earcon::Earcon::from_str_value);
+        Some(SpeechRequest { envelope, priority, lane, emotion, agent_type, decision, cue, replayed: false })
     }
 
     fn encode_speech_request(request: &SpeechRequest) -> Vec<u8> {
@@ -216,6 +250,8 @@ impl UnixSocketServer {
                 crate::speech_emotion::SpeechEmotion::Tired => "tired",
             },
             "agentType": request.agent_type,
+            "decision": request.decision,
+            "cue": request.cue.map(|cue| cue.as_str()),
         });
         serde_json::to_vec(&value).expect("speech request always serializes")
     }
@@ -400,13 +436,20 @@ impl UnixSocketClient {
     }
 
     pub fn submit(&self, request: &SpeechRequest) -> Result<(), UnixSocketError> {
-        let payload = UnixSocketServer::encode_speech_request(request);
+        self.send_payload(&UnixSocketServer::encode_speech_request(request))
+    }
+
+    pub fn send_control(&self, control: &crate::daemon_control::Control) -> Result<(), UnixSocketError> {
+        self.send_payload(&UnixSocketServer::encode_control(control))
+    }
+
+    fn send_payload(&self, payload: &[u8]) -> Result<(), UnixSocketError> {
         if payload.len() > UnixSocketServer::MAXIMUM_PAYLOAD_BYTES {
             return Err(UnixSocketError::PayloadTooLarge);
         }
         let mut last_error = UnixSocketError::Disconnected;
         for attempt in 0..2 {
-            match Self::submit_once(&payload, &self.socket_url) {
+            match Self::submit_once(payload, &self.socket_url) {
                 Ok(()) => return Ok(()),
                 Err(error) => {
                     last_error = error;
@@ -489,6 +532,9 @@ impl DirectSpeechCommand {
             lane: crate::speech_lane::SpeechLane::Companion,
             emotion: crate::speech_emotion::SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         let socket_url = crate::paths::DebriefPaths::for_home(home).socket_url;
         UnixSocketClient::new(socket_url).submit(&request).map_err(DirectSpeechCommandError::Socket)
@@ -526,13 +572,13 @@ mod tests {
         let server = std::sync::Arc::new(UnixSocketServer::new(socket_url.clone()).unwrap());
         let client = UnixSocketClient::new(socket_url.clone());
         let envelope = SpeechEnvelope { v: 1, text: "완료".to_string(), voice: "F1".to_string(), speed: 0.93, volume: 0.6 };
-        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None };
+        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None, decision: false, cue: None, replayed: false };
 
         let server_clone = server.clone();
         let received = std::thread::spawn(move || server_clone.accept());
         client.submit(&fixture).unwrap();
 
-        assert_eq!(received.join().unwrap().unwrap(), fixture);
+        assert_eq!(received.join().unwrap().unwrap(), crate::daemon_control::Inbound::Speech(fixture));
         assert_eq!(permissions(&socket_url), 0o600);
         assert_eq!(permissions(socket_url.parent().unwrap()), 0o700);
 
@@ -548,6 +594,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
 
         let result = client.submit(&request);
@@ -577,6 +626,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         let start = std::time::Instant::now();
 
@@ -649,7 +701,7 @@ mod tests {
         let received = std::thread::spawn(move || server_clone.accept());
         DirectSpeechCommand::submit("직접 발화", "M1", 1.1, 0.7, SpeechPriority::Main, &home).unwrap();
 
-        let request = received.join().unwrap().unwrap();
+        let crate::daemon_control::Inbound::Speech(request) = received.join().unwrap().unwrap() else { panic!("발화가 아님") };
         assert_eq!(
             request.envelope,
             SpeechEnvelope { v: 1, text: "직접 발화".to_string(), voice: "M1".to_string(), speed: 1.1, volume: 0.7 }
@@ -682,6 +734,70 @@ mod tests {
         let result = DirectSpeechCommand::submit("x", "F1", 1.0, 1.0, SpeechPriority::Main, &home);
         assert!(result.is_err());
 
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    fn fixture(text: &str) -> SpeechRequest {
+        SpeechRequest {
+            envelope: SpeechEnvelope { v: 1, text: text.to_string(), voice: "F1".to_string(), speed: 1.0, volume: 0.5 },
+            priority: SpeechPriority::Main,
+            lane: SpeechLane::Work,
+            emotion: SpeechEmotion::Neutral,
+            agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
+        }
+    }
+
+    #[test]
+    fn speech_codec_round_trips_decision_and_cue_but_not_replayed() {
+        let request = SpeechRequest { decision: true, cue: Some(crate::earcon::Earcon::Decision), replayed: true, ..fixture("결정") };
+        let decoded = UnixSocketServer::decode_speech_request(&UnixSocketServer::encode_speech_request(&request)).unwrap();
+        assert!(decoded.decision);
+        assert_eq!(decoded.cue, Some(crate::earcon::Earcon::Decision));
+        assert!(!decoded.replayed, "replayed는 프레임에 실리지 않는다");
+    }
+
+    #[test]
+    fn legacy_speech_frame_without_new_fields_decodes_with_defaults() {
+        let payload = br#"{"envelope":{"v":1,"text":"hi","voice":"F1","speed":1.0,"volume":0.5},"priority":"main","lane":"work","emotion":"neutral"}"#;
+        let decoded = UnixSocketServer::decode_speech_request(payload).unwrap();
+        assert!(!decoded.decision);
+        assert_eq!(decoded.cue, None);
+    }
+
+    #[test]
+    fn cue_only_means_empty_text_with_cue() {
+        assert!(SpeechRequest { cue: Some(crate::earcon::Earcon::Done), ..fixture("") }.is_cue_only());
+        assert!(!fixture("").is_cue_only());
+        assert!(!SpeechRequest { cue: Some(crate::earcon::Earcon::Done), ..fixture("x") }.is_cue_only());
+    }
+
+    #[test]
+    fn control_frames_round_trip_and_bad_counts_are_rejected() {
+        use crate::daemon_control::{Control, Inbound};
+        for control in [Control::Skip, Control::SkipAll, Control::Replay(1), Control::Replay(10)] {
+            let payload = UnixSocketServer::encode_control(&control);
+            assert_eq!(UnixSocketServer::decode_inbound(&payload), Some(Inbound::Control(control)));
+        }
+        for bad in [r#"{"control":"replay","count":0}"#, r#"{"control":"replay","count":11}"#, r#"{"control":"replay"}"#, r#"{"control":"rewind"}"#] {
+            assert_eq!(UnixSocketServer::decode_inbound(bad.as_bytes()), None, "{bad}");
+        }
+        let speech = UnixSocketServer::encode_speech_request(&fixture("hi"));
+        assert!(matches!(UnixSocketServer::decode_inbound(&speech), Some(Inbound::Speech(_))));
+    }
+
+    #[test]
+    fn client_sends_control_and_server_accepts_it() {
+        use crate::daemon_control::{Control, Inbound};
+        let directory = temporary_directory();
+        let url = directory.join("c.sock");
+        let server = std::sync::Arc::new(UnixSocketServer::new(url.clone()).unwrap());
+        let accepting = server.clone();
+        let handle = std::thread::spawn(move || accepting.accept());
+        UnixSocketClient::new(url).send_control(&Control::Replay(3)).unwrap();
+        assert_eq!(handle.join().unwrap().unwrap(), Inbound::Control(Control::Replay(3)));
         fs::remove_dir_all(&directory).ok();
     }
 }

@@ -42,7 +42,7 @@ impl HookAdapter {
             ),
             last_assistant_message: string_in(payload, &["last_assistant_message", "lastAssistantMessage"]),
             cwd: string_in(payload, &["cwd"]),
-            subtype: string_in(payload, &["notification_type", "error_type"]),
+            subtype: string_in(payload, &["notification_type", "error_type", "trigger"]),
         })
     }
 
@@ -185,6 +185,8 @@ mod tests {
             (json!({"hook_event_name": "PermissionDenied", "session_id": "s"}), HookEventName::PermissionDenied, None),
             (json!({"hook_event_name": "TeammateIdle", "session_id": "s"}), HookEventName::TeammateIdle, None),
             (json!({"hook_event_name": "TaskCompleted", "session_id": "s"}), HookEventName::TaskCompleted, None),
+            (json!({"hook_event_name": "PreCompact", "session_id": "s", "trigger": "auto"}), HookEventName::PreCompact, Some("auto")),
+            (json!({"hook_event_name": "PostCompact", "session_id": "s", "trigger": "manual"}), HookEventName::PostCompact, Some("manual")),
         ];
         for (payload, name, subtype) in cases {
             let event = HookAdapter::decode(&serde_json::to_vec(&payload).unwrap(), HostSource::Claude).unwrap();

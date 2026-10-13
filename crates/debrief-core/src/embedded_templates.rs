@@ -28,14 +28,16 @@ impl EmbeddedTemplates {
         HookEventName::Stop,
         HookEventName::SessionEnd,
     ];
-    /// Claude Code에만 있는 이벤트 — 에이전트가 말할 수 없는 순간의 고정 문구 알림.
-    const CLAUDE_ONLY_HOOK_EVENTS: [HookEventName; 6] = [
+    /// Claude Code에만 있는 이벤트 — 에이전트가 말할 수 없는 순간의 고정 문구 알림과 자동 압축 알림.
+    const CLAUDE_ONLY_HOOK_EVENTS: [HookEventName; 8] = [
         HookEventName::StopFailure,
         HookEventName::Notification,
         HookEventName::Elicitation,
         HookEventName::PermissionDenied,
         HookEventName::TeammateIdle,
         HookEventName::TaskCompleted,
+        HookEventName::PreCompact,
+        HookEventName::PostCompact,
     ];
 
     pub fn hook_events(host: HostSource) -> Vec<HookEventName> {
@@ -168,9 +170,11 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | volume | yes | 0.0–1.0 |\n\
 | priority | no | `main` / `subagent` |\n\
 | lane | no | `companion` (default) / `work` |\n\
-| emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (prosody bias only) |\n\n\
+| emotion | no | `neutral` `warm` `focused` `concerned` `relieved` `tired` (prosody bias only) |\n\
+| intent | no | `decision` only: the user must decide or approve before work can continue. Plays through quiet/night/companion-off with a chime; mute still silences it. Main priority only. |\n\n\
+Hooks append the effective mode: focus = one sentence, quiet = one short sentence or silence, night = speak only with intent=decision, muted = do not call speak. Grok has no hooks: the speak reply includes `mode` (and `muted`) — follow it next turn.\n\n\
 Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
-Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. Binary: `{executable}`.",
+Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief skip [--all]`, `debrief replay [n]`, `debrief doctor`. Binary: `{executable}`.",
             title = title,
             tool_intro = tool_intro,
             executable = executable.to_string_lossy(),
@@ -276,7 +280,7 @@ mod tests {
         let common = ["SessionStart", "UserPromptSubmit", "SubagentStart", "PermissionRequest", "Stop", "SessionEnd"];
         assert_eq!(names(HostSource::Codex), common.into_iter().collect());
         let claude_only =
-            ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted"];
+            ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted", "PreCompact", "PostCompact"];
         assert_eq!(names(HostSource::Claude), common.into_iter().chain(claude_only).collect());
         let skill_keys: std::collections::HashSet<_> =
             EmbeddedTemplates::skills(executable).into_iter().map(|(k, _)| k).collect();
@@ -299,6 +303,8 @@ mod tests {
         assert!(skill.contains("priority") || skill.contains("lane") || skill.contains("emotion"));
         assert!(skill.contains("companion") || skill.contains("F1"));
         assert!(!skill.contains("chorus:speak"));
+        assert!(skill.contains("intent"), "speak 스킬에 intent 안내가 있어야 한다");
+        assert!(skill.contains("debrief replay"));
 
         let grok_skills: std::collections::HashMap<_, _> = EmbeddedTemplates::grok_skills(executable).into_iter().collect();
         let grok_keys: std::collections::HashSet<_> = grok_skills.keys().copied().collect();

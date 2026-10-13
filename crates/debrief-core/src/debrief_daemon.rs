@@ -1,6 +1,7 @@
 // 발화 요청 수신→큐→합성→재생을 묶는 상주 데몬 루프
 use crate::audio_player::AudioPlaying;
 use crate::configuration::DebriefConfiguration;
+use crate::daemon_control::{Control, Inbound};
 use crate::mode_policy::ModePolicy;
 use crate::speech_queue::{QueueDecision, SpeechQueue};
 use crate::speech_request::SpeechRequest;
@@ -15,7 +16,7 @@ pub enum DebriefDaemonError {
 }
 
 pub trait SpeechRequestSource: Send + Sync {
-    fn accept(&self) -> Result<SpeechRequest, UnixSocketError>;
+    fn accept(&self) -> Result<Inbound, UnixSocketError>;
     fn close(&self);
 }
 
@@ -37,6 +38,7 @@ pub struct DebriefDaemon<B: TtsBackend, A: AudioPlaying> {
     configuration: Arc<dyn Fn() -> DebriefConfiguration + Send + Sync>,
     record_error: Option<Arc<ErrorRecorder>>,
     state: Arc<Mutex<DaemonState>>,
+    history: Arc<Mutex<std::collections::VecDeque<SpeechRequest>>>,
 }
 
 impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
@@ -56,7 +58,16 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             configuration: Arc::new(configuration),
             record_error,
             state: Arc::new(Mutex::new(DaemonState { active: None, discard_active: false, shutting_down: false, worker: None })),
+            history: Arc::new(Mutex::new(std::collections::VecDeque::new())),
         }
+    }
+
+    pub const HISTORY_CAPACITY: usize = 10;
+    const CUE_GAIN_RATIO: f64 = 0.6;
+
+    /// 다시 듣기 기록의 텍스트(오래된 순).
+    pub fn history_texts(&self) -> Vec<String> {
+        self.history.lock().unwrap().iter().map(|r| r.envelope.text.clone()).collect()
     }
 
     /// 현재 합성/재생 중인 요청의 보이스 id (예: `F1`, `M3`).
@@ -71,9 +82,10 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 break;
             }
             match source.accept() {
-                Ok(request) => {
+                Ok(Inbound::Speech(request)) => {
                     self.submit(request);
                 }
+                Ok(Inbound::Control(control)) => self.control(control),
                 Err(error) => {
                     if self.state.lock().unwrap().shutting_down {
                         break;
@@ -99,8 +111,12 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 return None;
             }
         }
+        // 텍스트도 효과음도 없는 요청은 재생할 것이 없다.
+        if request.envelope.text.is_empty() && request.cue.is_none() {
+            return None;
+        }
         let configuration = (self.configuration)();
-        ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration)?;
+        ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration, request.decision)?;
 
         {
             let mut state = self.state.lock().unwrap();
@@ -114,16 +130,8 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
 
         let decision = self.queue.enqueue(request);
         let mut state = self.state.lock().unwrap();
-        if decision == QueueDecision::Accepted && state.worker.is_none() {
-            let queue = self.queue.clone();
-            let backend = self.backend.clone();
-            let audio = self.audio.clone();
-            let configuration = self.configuration.clone();
-            let record_error = self.record_error.clone();
-            let shared_state = self.state.clone();
-            state.worker = Some(std::thread::spawn(move || {
-                Self::consume(queue, backend, audio, configuration, record_error, shared_state);
-            }));
+        if decision == QueueDecision::Accepted {
+            self.ensure_worker(&mut state);
         } else if decision == QueueDecision::RejectedCapacity {
             if let Some(record_error) = &self.record_error {
                 record_error("queue", "capacity", "발화 대기열이 가득 차 요청을 건너뛰었습니다");
@@ -134,6 +142,56 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             }
         }
         Some(decision)
+    }
+
+    pub fn control(&self, control: Control) {
+        if self.state.lock().unwrap().shutting_down {
+            return;
+        }
+        match control {
+            Control::Skip => self.stop_active(),
+            Control::SkipAll => {
+                self.queue.clear();
+                self.stop_active();
+            }
+            Control::Replay(count) => {
+                let items: Vec<SpeechRequest> = {
+                    let history = self.history.lock().unwrap();
+                    let skip = history.len().saturating_sub(count as usize);
+                    history.iter().skip(skip).cloned().collect()
+                };
+                for item in items {
+                    if self.queue.enqueue_replay(item) == QueueDecision::Accepted {
+                        let mut state = self.state.lock().unwrap();
+                        self.ensure_worker(&mut state);
+                    }
+                }
+            }
+        }
+    }
+
+    fn stop_active(&self) {
+        let mut state = self.state.lock().unwrap();
+        if state.active.is_some() {
+            state.discard_active = true;
+            self.audio.stop();
+        }
+    }
+
+    fn ensure_worker(&self, state: &mut DaemonState) {
+        if state.worker.is_some() {
+            return;
+        }
+        let queue = self.queue.clone();
+        let backend = self.backend.clone();
+        let audio = self.audio.clone();
+        let configuration = self.configuration.clone();
+        let record_error = self.record_error.clone();
+        let shared_state = self.state.clone();
+        let history = self.history.clone();
+        state.worker = Some(std::thread::spawn(move || {
+            Self::consume(queue, backend, audio, configuration, record_error, shared_state, history);
+        }));
     }
 
     pub fn shutdown(&self) {
@@ -160,6 +218,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
         configuration: Arc<dyn Fn() -> DebriefConfiguration + Send + Sync>,
         record_error: Option<Arc<ErrorRecorder>>,
         state: Arc<Mutex<DaemonState>>,
+        history: Arc<Mutex<std::collections::VecDeque<SpeechRequest>>>,
     ) {
         loop {
             if state.lock().unwrap().shutting_down {
@@ -175,22 +234,43 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 guard.discard_active = false;
             }
 
-            match backend.synthesize(&request.envelope.text, &request.envelope.voice, request.envelope.speed) {
-                Ok(buffer) => {
-                    let discard = state.lock().unwrap().discard_active;
-                    if !discard {
-                        if let Some(gain) =
-                            ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration())
-                        {
-                            let _ = audio.play(&buffer, gain);
+            let buffer = if request.is_cue_only() {
+                None
+            } else {
+                match backend.synthesize(&request.envelope.text, &request.envelope.voice, request.envelope.speed) {
+                    Ok(buffer) => Some(buffer),
+                    Err(error) => {
+                        // 실패한 항목은 버리고 계속한다; 메뉴 진단을 위해 표면화한다.
+                        if let Some(record_error) = &record_error {
+                            let detail: String = format!("{error:?}").chars().take(80).collect();
+                            record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
                         }
+                        let mut guard = state.lock().unwrap();
+                        guard.active = None;
+                        guard.discard_active = false;
+                        continue;
                     }
                 }
-                Err(error) => {
-                    // 실패한 항목은 버리고 계속한다; 메뉴 진단을 위해 표면화한다.
-                    if let Some(record_error) = &record_error {
-                        let detail: String = format!("{error:?}").chars().take(80).collect();
-                        record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
+            };
+
+            let current = configuration();
+            let admitted =
+                ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &current, request.decision);
+            // `if let` 조건에 락을 두면 재생 내내 잡혀 skip이 교착된다 — 매번 짧게 잡고 놓는다.
+            let discarded = || state.lock().unwrap().discard_active;
+            if let Some(gain) = admitted.filter(|_| !discarded()) {
+                if let (Some(cue), true) = (request.cue, current.earcons) {
+                    let _ = audio.play(&cue.buffer(), gain * Self::CUE_GAIN_RATIO);
+                }
+                // 효과음 도중 skip되면 발화도 버린다.
+                if let Some(buffer) = buffer.as_ref().filter(|_| !discarded()) {
+                    let _ = audio.play(buffer, gain);
+                    if !request.replayed {
+                        let mut history = history.lock().unwrap();
+                        history.push_back(request.clone());
+                        while history.len() > Self::HISTORY_CAPACITY {
+                            history.pop_front();
+                        }
                     }
                 }
             }
@@ -311,6 +391,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
             agent_type: if matches!(priority, SpeechPriority::Subagent) { Some("explore".to_string()) } else { None },
+            decision: false,
+            cue: None,
+            replayed: false,
         }
     }
 
@@ -369,6 +452,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Warm,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         let work = SpeechRequest {
             envelope: SpeechEnvelope { v: 1, text: "work".to_string(), voice: "M1".to_string(), speed: 1.0, volume: 0.5 },
@@ -376,6 +462,9 @@ mod tests {
             lane: SpeechLane::Work,
             emotion: SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         assert_eq!(daemon.submit(companion), None);
         daemon.submit(work);
@@ -421,7 +510,7 @@ mod tests {
         }
     }
     impl SpeechRequestSource for WaitingSource {
-        fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+        fn accept(&self) -> Result<Inbound, UnixSocketError> {
             *self.accepting.lock().unwrap() = true;
             let mut unblock = self.unblock.lock().unwrap();
             while !*unblock {
@@ -441,7 +530,7 @@ mod tests {
         let source = Arc::new(WaitingSource::new());
         struct SourceAdapter(Arc<WaitingSource>);
         impl SpeechRequestSource for SourceAdapter {
-            fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+            fn accept(&self) -> Result<Inbound, UnixSocketError> {
                 self.0.accept()
             }
             fn close(&self) {
@@ -482,12 +571,12 @@ mod tests {
         results: Mutex<Vec<Result<SpeechRequest, UnixSocketError>>>,
     }
     impl SpeechRequestSource for SequenceSource {
-        fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+        fn accept(&self) -> Result<Inbound, UnixSocketError> {
             let mut results = self.results.lock().unwrap();
             if results.is_empty() {
                 return Err(UnixSocketError::Disconnected);
             }
-            results.remove(0)
+            results.remove(0).map(Inbound::Speech)
         }
         fn close(&self) {}
     }
@@ -525,5 +614,152 @@ mod tests {
         assert!(is_recoverable_accept_error(&UnixSocketError::InvalidFrame));
         assert!(is_recoverable_accept_error(&UnixSocketError::PayloadTooLarge));
         assert!(!is_recoverable_accept_error(&UnixSocketError::Disconnected));
+    }
+
+    fn with_cue(text: &str, cue: crate::earcon::Earcon) -> SpeechRequest {
+        SpeechRequest { cue: Some(cue), ..request(SpeechPriority::Main, text, 0.5) }
+    }
+
+    #[test]
+    fn cue_plays_before_speech_at_reduced_gain() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        daemon.submit(with_cue("hello", crate::earcon::Earcon::Attention));
+        daemon.audio.wait_until_count(2);
+        assert_eq!(daemon.audio.markers(), vec![0, 5]);
+        let gains = daemon.audio.gains();
+        assert!((gains[0] - gains[1] * 0.6).abs() < 1e-9, "{gains:?}");
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn earcons_off_skips_the_cue() {
+        let config = DebriefConfiguration { earcons: false, ..Default::default() };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), move || config.clone(), None);
+        daemon.submit(with_cue("hello", crate::earcon::Earcon::Attention));
+        daemon.audio.wait_until_count(1);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(daemon.audio.markers(), vec![5]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn cue_only_request_skips_synthesis_and_history() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        daemon.submit(with_cue("", crate::earcon::Earcon::Done));
+        daemon.audio.wait_until_count(1);
+        assert!(daemon.backend.texts().is_empty());
+        assert!(daemon.history_texts().is_empty());
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn empty_text_without_cue_is_dropped_silently() {
+        let entries: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = entries.clone();
+        let record: Arc<ErrorRecorder> = Arc::new(move |c, _, _| sink.lock().unwrap().push(c.to_string()));
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, Some(record));
+        assert_eq!(daemon.submit(request(SpeechPriority::Main, "", 0.5)), None);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(daemon.backend.texts().is_empty());
+        assert!(entries.lock().unwrap().is_empty());
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn history_keeps_last_ten_played_requests() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(16, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        for index in 0..12 {
+            daemon.submit(request(SpeechPriority::Main, &format!("t{index:02}"), 0.5));
+            daemon.audio.wait_until_count(index + 1);
+        }
+        let expected: Vec<String> = (2..12).map(|i| format!("t{i:02}")).collect();
+        assert_eq!(daemon.history_texts(), expected);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_stops_only_the_active_request() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(6)), DebriefConfiguration::default, None);
+        daemon.submit(request(SpeechPriority::Main, "first.", 0.5)); // 마커 6, 재생에서 막힌다
+        daemon.audio.wait_until_started(6);
+        daemon.submit(request(SpeechPriority::Main, "next", 0.5));
+        daemon.control(Control::Skip);
+        daemon.audio.wait_until_count(2);
+        assert_eq!(daemon.audio.markers(), vec![6, 4]);
+        assert_eq!(daemon.audio.stop_count(), 1);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_all_also_clears_the_queue() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(6)), DebriefConfiguration::default, None);
+        daemon.submit(request(SpeechPriority::Main, "first.", 0.5));
+        daemon.audio.wait_until_started(6);
+        daemon.submit(request(SpeechPriority::Main, "next", 0.5));
+        daemon.control(Control::SkipAll);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(daemon.audio.markers(), vec![6]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_during_earcon_drops_the_speech() {
+        // 효과음 마커는 0이다 — 효과음 재생에서 막아 두고 skip한다.
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(0)), DebriefConfiguration::default, None);
+        daemon.submit(with_cue("hello", crate::earcon::Earcon::Attention));
+        daemon.audio.wait_until_started(0);
+        daemon.control(Control::Skip);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(daemon.audio.markers(), vec![0]);
+        assert!(daemon.history_texts().is_empty());
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn replay_plays_oldest_first_and_does_not_grow_history() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::from_secs(60)), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        for (index, text) in ["a", "bb", "ccc"].into_iter().enumerate() {
+            daemon.submit(request(SpeechPriority::Main, text, 0.5));
+            daemon.audio.wait_until_count(index + 1);
+        }
+        daemon.control(Control::Replay(2));
+        daemon.audio.wait_until_count(5);
+        assert_eq!(daemon.audio.markers(), vec![1, 2, 3, 2, 3]);
+        assert_eq!(daemon.history_texts(), vec!["a", "bb", "ccc"]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn replay_more_than_history_plays_what_exists() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        daemon.control(Control::Replay(3)); // 빈 기록 — 아무 일도 없어야 한다
+        daemon.submit(request(SpeechPriority::Main, "only", 0.5));
+        daemon.audio.wait_until_count(1);
+        daemon.control(Control::Replay(10));
+        daemon.audio.wait_until_count(2);
+        assert_eq!(daemon.audio.markers(), vec![4, 4]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn replay_respects_mute_at_playback_time() {
+        let muted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = muted.clone();
+        let daemon = DebriefDaemon::new(
+            None,
+            SpeechQueue::new(8, Duration::ZERO),
+            RecordingBackend::new(None),
+            RecordingAudio::new(None),
+            move || DebriefConfiguration { muted: flag.load(std::sync::atomic::Ordering::SeqCst), ..Default::default() },
+            None,
+        );
+        daemon.submit(request(SpeechPriority::Main, "said", 0.5));
+        daemon.audio.wait_until_count(1);
+        muted.store(true, std::sync::atomic::Ordering::SeqCst);
+        daemon.control(Control::Replay(1));
+        daemon.backend.wait_until_count(2);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(daemon.audio.markers(), vec![4]);
+        daemon.shutdown();
     }
 }

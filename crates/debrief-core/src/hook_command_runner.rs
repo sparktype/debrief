@@ -17,9 +17,12 @@ impl HookCommandRunner {
         };
         let paths = DebriefPaths::for_home(home);
         let session_voices = SessionVoiceStore::new(paths.session_voices_url.clone());
-        let configuration = DebriefConfiguration::load(&paths.config_url);
+        // 방해금지로 올라간 유효 모드를 쓰고, 올라갔는지는 저장된 모드와 비교해 안다.
+        let stored = DebriefConfiguration::load(&paths.config_url);
+        let configuration = DebriefConfiguration::load_effective(&paths.config_url, home);
+        let dnd_raised = configuration.mode != stored.mode;
         let session_state = SessionStateStore::new(paths.session_state_url.clone());
-        let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration);
+        let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_dnd_raised(dnd_raised);
         let mut result = engine.handle(&event, source);
         if let Some(notice) = result.notice.take() {
             match UnixSocketClient::new(paths.socket_url.clone()).submit(&notice) {
@@ -123,7 +126,7 @@ mod tests {
         let output = HookCommandRunner::run(payload, HostSource::Claude, &home);
 
         assert_eq!(String::from_utf8(output).unwrap(), "{}");
-        let request = received.join().unwrap().unwrap();
+        let crate::daemon_control::Inbound::Speech(request) = received.join().unwrap().unwrap() else { panic!("발화가 아님") };
         assert_eq!(request.envelope.text, "권한 승인을 기다리고 있습니다.");
         assert_eq!(request.lane, crate::speech_lane::SpeechLane::Work);
         assert!(crate::diagnostics::Diagnostics::new(&home).current_error().is_none());

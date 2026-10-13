@@ -34,6 +34,8 @@ pub enum HookEventName {
     PermissionDenied,
     TeammateIdle,
     TaskCompleted,
+    PreCompact,
+    PostCompact,
 }
 
 impl HookEventName {
@@ -52,6 +54,8 @@ impl HookEventName {
             HookEventName::PermissionDenied => "PermissionDenied",
             HookEventName::TeammateIdle => "TeammateIdle",
             HookEventName::TaskCompleted => "TaskCompleted",
+            HookEventName::PreCompact => "PreCompact",
+            HookEventName::PostCompact => "PostCompact",
         }
     }
 
@@ -70,6 +74,8 @@ impl HookEventName {
             "PermissionDenied" => Some(HookEventName::PermissionDenied),
             "TeammateIdle" => Some(HookEventName::TeammateIdle),
             "TaskCompleted" => Some(HookEventName::TaskCompleted),
+            "PreCompact" => Some(HookEventName::PreCompact),
+            "PostCompact" => Some(HookEventName::PostCompact),
             _ => None,
         }
     }

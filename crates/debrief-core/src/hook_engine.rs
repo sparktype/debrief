@@ -24,6 +24,7 @@ pub struct HookEngine<'a> {
     session_voices: Option<&'a SessionVoiceStore>,
     state: Option<&'a SessionStateStore>,
     configuration: DebriefConfiguration,
+    dnd_raised: bool,
 }
 
 impl<'a> HookEngine<'a> {
@@ -31,7 +32,31 @@ impl<'a> HookEngine<'a> {
     const NOTICE_VOLUME: f64 = 0.85;
 
     pub fn new(session_voices: Option<&'a SessionVoiceStore>) -> Self {
-        HookEngine { session_voices, state: None, configuration: DebriefConfiguration::default() }
+        HookEngine { session_voices, state: None, configuration: DebriefConfiguration::default(), dnd_raised: false }
+    }
+
+    /// 방해금지 때문에 유효 모드가 올라갔는지 — 모드 지침에 `(dnd)`를 붙인다.
+    pub fn with_dnd_raised(mut self, raised: bool) -> Self {
+        self.dnd_raised = raised;
+        self
+    }
+
+    /// 유효 모드별 행동 규칙 한 줄. 에이전트가 말투와 침묵을 스스로 맞추게 한다.
+    pub fn mode_guidance(configuration: &DebriefConfiguration, dnd_raised: bool) -> String {
+        use crate::configuration::DebriefMode;
+        if configuration.muted {
+            return "debrief muted: do not call speak.".to_string();
+        }
+        let decision = "Needs a user decision? pass intent=decision.";
+        let mode = match configuration.mode {
+            DebriefMode::Normal | DebriefMode::Verbose => return decision.to_string(),
+            DebriefMode::Focus => "Mode focus: one sentence.".to_string(),
+            DebriefMode::Quiet => {
+                format!("Mode quiet{}: one short sentence, or silence.", if dnd_raised { " (dnd)" } else { "" })
+            }
+            DebriefMode::Night => "Mode night: speak only with intent=decision.".to_string(),
+        };
+        format!("{decision} {mode}")
     }
 
     /// 세션 상태(턴 시작 시각, 프로젝트 레이블)를 추적해 긴 턴 알림과 레이블을 켠다.
@@ -61,6 +86,11 @@ impl<'a> HookEngine<'a> {
                     session_voice.as_deref(),
                     &self.configuration.category_voices,
                 );
+                let context = if matches!(event.name, HookEventName::SubagentStart) {
+                    context
+                } else {
+                    format!("{context} {}", Self::mode_guidance(&self.configuration, self.dnd_raised))
+                };
                 let stdout = HookAdapter::context_output(&context, event);
                 HookResult { stdout, submitted: false, delivery_error: None, notice }
             }
@@ -89,12 +119,28 @@ impl<'a> HookEngine<'a> {
         }
     }
 
+    /// 알림 종류별 효과음. 일반 브리핑·압축 시작·팀원 대기에는 없다.
+    pub fn cue_for(name: HookEventName) -> Option<crate::earcon::Earcon> {
+        use crate::earcon::Earcon;
+        match name {
+            HookEventName::PermissionRequest
+            | HookEventName::Notification
+            | HookEventName::Elicitation
+            | HookEventName::PermissionDenied => Some(Earcon::Attention),
+            HookEventName::StopFailure => Some(Earcon::Failure),
+            HookEventName::Stop | HookEventName::TaskCompleted | HookEventName::PostCompact => Some(Earcon::Done),
+            _ => None,
+        }
+    }
+
     /// 세션 상태를 갱신하고, 이 이벤트가 알림을 내야 하면 요청을 만든다.
     fn notice_for(&self, event: &HookEvent, now: u64) -> Option<SpeechRequest> {
         // 알림을 내는 이벤트인지 먼저 정한다(쿨다운은 실제로 말할 때만 소모한다).
         let wants_notice = match event.name {
             HookEventName::Notification => matches!(event.subtype.as_deref(), Some("idle_prompt" | "agent_needs_input")),
             HookEventName::TeammateIdle | HookEventName::TaskCompleted => self.configuration.team_notices,
+            // 수동 `/compact`는 사용자가 직접 한 것이라 알리지 않는다.
+            HookEventName::PreCompact | HookEventName::PostCompact => event.subtype.as_deref() == Some("auto"),
             HookEventName::PermissionRequest
             | HookEventName::Stop
             | HookEventName::StopFailure
@@ -157,11 +203,14 @@ impl<'a> HookEngine<'a> {
             }
             HookEventName::TeammateIdle => ("팀원이 대기 중입니다.".to_string(), SpeechEmotion::Neutral),
             HookEventName::TaskCompleted => ("작업 항목이 하나 끝났습니다.".to_string(), SpeechEmotion::Neutral),
+            HookEventName::PreCompact => ("컨텍스트를 정리하고 있습니다.".to_string(), SpeechEmotion::Neutral),
+            // 압축이 끝나면 말 대신 완료음만 낸다.
+            HookEventName::PostCompact => (String::new(), SpeechEmotion::Neutral),
             _ => return None,
         };
         let text = match label {
-            Some(label) => format!("{label}. {body}"),
-            None => body,
+            Some(label) if !body.is_empty() => format!("{label}. {body}"),
+            _ => body,
         };
         let voice = self
             .session_voices
@@ -173,6 +222,9 @@ impl<'a> HookEngine<'a> {
             lane: SpeechLane::Work,
             emotion,
             agent_type: None,
+            decision: false,
+            cue: Self::cue_for(event.name),
+            replayed: false,
         })
     }
 }
@@ -542,5 +594,65 @@ mod tests {
             "끝난 세션 때문에 접두가 남지 않는다"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn mode_guidance_matches_effective_state() {
+        use crate::configuration::DebriefMode;
+        let config = |mode, muted| DebriefConfiguration { mode, muted, ..Default::default() };
+        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Normal, false), false), "Needs a user decision? pass intent=decision.");
+        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Verbose, false), false), "Needs a user decision? pass intent=decision.");
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Focus, false), false).ends_with("Mode focus: one sentence."));
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Quiet, false), true).contains("Mode quiet (dnd)"));
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Night, false), false).contains("speak only with intent=decision"));
+        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Night, true), false), "debrief muted: do not call speak.");
+    }
+
+    #[test]
+    fn prompt_context_carries_guidance_but_subagent_context_does_not() {
+        use crate::configuration::DebriefMode;
+        let configuration = DebriefConfiguration { mode: DebriefMode::Quiet, ..Default::default() };
+        let directory = std::env::temp_dir().join(format!("he-guidance-{}", std::process::id()));
+        let state = SessionStateStore::new(directory.join("state.json"));
+        let engine = HookEngine::new(None).with_state(&state, configuration).with_dnd_raised(true);
+        let prompt = engine.handle_at(&event(HookEventName::UserPromptSubmit, "s", None, None, None), HostSource::Claude, 10);
+        let text = String::from_utf8(prompt.stdout).unwrap();
+        assert!(text.contains("Mode quiet (dnd)"), "{text}");
+        assert!(text.contains("intent=decision"), "{text}");
+        let context: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(context["hookSpecificOutput"]["additionalContext"].as_str().unwrap().chars().count() < 520);
+        let sub = engine.handle_at(&event(HookEventName::SubagentStart, "s", None, Some("explore"), None), HostSource::Claude, 10);
+        assert!(!String::from_utf8(sub.stdout).unwrap().contains("intent=decision"));
+        std::fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn auto_compaction_speaks_before_and_chimes_after_manual_is_silent() {
+        let engine = HookEngine::new(None);
+        let before = engine.handle_at(&with_subtype(HookEventName::PreCompact, "auto"), HostSource::Claude, 10).notice.unwrap();
+        assert_eq!(before.envelope.text, "컨텍스트를 정리하고 있습니다.");
+        assert_eq!(before.cue, None);
+        let after = engine.handle_at(&with_subtype(HookEventName::PostCompact, "auto"), HostSource::Claude, 20).notice.unwrap();
+        assert!(after.is_cue_only());
+        assert_eq!(after.cue, Some(crate::earcon::Earcon::Done));
+        assert!(engine.handle_at(&with_subtype(HookEventName::PreCompact, "manual"), HostSource::Claude, 30).notice.is_none());
+        assert!(engine.handle_at(&with_subtype(HookEventName::PostCompact, "manual"), HostSource::Claude, 40).notice.is_none());
+    }
+
+    #[test]
+    fn notices_carry_their_earcon() {
+        use crate::earcon::Earcon;
+        assert_eq!(HookEngine::cue_for(HookEventName::PermissionRequest), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::Notification), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::Elicitation), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::PermissionDenied), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::StopFailure), Some(Earcon::Failure));
+        assert_eq!(HookEngine::cue_for(HookEventName::Stop), Some(Earcon::Done));
+        assert_eq!(HookEngine::cue_for(HookEventName::TaskCompleted), Some(Earcon::Done));
+        assert_eq!(HookEngine::cue_for(HookEventName::PostCompact), Some(Earcon::Done));
+        assert_eq!(HookEngine::cue_for(HookEventName::PreCompact), None);
+        assert_eq!(HookEngine::cue_for(HookEventName::TeammateIdle), None);
+        let notice = HookEngine::new(None).handle_at(&with_subtype(HookEventName::StopFailure, "rate_limit"), HostSource::Claude, 10).notice.unwrap();
+        assert_eq!(notice.cue, Some(Earcon::Failure));
     }
 }
