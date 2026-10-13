@@ -70,9 +70,11 @@ impl SpeechQueue {
         if request.is_main() {
             state.pending.retain(|pending| pending.is_main());
         }
-        let is_decision = request.decision && request.is_main();
+        // replay는 사용자가 고른 과거 묶음이다. 용량으로 최신 항목을 잃지 않게 상한을 건너뛰고(최대 10개),
+        // 결정 대기라도 새치기하지 않아 오래된 순서를 지킨다. 재생 정책의 decision은 그대로 둔다.
+        let is_decision = request.decision && request.is_main() && !request.replayed;
 
-        if state.pending.len() >= self.capacity {
+        if !request.replayed && state.pending.len() >= self.capacity {
             let evictable = state.pending.iter().position(|pending| !pending.is_main()).or_else(|| {
                 // 결정 대기는 거부하지 않고 가장 오래된 일반 main을 밀어낸다.
                 is_decision.then(|| state.pending.iter().position(|pending| !pending.decision)).flatten()
@@ -257,5 +259,15 @@ mod tests {
         assert_eq!(queue.enqueue(request(SpeechPriority::Main, "same")), QueueDecision::RejectedDuplicate);
         assert_eq!(queue.enqueue_replay(request(SpeechPriority::Main, "same")), QueueDecision::Accepted);
         assert!(queue.next().replayed);
+    }
+
+    #[test]
+    fn replay_bypasses_capacity_and_keeps_oldest_first_order() {
+        let queue = SpeechQueue::new(2, Duration::ZERO);
+        queue.enqueue(request(SpeechPriority::Main, "live-1"));
+        queue.enqueue(request(SpeechPriority::Main, "live-2"));
+        assert_eq!(queue.enqueue_replay(decision("old-decision")), QueueDecision::Accepted);
+        assert_eq!(queue.enqueue_replay(request(SpeechPriority::Main, "old-plain")), QueueDecision::Accepted);
+        assert_eq!(queue.pending_texts(), vec!["live-1", "live-2", "old-decision", "old-plain"]);
     }
 }
