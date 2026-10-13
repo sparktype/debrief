@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-14
+
+바이너리만 교체하면 됩니다. `debrief stop` 다음 `debrief start`로 데몬을 재시작하세요.
+
+### 변경
+
+- `emotion`이 더 이상 속도를 바꾸지 않습니다. 에이전트가 보낸 `speed`를 그대로 씁니다(청취 결과 감정별 속도 변화보다 모델 기본 속도가 자연스러웠습니다).
+- 감정 차이를 쉼과 볼륨으로 키웠습니다. 문장 사이 쉼: focused 0.1초, neutral 0.3초, relieved 0.55초, warm 0.7초, concerned 0.8초, tired 1.1초. 볼륨: tired 0.75배, concerned 1.05배. 표현 태그는 그대로입니다.
+
 ## [0.2.1] - 2026-10-14
 
 바이너리만 교체하면 됩니다. 업그레이드 후 `debrief stop` 다음 `debrief start`로 데몬을 재시작하세요. 스킬 문구까지 갱신하려면 `debrief install --repair`를 실행합니다(선택).
