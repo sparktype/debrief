@@ -119,12 +119,28 @@ impl<'a> HookEngine<'a> {
         }
     }
 
+    /// 알림 종류별 효과음. 일반 브리핑·압축 시작·팀원 대기에는 없다.
+    pub fn cue_for(name: HookEventName) -> Option<crate::earcon::Earcon> {
+        use crate::earcon::Earcon;
+        match name {
+            HookEventName::PermissionRequest
+            | HookEventName::Notification
+            | HookEventName::Elicitation
+            | HookEventName::PermissionDenied => Some(Earcon::Attention),
+            HookEventName::StopFailure => Some(Earcon::Failure),
+            HookEventName::Stop | HookEventName::TaskCompleted | HookEventName::PostCompact => Some(Earcon::Done),
+            _ => None,
+        }
+    }
+
     /// 세션 상태를 갱신하고, 이 이벤트가 알림을 내야 하면 요청을 만든다.
     fn notice_for(&self, event: &HookEvent, now: u64) -> Option<SpeechRequest> {
         // 알림을 내는 이벤트인지 먼저 정한다(쿨다운은 실제로 말할 때만 소모한다).
         let wants_notice = match event.name {
             HookEventName::Notification => matches!(event.subtype.as_deref(), Some("idle_prompt" | "agent_needs_input")),
             HookEventName::TeammateIdle | HookEventName::TaskCompleted => self.configuration.team_notices,
+            // 수동 `/compact`는 사용자가 직접 한 것이라 알리지 않는다.
+            HookEventName::PreCompact | HookEventName::PostCompact => event.subtype.as_deref() == Some("auto"),
             HookEventName::PermissionRequest
             | HookEventName::Stop
             | HookEventName::StopFailure
@@ -187,11 +203,14 @@ impl<'a> HookEngine<'a> {
             }
             HookEventName::TeammateIdle => ("팀원이 대기 중입니다.".to_string(), SpeechEmotion::Neutral),
             HookEventName::TaskCompleted => ("작업 항목이 하나 끝났습니다.".to_string(), SpeechEmotion::Neutral),
+            HookEventName::PreCompact => ("컨텍스트를 정리하고 있습니다.".to_string(), SpeechEmotion::Neutral),
+            // 압축이 끝나면 말 대신 완료음만 낸다.
+            HookEventName::PostCompact => (String::new(), SpeechEmotion::Neutral),
             _ => return None,
         };
         let text = match label {
-            Some(label) => format!("{label}. {body}"),
-            None => body,
+            Some(label) if !body.is_empty() => format!("{label}. {body}"),
+            _ => body,
         };
         let voice = self
             .session_voices
@@ -204,7 +223,7 @@ impl<'a> HookEngine<'a> {
             emotion,
             agent_type: None,
             decision: false,
-            cue: None,
+            cue: Self::cue_for(event.name),
             replayed: false,
         })
     }
@@ -605,5 +624,35 @@ mod tests {
         let sub = engine.handle_at(&event(HookEventName::SubagentStart, "s", None, Some("explore"), None), HostSource::Claude, 10);
         assert!(!String::from_utf8(sub.stdout).unwrap().contains("intent=decision"));
         std::fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn auto_compaction_speaks_before_and_chimes_after_manual_is_silent() {
+        let engine = HookEngine::new(None);
+        let before = engine.handle_at(&with_subtype(HookEventName::PreCompact, "auto"), HostSource::Claude, 10).notice.unwrap();
+        assert_eq!(before.envelope.text, "컨텍스트를 정리하고 있습니다.");
+        assert_eq!(before.cue, None);
+        let after = engine.handle_at(&with_subtype(HookEventName::PostCompact, "auto"), HostSource::Claude, 20).notice.unwrap();
+        assert!(after.is_cue_only());
+        assert_eq!(after.cue, Some(crate::earcon::Earcon::Done));
+        assert!(engine.handle_at(&with_subtype(HookEventName::PreCompact, "manual"), HostSource::Claude, 30).notice.is_none());
+        assert!(engine.handle_at(&with_subtype(HookEventName::PostCompact, "manual"), HostSource::Claude, 40).notice.is_none());
+    }
+
+    #[test]
+    fn notices_carry_their_earcon() {
+        use crate::earcon::Earcon;
+        assert_eq!(HookEngine::cue_for(HookEventName::PermissionRequest), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::Notification), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::Elicitation), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::PermissionDenied), Some(Earcon::Attention));
+        assert_eq!(HookEngine::cue_for(HookEventName::StopFailure), Some(Earcon::Failure));
+        assert_eq!(HookEngine::cue_for(HookEventName::Stop), Some(Earcon::Done));
+        assert_eq!(HookEngine::cue_for(HookEventName::TaskCompleted), Some(Earcon::Done));
+        assert_eq!(HookEngine::cue_for(HookEventName::PostCompact), Some(Earcon::Done));
+        assert_eq!(HookEngine::cue_for(HookEventName::PreCompact), None);
+        assert_eq!(HookEngine::cue_for(HookEventName::TeammateIdle), None);
+        let notice = HookEngine::new(None).handle_at(&with_subtype(HookEventName::StopFailure, "rate_limit"), HostSource::Claude, 10).notice.unwrap();
+        assert_eq!(notice.cue, Some(Earcon::Failure));
     }
 }

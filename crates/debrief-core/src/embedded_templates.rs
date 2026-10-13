@@ -28,14 +28,16 @@ impl EmbeddedTemplates {
         HookEventName::Stop,
         HookEventName::SessionEnd,
     ];
-    /// Claude Code에만 있는 이벤트 — 에이전트가 말할 수 없는 순간의 고정 문구 알림.
-    const CLAUDE_ONLY_HOOK_EVENTS: [HookEventName; 6] = [
+    /// Claude Code에만 있는 이벤트 — 에이전트가 말할 수 없는 순간의 고정 문구 알림과 자동 압축 알림.
+    const CLAUDE_ONLY_HOOK_EVENTS: [HookEventName; 8] = [
         HookEventName::StopFailure,
         HookEventName::Notification,
         HookEventName::Elicitation,
         HookEventName::PermissionDenied,
         HookEventName::TeammateIdle,
         HookEventName::TaskCompleted,
+        HookEventName::PreCompact,
+        HookEventName::PostCompact,
     ];
 
     pub fn hook_events(host: HostSource) -> Vec<HookEventName> {
@@ -276,7 +278,7 @@ mod tests {
         let common = ["SessionStart", "UserPromptSubmit", "SubagentStart", "PermissionRequest", "Stop", "SessionEnd"];
         assert_eq!(names(HostSource::Codex), common.into_iter().collect());
         let claude_only =
-            ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted"];
+            ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted", "PreCompact", "PostCompact"];
         assert_eq!(names(HostSource::Claude), common.into_iter().chain(claude_only).collect());
         let skill_keys: std::collections::HashSet<_> =
             EmbeddedTemplates::skills(executable).into_iter().map(|(k, _)| k).collect();
