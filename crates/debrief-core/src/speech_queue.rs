@@ -48,13 +48,36 @@ impl SpeechQueue {
         if state.recent_digests.iter().any(|(value, _)| *value == digest) {
             return QueueDecision::RejectedDuplicate;
         }
+        let decision = self.insert(&mut state, request);
+        if decision == QueueDecision::Accepted {
+            state.recent_digests.push((digest, now));
+        }
+        decision
+    }
 
+    /// 다시 듣기 — 방금 들은 발화라 중복 창 안이므로 그 검사를 건너뛴다.
+    pub fn enqueue_replay(&self, mut request: SpeechRequest) -> QueueDecision {
+        request.replayed = true;
+        let mut state = self.state.lock().unwrap();
+        self.insert(&mut state, request)
+    }
+
+    pub fn clear(&self) {
+        self.state.lock().unwrap().pending.clear();
+    }
+
+    fn insert(&self, state: &mut QueueState, request: SpeechRequest) -> QueueDecision {
         if request.is_main() {
             state.pending.retain(|pending| pending.is_main());
         }
+        let is_decision = request.decision && request.is_main();
 
         if state.pending.len() >= self.capacity {
-            match state.pending.iter().position(|pending| !pending.is_main()) {
+            let evictable = state.pending.iter().position(|pending| !pending.is_main()).or_else(|| {
+                // 결정 대기는 거부하지 않고 가장 오래된 일반 main을 밀어낸다.
+                is_decision.then(|| state.pending.iter().position(|pending| !pending.decision)).flatten()
+            });
+            match evictable {
                 Some(index) => {
                     state.pending.remove(index);
                 }
@@ -62,8 +85,12 @@ impl SpeechQueue {
             }
         }
 
-        state.recent_digests.push((digest, now));
-        state.pending.push_back(request);
+        if is_decision {
+            let index = state.pending.iter().position(|pending| !pending.decision).unwrap_or(state.pending.len());
+            state.pending.insert(index, request);
+        } else {
+            state.pending.push_back(request);
+        }
         self.condvar.notify_one();
         QueueDecision::Accepted
     }
@@ -188,5 +215,47 @@ mod tests {
         std::thread::sleep(Duration::from_millis(20));
         assert_eq!(queue.enqueue(request(SpeechPriority::Subagent, "continued")), QueueDecision::Accepted);
         assert_eq!(waiting.join().unwrap().envelope.text, "continued");
+    }
+
+    fn decision(text: &str) -> SpeechRequest {
+        SpeechRequest { decision: true, ..request(SpeechPriority::Main, text) }
+    }
+
+    #[test]
+    fn decision_goes_before_plain_mains_but_after_earlier_decisions() {
+        let queue = SpeechQueue::new(8, Duration::ZERO);
+        queue.enqueue(request(SpeechPriority::Main, "plain-1"));
+        queue.enqueue(decision("decide-1"));
+        queue.enqueue(request(SpeechPriority::Main, "plain-2"));
+        queue.enqueue(decision("decide-2"));
+        assert_eq!(queue.pending_texts(), vec!["decide-1", "decide-2", "plain-1", "plain-2"]);
+    }
+
+    #[test]
+    fn decision_evicts_oldest_plain_main_when_full() {
+        let queue = SpeechQueue::new(2, Duration::ZERO);
+        queue.enqueue(request(SpeechPriority::Main, "a"));
+        queue.enqueue(request(SpeechPriority::Main, "b"));
+        assert_eq!(queue.enqueue(decision("d")), QueueDecision::Accepted);
+        assert_eq!(queue.pending_texts(), vec!["d", "b"]);
+        assert_eq!(queue.enqueue(request(SpeechPriority::Main, "c")), QueueDecision::RejectedCapacity);
+    }
+
+    #[test]
+    fn clear_empties_pending() {
+        let queue = SpeechQueue::new(8, Duration::ZERO);
+        queue.enqueue(request(SpeechPriority::Main, "a"));
+        queue.clear();
+        assert!(queue.pending_texts().is_empty());
+    }
+
+    #[test]
+    fn replay_bypasses_duplicate_window_and_marks_request() {
+        let queue = SpeechQueue::new(8, Duration::from_secs(60));
+        assert_eq!(queue.enqueue(request(SpeechPriority::Main, "same")), QueueDecision::Accepted);
+        assert_eq!(queue.next().envelope.text, "same");
+        assert_eq!(queue.enqueue(request(SpeechPriority::Main, "same")), QueueDecision::RejectedDuplicate);
+        assert_eq!(queue.enqueue_replay(request(SpeechPriority::Main, "same")), QueueDecision::Accepted);
+        assert!(queue.next().replayed);
     }
 }
