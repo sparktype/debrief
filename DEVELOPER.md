@@ -105,7 +105,7 @@ MCP registration points at `~/.local/bin/debrief` with `args: ["mcp"]`. TOML hos
 | volume | 0.0–1.0 finite |
 | priority | optional: `main` (default) or `subagent` |
 | lane | optional: `companion` (default) or `work` |
-| emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); sets pace, sentence pauses (focused 0.2s … tired 0.5s), and a Supertonic expression tag (relieved `<laugh>`, warm `<breath>`, tired `<sigh>`). Agent `<` `>` are stripped |
+| emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); keeps the requested speed; sets volume (tired ×0.75, concerned ×1.05), sentence pauses (focused 0.1s … tired 1.1s), and a Supertonic expression tag (relieved `<laugh>`, warm `<breath>`, tired `<sigh>`). Agent `<` `>` are stripped |
 | session | optional: host session id; keeps the companion voice |
 
 No HTML comments or speech JSON in the chat body. Each user-visible turn is one spoken line: what changed, then one next action. After code work the next action names what the user must verify to keep code ownership (cognitive-debt reduction); wording only, not enforced in code. Silence only if nothing new and no next action. The agent writes the line. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.

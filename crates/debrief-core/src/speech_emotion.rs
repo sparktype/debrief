@@ -15,29 +15,25 @@ pub enum SpeechEmotion {
 pub struct EmotionProsody;
 
 impl EmotionProsody {
+    /// 속도는 요청값 그대로 둔다(청취 실험: 감정별 속도 변화보다 모델 기본 속도가 자연스러웠다). 볼륨만 바꾼다.
     pub fn apply(emotion: SpeechEmotion, speed: f64, volume: f64) -> (f64, f64) {
-        let (speed_factor, volume_factor) = match emotion {
-            SpeechEmotion::Neutral => (1.0, 1.0),
-            SpeechEmotion::Warm => (0.97, 1.0),
-            SpeechEmotion::Focused => (1.02, 1.0),
-            SpeechEmotion::Concerned => (0.95, 1.05),
-            SpeechEmotion::Relieved => (0.98, 1.0),
-            SpeechEmotion::Tired => (0.92, 0.90),
+        let volume_factor = match emotion {
+            SpeechEmotion::Concerned => 1.05,
+            SpeechEmotion::Tired => 0.75,
+            SpeechEmotion::Neutral | SpeechEmotion::Warm | SpeechEmotion::Focused | SpeechEmotion::Relieved => 1.0,
         };
-        let biased_speed = (speed * speed_factor).clamp(0.7, 2.0);
-        let biased_volume = (volume * volume_factor).clamp(0.0, 1.0);
-        (biased_speed, biased_volume)
+        (speed.clamp(0.7, 2.0), (volume * volume_factor).clamp(0.0, 1.0))
     }
 
-    /// 문장 사이 무음 길이(초). neutral은 기존 고정값 0.3초.
+    /// 문장 사이 무음 길이(초). 청취 실험에서 고른 값이며 neutral은 기존 고정값 0.3초.
     pub fn pause_seconds(emotion: SpeechEmotion) -> f64 {
         match emotion {
+            SpeechEmotion::Focused => 0.1,
             SpeechEmotion::Neutral => 0.3,
-            SpeechEmotion::Warm => 0.4,
-            SpeechEmotion::Focused => 0.2,
-            SpeechEmotion::Concerned => 0.4,
-            SpeechEmotion::Relieved => 0.35,
-            SpeechEmotion::Tired => 0.5,
+            SpeechEmotion::Relieved => 0.55,
+            SpeechEmotion::Warm => 0.7,
+            SpeechEmotion::Concerned => 0.8,
+            SpeechEmotion::Tired => 1.1,
         }
     }
 
@@ -73,21 +69,25 @@ mod tests {
     }
 
     #[test]
-    fn tired_slows_and_softens() {
-        let (speed, volume) = EmotionProsody::apply(SpeechEmotion::Tired, 1.0, 1.0);
-        assert_eq!(speed, 0.92);
-        assert_eq!(volume, 0.90);
+    fn tired_softens_without_changing_speed() {
+        let (speed, volume) = EmotionProsody::apply(SpeechEmotion::Tired, 1.05, 1.0);
+        assert_eq!(speed, 1.05);
+        assert_eq!(volume, 0.75);
     }
 
     #[test]
-    fn neutral_keeps_the_existing_sentence_pause() {
-        assert_eq!(EmotionProsody::pause_seconds(SpeechEmotion::Neutral), 0.3);
+    fn no_emotion_changes_the_requested_speed() {
+        use SpeechEmotion::*;
+        for emotion in [Neutral, Warm, Focused, Concerned, Relieved, Tired] {
+            assert_eq!(EmotionProsody::apply(emotion, 1.05, 0.8).0, 1.05);
+        }
     }
 
     #[test]
-    fn focused_pauses_shorter_and_tired_longer() {
-        assert!(EmotionProsody::pause_seconds(SpeechEmotion::Focused) < 0.3);
-        assert!(EmotionProsody::pause_seconds(SpeechEmotion::Tired) > 0.3);
+    fn sentence_pauses_follow_the_listening_test_values() {
+        use SpeechEmotion::*;
+        let pauses: Vec<f64> = [Focused, Neutral, Relieved, Warm, Concerned, Tired].map(EmotionProsody::pause_seconds).to_vec();
+        assert_eq!(pauses, vec![0.1, 0.3, 0.55, 0.7, 0.8, 1.1]);
     }
 
     #[test]

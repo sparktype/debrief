@@ -104,7 +104,7 @@ Grok
 새 사실도 다음 행동도 없으면 도구를 생략합니다 (Silence only).  
 Claude Code: `mcp__debrief__speak` / `mcp__debrief__install`.  
 Grok: `debrief__speak` / `debrief__install` (`search_tool` / `use_tool`).  
-기본 lane은 `companion`, speed ~0.93, volume ~0.85. 도우미 목소리는 세션마다 F1–M5를 돌고, `session`이 같으면 그 목소리를 유지합니다. `session`이 없으면 이 MCP 프로세스가 받은 목소리를 씁니다. `emotion`은 닫힌 enum이며 속도·볼륨 바이어스, 문장 사이 쉼(focused 0.2초~tired 0.5초), Supertonic 표현 태그(relieved `<laugh>`, warm `<breath>`, tired `<sigh>`)를 줍니다. 에이전트가 쓴 `<` `>`는 지웁니다. 재생은 문장 단위로, 첫 문장을 트는 동안 다음 문장을 합성합니다.  
+기본 lane은 `companion`, speed ~0.93, volume ~0.85. 도우미 목소리는 세션마다 F1–M5를 돌고, `session`이 같으면 그 목소리를 유지합니다. `session`이 없으면 이 MCP 프로세스가 받은 목소리를 씁니다. `emotion`은 닫힌 enum이며 속도는 바꾸지 않고, 볼륨(tired 0.75배·concerned 1.05배), 문장 사이 쉼(focused 0.1초~tired 1.1초), Supertonic 표현 태그(relieved `<laugh>`, warm `<breath>`, tired `<sigh>`)를 줍니다. 에이전트가 쓴 `<` `>`는 지웁니다. 재생은 문장 단위로, 첫 문장을 트는 동안 다음 문장을 합성합니다.  
 서브에이전트는 사용자에게 브리핑하지 않지만, 작업이 끝나면 한 번 `priority: "subagent"`, `lane: "work"`, 사실 한 줄로 말합니다 (focus/quiet/night에서 subagent 억제).  
 본문에 speech JSON·HTML 주석을 넣지 마세요. `debrief companion off`면 companion lane은 재생되지 않습니다.
 

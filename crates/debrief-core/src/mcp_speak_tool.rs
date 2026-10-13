@@ -396,8 +396,8 @@ mod tests {
         assert!(!result.is_error);
         let recorded = sink.recorded();
         let envelope = &recorded[0].envelope;
-        assert_eq!(envelope.speed, 0.92);
-        assert_eq!(envelope.volume, 0.90);
+        assert_eq!(envelope.speed, 1.0);
+        assert_eq!(envelope.volume, 0.75);
         assert_eq!(recorded[0].lane, SpeechLane::Companion);
         assert_eq!(recorded[0].emotion, SpeechEmotion::Tired);
         fs::remove_dir_all(&home).ok();

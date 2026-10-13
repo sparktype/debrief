@@ -28,7 +28,7 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | volume | yes | 0.0–1.0 |
 | priority | no | main / subagent |
 | lane | no | companion (default) / work |
-| emotion | no | neutral, warm (long work done), focused (mid-task), concerned (blocked or failing), relieved (a blocker clears), tired (rarely). Sets pace, sentence pauses, and a soft cue: relieved laugh, warm breath, tired sigh |
+| emotion | no | neutral, warm (long work done), focused (mid-task), concerned (blocked or failing), relieved (a blocker clears), tired (rarely). Sets sentence pauses, a softer volume for tired, and a soft cue: relieved laugh, warm breath, tired sigh. Speed is never changed |
 
 Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.
 
