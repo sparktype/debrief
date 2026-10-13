@@ -311,6 +311,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
             agent_type: if matches!(priority, SpeechPriority::Subagent) { Some("explore".to_string()) } else { None },
+            decision: false,
+            cue: None,
+            replayed: false,
         }
     }
 
@@ -369,6 +372,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Warm,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         let work = SpeechRequest {
             envelope: SpeechEnvelope { v: 1, text: "work".to_string(), voice: "M1".to_string(), speed: 1.0, volume: 0.5 },
@@ -376,6 +382,9 @@ mod tests {
             lane: SpeechLane::Work,
             emotion: SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         assert_eq!(daemon.submit(companion), None);
         daemon.submit(work);

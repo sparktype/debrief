@@ -173,6 +173,9 @@ impl<'a> HookEngine<'a> {
             lane: SpeechLane::Work,
             emotion,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         })
     }
 }

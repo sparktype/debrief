@@ -87,7 +87,7 @@ impl McpSpeakTool {
         if envelope.validate().is_err() {
             return McpToolCallResult { is_error: true, message: "잘못된 speak 인자입니다.".to_string() };
         }
-        let request = SpeechRequest { envelope, priority: arguments.priority, lane: arguments.lane, emotion: arguments.emotion, agent_type: None };
+        let request = SpeechRequest { envelope, priority: arguments.priority, lane: arguments.lane, emotion: arguments.emotion, agent_type: None , decision: false, cue: None, replayed: false };
         match sink.submit(request) {
             Ok(()) => {
                 let _ = diagnostics.clear_current_error();

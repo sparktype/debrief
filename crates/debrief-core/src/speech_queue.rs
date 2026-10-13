@@ -122,6 +122,9 @@ mod tests {
             lane: crate::speech_lane::SpeechLane::Companion,
             emotion: crate::speech_emotion::SpeechEmotion::Neutral,
             agent_type: if matches!(priority, SpeechPriority::Subagent) { Some("explore".to_string()) } else { None },
+            decision: false,
+            cue: None,
+            replayed: false,
         }
     }
 

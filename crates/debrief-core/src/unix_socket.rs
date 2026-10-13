@@ -190,7 +190,9 @@ impl UnixSocketServer {
             _ => crate::speech_emotion::SpeechEmotion::Neutral,
         };
         let agent_type = value.get("agentType").and_then(|v| v.as_str()).map(|s| s.to_string());
-        Some(SpeechRequest { envelope, priority, lane, emotion, agent_type })
+        let decision = value.get("decision").and_then(|v| v.as_bool()).unwrap_or(false);
+        let cue = value.get("cue").and_then(|v| v.as_str()).and_then(crate::earcon::Earcon::from_str_value);
+        Some(SpeechRequest { envelope, priority, lane, emotion, agent_type, decision, cue, replayed: false })
     }
 
     fn encode_speech_request(request: &SpeechRequest) -> Vec<u8> {
@@ -216,6 +218,8 @@ impl UnixSocketServer {
                 crate::speech_emotion::SpeechEmotion::Tired => "tired",
             },
             "agentType": request.agent_type,
+            "decision": request.decision,
+            "cue": request.cue.map(|cue| cue.as_str()),
         });
         serde_json::to_vec(&value).expect("speech request always serializes")
     }
@@ -489,6 +493,9 @@ impl DirectSpeechCommand {
             lane: crate::speech_lane::SpeechLane::Companion,
             emotion: crate::speech_emotion::SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         let socket_url = crate::paths::DebriefPaths::for_home(home).socket_url;
         UnixSocketClient::new(socket_url).submit(&request).map_err(DirectSpeechCommandError::Socket)
@@ -526,7 +533,7 @@ mod tests {
         let server = std::sync::Arc::new(UnixSocketServer::new(socket_url.clone()).unwrap());
         let client = UnixSocketClient::new(socket_url.clone());
         let envelope = SpeechEnvelope { v: 1, text: "완료".to_string(), voice: "F1".to_string(), speed: 0.93, volume: 0.6 };
-        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None };
+        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None , decision: false, cue: None, replayed: false };
 
         let server_clone = server.clone();
         let received = std::thread::spawn(move || server_clone.accept());
@@ -548,6 +555,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
 
         let result = client.submit(&request);
@@ -577,6 +587,9 @@ mod tests {
             lane: SpeechLane::Companion,
             emotion: SpeechEmotion::Neutral,
             agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
         };
         let start = std::time::Instant::now();
 
@@ -683,5 +696,42 @@ mod tests {
         assert!(result.is_err());
 
         fs::remove_dir_all(&directory).ok();
+    }
+
+    fn fixture(text: &str) -> SpeechRequest {
+        SpeechRequest {
+            envelope: SpeechEnvelope { v: 1, text: text.to_string(), voice: "F1".to_string(), speed: 1.0, volume: 0.5 },
+            priority: SpeechPriority::Main,
+            lane: SpeechLane::Work,
+            emotion: SpeechEmotion::Neutral,
+            agent_type: None,
+            decision: false,
+            cue: None,
+            replayed: false,
+        }
+    }
+
+    #[test]
+    fn speech_codec_round_trips_decision_and_cue_but_not_replayed() {
+        let request = SpeechRequest { decision: true, cue: Some(crate::earcon::Earcon::Decision), replayed: true, ..fixture("결정") };
+        let decoded = UnixSocketServer::decode_speech_request(&UnixSocketServer::encode_speech_request(&request)).unwrap();
+        assert!(decoded.decision);
+        assert_eq!(decoded.cue, Some(crate::earcon::Earcon::Decision));
+        assert!(!decoded.replayed, "replayed는 프레임에 실리지 않는다");
+    }
+
+    #[test]
+    fn legacy_speech_frame_without_new_fields_decodes_with_defaults() {
+        let payload = br#"{"envelope":{"v":1,"text":"hi","voice":"F1","speed":1.0,"volume":0.5},"priority":"main","lane":"work","emotion":"neutral"}"#;
+        let decoded = UnixSocketServer::decode_speech_request(payload).unwrap();
+        assert!(!decoded.decision);
+        assert_eq!(decoded.cue, None);
+    }
+
+    #[test]
+    fn cue_only_means_empty_text_with_cue() {
+        assert!(SpeechRequest { cue: Some(crate::earcon::Earcon::Done), ..fixture("") }.is_cue_only());
+        assert!(!fixture("").is_cue_only());
+        assert!(!SpeechRequest { cue: Some(crate::earcon::Earcon::Done), ..fixture("x") }.is_cue_only());
     }
 }
