@@ -1,9 +1,9 @@
 // debrief CLI 진입점 — 서브커맨드 파싱과 실행을 연결한다
 use debrief_core::{
-    current_executable_url, CliMessages, ConfigurationCommands, DebriefCommand, DebriefPaths,
+    current_executable_url, CliMessages, ConfigurationCommands, Control, DebriefCommand, DebriefPaths,
     Diagnostics, HookCommandRunner, HostSource, LiveMcpInstallRunner, McpServer,
     ModelInstaller, ModelManifest, ProcessLaunchctlRunner, ResidentService, ResidentServiceError,
-    RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UreqModelDownloader,
+    RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UnixSocketError, UreqModelDownloader,
 };
 use debrief_tts::{AudioPlayer, SupertonicEngine};
 use std::collections::HashSet;
@@ -206,6 +206,8 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                 }
             }
         }
+        DebriefCommand::Skip { all } => run_control(home, if all { Control::SkipAll } else { Control::Skip }),
+        DebriefCommand::Replay(count) => run_control(home, Control::Replay(count)),
         DebriefCommand::Start => run_start(home),
         DebriefCommand::Stop => run_stop(home),
         DebriefCommand::Status => {
@@ -320,6 +322,21 @@ fn run_stop(home: &std::path::Path) -> i32 {
         }
         Err(error) => {
             eprintln!("{}", CliMessages::stop_failed(&format!("{error:?}")));
+            1
+        }
+    }
+}
+
+fn run_control(home: &std::path::Path, control: Control) -> i32 {
+    match UnixSocketClient::new(DebriefPaths::for_home(home).socket_url).send_control(&control) {
+        Ok(()) => 0,
+        // 구버전 데몬은 제어 프레임을 발화로 읽다 실패해 NAK를 돌려준다.
+        Err(UnixSocketError::Rejected) => {
+            eprintln!("{}", CliMessages::DAEMON_OUTDATED);
+            1
+        }
+        Err(_) => {
+            eprintln!("{}", CliMessages::DAEMON_NOT_RUNNING);
             1
         }
     }

@@ -16,6 +16,8 @@ pub enum DebriefCommand {
     Mode(Option<String>),
     Companion(Option<String>),
     Dnd(Option<String>),
+    Skip { all: bool },
+    Replay(u8),
     Doctor,
     Hook { source: String },
     Mcp,
@@ -41,7 +43,9 @@ impl DebriefCommand {
                 "  debrief mute [on|off|toggle]\n",
                 "  debrief mode [normal|focus|quiet|verbose|night]\n",
                 "  debrief companion [on|off|toggle]\n",
-                "  debrief dnd [on|off|toggle]   (follow macOS Do Not Disturb: at least quiet while it is on)\n\n",
+                "  debrief dnd [on|off|toggle]   (follow macOS Do Not Disturb: at least quiet while it is on)\n",
+                "  debrief skip [--all]   (stop the current utterance; --all also clears the queue)\n",
+                "  debrief replay [n]     (replay the last n utterances, 1-10, default 1)\n\n",
                 "Agents:\n",
                 "  debrief mcp\n",
                 "  debrief hook --source <codex|claude>\n",
@@ -105,6 +109,25 @@ impl DebriefCommand {
             }
             "companion" => Ok(DebriefCommand::Companion(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
             "dnd" => Ok(DebriefCommand::Dnd(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
+            "skip" => {
+                Self::require_only(tail, &["--all"])?;
+                if tail.len() > 1 {
+                    return Err(CommandError::Usage("skip accepts only --all".to_string()));
+                }
+                Ok(DebriefCommand::Skip { all: !tail.is_empty() })
+            }
+            "replay" => {
+                let count = match tail {
+                    [] => 1,
+                    [value] => value
+                        .parse::<u8>()
+                        .ok()
+                        .filter(|n| (1..=crate::daemon_control::Control::MAXIMUM_REPLAY).contains(n))
+                        .ok_or_else(|| CommandError::Usage("replay count must be 1-10".to_string()))?,
+                    _ => return Err(CommandError::Usage("replay accepts one count".to_string())),
+                };
+                Ok(DebriefCommand::Replay(count))
+            }
             "mcp" => {
                 Self::require_empty(tail, name)?;
                 Ok(DebriefCommand::Mcp)
@@ -192,6 +215,9 @@ impl CliMessages {
     pub const STARTED: &'static str = "서비스를 시작했습니다.";
     pub const STOPPED: &'static str = "서비스를 중지했습니다.";
     pub const ALREADY_RUNNING: &'static str = "이미 실행 중입니다.";
+    pub const DAEMON_NOT_RUNNING: &'static str = "debrief 데몬이 실행 중이 아닙니다. `debrief start`로 시작하세요.";
+    pub const DAEMON_OUTDATED: &'static str =
+        "데몬이 이 명령을 지원하지 않습니다. `debrief stop` 후 `debrief start`로 재시작하세요.";
     pub const LAUNCH_AGENT_MISSING: &'static str = crate::runtime_installer::LAUNCH_AGENT_MISSING_MESSAGE;
     pub const EXECUTABLE_PATH_IS_DIRECTORY: &'static str = crate::runtime_installer::EXECUTABLE_PATH_IS_DIRECTORY_MESSAGE;
 
@@ -319,5 +345,21 @@ mod tests {
             parse(&["uninstall", "--grok"]),
             Ok(DebriefCommand::Uninstall { codex: false, claude: false, grok: true })
         );
+    }
+
+    #[test]
+    fn parses_skip_and_replay() {
+        let parse = |a: &[&str]| DebriefCommand::parse(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(parse(&["skip"]), Ok(DebriefCommand::Skip { all: false }));
+        assert_eq!(parse(&["skip", "--all"]), Ok(DebriefCommand::Skip { all: true }));
+        assert!(parse(&["skip", "--now"]).is_err());
+        assert_eq!(parse(&["replay"]), Ok(DebriefCommand::Replay(1)));
+        assert_eq!(parse(&["replay", "3"]), Ok(DebriefCommand::Replay(3)));
+        assert_eq!(parse(&["replay", "10"]), Ok(DebriefCommand::Replay(10)));
+        for bad in [["replay", "0"], ["replay", "11"], ["replay", "x"]] {
+            assert!(parse(&bad[..]).is_err(), "{bad:?}");
+        }
+        assert!(parse(&["replay", "1", "2"]).is_err());
+        assert!(DebriefCommand::usage_text().contains("debrief replay [n]"));
     }
 }
