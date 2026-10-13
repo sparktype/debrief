@@ -12,7 +12,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 포함되는 것:
 
-- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `start`, `stop`)
+- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `skip`, `replay`, `start`, `stop`)
 - MCP `speak`, `install`
 - Claude / Codex 훅 (SessionStart, UserPromptSubmit, SubagentStart 컨텍스트 + PermissionRequest, Stop 고정 문구 알림 + SessionEnd 정리. Claude에는 StopFailure, Notification, Elicitation, PermissionDenied, TeammateIdle, TaskCompleted 알림 추가)과 세 호스트용 스킬
 
@@ -82,6 +82,8 @@ debrief doctor
 debrief mute [on|off|toggle]
 debrief mode [normal|focus|quiet|verbose|night]
 debrief companion [on|off|toggle]
+debrief skip [--all]
+debrief replay [n]
 debrief start
 debrief stop
 debrief uninstall [--codex] [--claude] [--grok]
@@ -106,6 +108,8 @@ LaunchAgent: 설치됨
 | `debrief mute` | 인자가 없으면 토글합니다. `on` / `off`는 지정입니다. 다음 발화부터 적용됩니다. |
 | `debrief mode` | 인자가 없으면 `현재 모드는 <mode>입니다.` 값이 있으면 `모드를 <mode>로 설정했습니다.` |
 | `debrief companion` | 도우미 음성(companion lane)을 켜거나 끕니다. 꺼도 work lane은 음소거가 아니면 재생됩니다. |
+| `debrief skip` | 지금 재생 중인 발화만 끊고 다음 발화는 이어서 재생합니다. `--all`이면 대기열도 비웁니다. |
+| `debrief replay` | 최근 재생한 발화 n개(1–10, 기본 1)를 오래된 순서로 다시 들려줍니다. 기록은 데몬 메모리에만 있어 재시작하면 비워집니다. |
 | `debrief doctor` | 진단입니다. 정상이 아닌 항목이 있으면 종료 코드 1입니다. |
 | `debrief start` | 있는 plist만 부트스트랩합니다. plist가 없으면 `debrief install`을 안내하고 종료 코드 1입니다. 이미 실행 중이면 프로세스를 바꾸지 않습니다. |
 | `debrief stop` | 에이전트를 끄고 bootout 합니다. 실행 파일과 plist는 남습니다. |
@@ -173,6 +177,7 @@ debrief status
 | `volumeCeilings` | 모드별 볼륨 상한. 위 표의 기본값 | CLI는 이 맵을 바꾸지 않습니다 |
 | `categoryVoices` | 역할 이름 → 목소리(`F1`–`M5`). 훅이 서브에이전트·작업 레인에 안내하는 역할 목소리를 덮어씁니다. 비어 있거나 알 수 없는 역할·목소리는 아래 역할 기본값 | 설정 파일을 직접 고칩니다 |
 | `voiceSpeeds` | 역할별 속도. 비어 있으면 요청의 `speed` | 설치가 비워 둡니다 |
+| `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다 | 설정 파일에서 `"earcons": false` |
 
 호스트 배선은 설정 파일과 별개입니다. `debrief install`이 절대 경로로 넣고, `debrief install --repair`가 소유한 파일만 다시 맞춥니다. 직접 고친 파일은 다이제스트가 다르면 남습니다.
 
@@ -216,6 +221,9 @@ tool_timeout_sec = 120
 | `lane` | 아니오 | `companion` (기본, 관찰) 또는 `work` (사실) |
 | `emotion` | 아니오 | `neutral` `warm` `focused` `concerned` `relieved` `tired`. 재생 성향만 바꿉니다 |
 | `session` | 아니오 | 호스트 세션 아이디. 같으면 도우미 목소리가 유지됩니다. 없으면 이 MCP 프로세스가 받은 목소리를 씁니다 |
+| `intent` | 아니오 | `decision`만 허용. 사용자가 결정·승인해야 작업이 이어질 때. 효과음과 함께 quiet·night·도우미 꺼짐에서도 들리고, 음소거만 막습니다. main에서만 적용됩니다 |
+
+성공 응답은 `{"ok":true,"mode":"<유효 모드>"}`이고 음소거면 `"muted":true`가 붙습니다. 훅이 있는 호스트는 시작 계열 context에도 모드 지침(focus 한 문장, quiet 짧게 또는 침묵, night 결정 대기만, 음소거면 호출 생략)이 붙습니다.
 
 서브에이전트는 사용자를 브리핑하지 않지만, 작업이 끝나면 `priority=subagent`, `lane=work`, 사실 한 줄을 한 번 말합니다.
 

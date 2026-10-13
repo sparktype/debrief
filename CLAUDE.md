@@ -44,6 +44,7 @@ cargo build --release
 4. `docs/superpowers/specs/2026-07-15-swift-single-binary-tts-design.md` — 승인 설계 (envelope speech contract는 2026-07-19로 대체, 전체 구현은 Rust 재작성으로 대체)
 5. `docs/superpowers/specs/2026-07-17-menubar-resident-tts-design.md` — 이전 메뉴바 상주 (패키징은 2026-09-29 데몬 스펙으로 대체)
 5a. `docs/superpowers/specs/2026-09-29-daemon-single-binary-design.md` — 헤드리스 데몬 · CLI (구현됨. 본문 식별자는 chorus)
+5b. `docs/superpowers/specs/2026-10-14-communication-channels-design.md` — 다시 듣기·끊기, 결정 대기 `intent`, 모드 지침, 효과음, 압축 알림
 6. `docs/superpowers/specs/2026-07-19-mcp-speak-tool-design.md` — MCP speak + install + Grok (승인; 상단 errata 참고)
 7. `docs/superpowers/specs/2026-07-22-reflective-companion-design.md` — lane · emotion · 도우미 음성 (태도·타이밍은 2026-09-29 턴 브리핑으로 대체)
 8. `docs/superpowers/specs/2026-09-30-rust-rewrite-design.md` — Rust 재작성: 크레이트 경계, 동기 동시성 모델, 배포 파이프라인
@@ -54,17 +55,17 @@ cargo build --release
 **포함**
 
 - Supertonic 3 + ONNX Runtime (`ort` crate) + 오디오 재생 (`cpal`)
-- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`) + MCP `install` (`hosts`, `repair`)
+- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`/`intent`). `intent: "decision"`(main 전용)은 결정 효과음과 함께 quiet·night·도우미 꺼짐을 뚫고 mute만 막습니다. 응답은 `{"ok":true,"mode":…}`(+`muted`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
-- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `hook` / `mcp` (`speak` CLI 없음)
-- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래). SessionEnd — 세션 상태 정리. Claude 전용 StopFailure · Notification · Elicitation · PermissionDenied · TeammateIdle · TaskCompleted — 고정 문구 알림. 설계는 `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
-- 훅 알림(에이전트가 말할 수 없는 순간): 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification idle_prompt·agent_needs_input / Elicitation), 자동 모드 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴의 완료. 팀 이벤트(TeammateIdle·TaskCompleted)는 `teamNotices`를 켠 경우만. 잦은 유형은 쿨다운(2~5분). LLM 생성 없는 고정 문구(`lane=work`)이며 `mute`로만 꺼집니다
+- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `skip [--all]` / `replay [n]` / `hook` / `mcp` (`speak` CLI 없음). `skip`·`replay`는 데몬 소켓 제어 명령이며, replay 기록은 재생된 발화 최대 10개(데몬 메모리)
+- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래). SessionEnd — 세션 상태 정리. Claude 전용 StopFailure · Notification · Elicitation · PermissionDenied · TeammateIdle · TaskCompleted — 고정 문구 알림. Claude 전용 PreCompact · PostCompact — 자동 압축만(시작 고정 문구, 끝 완료음). 설계는 `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
+- 훅 알림(에이전트가 말할 수 없는 순간): 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification idle_prompt·agent_needs_input / Elicitation), 자동 모드 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴의 완료. 팀 이벤트(TeammateIdle·TaskCompleted)는 `teamNotices`를 켠 경우만. 잦은 유형은 쿨다운(2~5분). LLM 생성 없는 고정 문구(`lane=work`)이며 `mute`로만 꺼집니다. 알림 앞에 효과음(주의·실패·완료)이 붙고 `earcons: false`로 끌 수 있습니다
 - 멀티 세션: 다른 프로젝트 세션이 30분 안에 활성이면 speak 앞에 `"<프로젝트>. "`를 붙입니다(`sessionLabel`, 기본 켜짐)
 - 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인. `doctor`는 호스트별 훅 이벤트 누락도 `hooks.<host>.missing`으로 알려 줍니다
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
-- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. lane·emotion은 `2026-07-22-reflective-companion-design.md`
+- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. 시작 계열 훅 context는 유효 모드 지침(focus·quiet·night·muted)을 덧붙입니다. lane·emotion은 `2026-07-22-reflective-companion-design.md`
 
 **제외**
 
@@ -80,7 +81,7 @@ cargo build --release
 ```text
 호스트가 ~/.local/bin/debrief 절대 경로로 spawn
   → debrief mcp
-      → tools/call speak { text, voice, speed, volume, priority?, lane?, emotion?, session? }
+      → tools/call speak { text, voice, speed, volume, priority?, lane?, emotion?, session?, intent? }
       → 검증 후 UDS enqueue (ModePolicy: mute / companionEnabled / subagent / ceiling)
       → tools/call install { hosts?, repair? }  (복구·배선)
   → debrief daemon이 합성·재생 (emotion → EmotionProsody)

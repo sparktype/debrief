@@ -18,3 +18,8 @@
 
 ## 환경 메모
 - 같은 날 Stop 훅 지연(40초) 원인은 hindsight 내장 PostgreSQL WAL 손상 + Cerebras 402였다. hindsight Stop 훅만 `~/.claude/settings.json`에서 제거했다(백업 `settings.json.bak-hindsight-20261014001119`). 복구 후 되돌릴 것.
+
+## 2026-10-14 구현
+- Task 6: 기존 테스트 3곳(권한 알림 러너, 소켓 왕복, DirectSpeechCommand)이 `accept()`가 `SpeechRequest`를 돌려준다고 가정해 `Inbound::Speech`를 꺼내도록 고쳤다.
+- 수동 검증(체크리스트 13)은 실제 설치 바이너리·훅·실행 중 데몬을 바꾸므로 사용자가 직접 `install --repair` 후 진행한다.
+- `usage_text`의 "Controls (written to config.json…)" 머리말 아래에 skip/replay가 들어갔다. 둘은 설정을 쓰지 않는 명령이라 머리말과 살짝 어긋난다(사소, 미수정).

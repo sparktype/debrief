@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### 추가
+
+- `debrief replay [n]`·`debrief skip [--all]`: 최근 재생한 발화(최대 10개, 데몬 메모리)를 다시 듣고, 재생 중인 발화를 끊거나 대기열까지 비웁니다. 데몬 소켓에 제어 명령을 더했습니다.
+- MCP `speak`의 `intent: "decision"`: 사용자 결정 대기 발화는 결정 효과음과 함께 quiet·night·도우미 꺼짐에서도 요청 볼륨으로 들립니다(음소거만 막음, main 전용). 대기열에서 일반 main보다 앞섭니다.
+- 모드 지침: 시작 계열 훅 context에 유효 모드(방해금지 반영)별 행동 규칙을 덧붙이고, `speak` 응답에 `mode`·`muted`를 돌려줍니다.
+- 효과음(`earcons`, 기본 켜짐): 결정·주의(권한·입력 대기·자동 모드 거부)·실패(StopFailure)·완료(긴 턴·TaskCompleted·압축 완료). 코드로 만든 사인파입니다.
+- Claude `PreCompact`·`PostCompact` 훅: 자동 압축 시작은 "컨텍스트를 정리하고 있습니다.", 끝은 완료음만 냅니다. 수동 `/compact`는 알리지 않습니다.
+
 ### 제거
 
 - 로컬 판단 모델 `decide` 연동을 제거합니다. 턴 브리핑 침묵 판단, `emotion: "auto"`, subagent→main 승격, 미등록 `agent_type` 자동 분류, `debrief doctor`의 `decide.reachable`·모드 추천이 사라집니다. 미등록 `agent_type`은 `default` 역할 보이스를 쓰고, `emotion: "auto"`는 이제 인자 오류입니다. 기존 설정의 `decideEnabled` 키는 무시됩니다.
