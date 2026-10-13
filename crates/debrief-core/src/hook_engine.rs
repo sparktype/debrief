@@ -2,7 +2,6 @@
 // 이 엔진은 에이전트가 말할 수 없는 두 순간(권한 요청, 말없이 끝난 긴 턴)에 한해
 // 고정 문구 알림 요청(`HookResult.notice`)을 돌려준다. 전송은 호출자(러너)가 한다.
 use crate::configuration::DebriefConfiguration;
-use crate::decide_client::{DecideJudge, NoopDecideClient};
 use crate::hook_adapter::HookAdapter;
 use crate::hook_event::{HookEvent, HookEventName, HostSource};
 use crate::session_state::{now_seconds, project_label, SessionStateStore};
@@ -23,7 +22,6 @@ pub struct HookResult {
 
 pub struct HookEngine<'a> {
     session_voices: Option<&'a SessionVoiceStore>,
-    decide: &'a dyn DecideJudge,
     state: Option<&'a SessionStateStore>,
     configuration: DebriefConfiguration,
 }
@@ -33,11 +31,7 @@ impl<'a> HookEngine<'a> {
     const NOTICE_VOLUME: f64 = 0.85;
 
     pub fn new(session_voices: Option<&'a SessionVoiceStore>) -> Self {
-        Self::with_decide(session_voices, &NoopDecideClient)
-    }
-
-    pub fn with_decide(session_voices: Option<&'a SessionVoiceStore>, decide: &'a dyn DecideJudge) -> Self {
-        HookEngine { session_voices, decide, state: None, configuration: DebriefConfiguration::default() }
+        HookEngine { session_voices, state: None, configuration: DebriefConfiguration::default() }
     }
 
     /// 세션 상태(턴 시작 시각, 프로젝트 레이블)를 추적해 긴 턴 알림과 레이블을 켠다.
@@ -65,7 +59,6 @@ impl<'a> HookEngine<'a> {
                     event,
                     source,
                     session_voice.as_deref(),
-                    self.decide,
                     &self.configuration.category_voices,
                 );
                 let stdout = HookAdapter::context_output(&context, event);

@@ -296,7 +296,6 @@ pub struct McpServer<Sink: crate::mcp_speak_tool::SpeechSink, Runner: crate::mcp
     sink: Sink,
     diagnostics: crate::diagnostics::Diagnostics<'static>,
     install_runner: Runner,
-    decide: Box<dyn crate::decide_client::DecideJudge>,
 }
 
 impl<Sink, Runner> McpServer<Sink, Runner>
@@ -306,14 +305,7 @@ where
 {
     pub fn new(home: std::path::PathBuf, sink: Sink, install_runner: Runner) -> Self {
         let diagnostics = crate::diagnostics::Diagnostics::new(&home);
-        let paths = crate::paths::DebriefPaths::for_home(&home);
-        let configuration = crate::configuration::DebriefConfiguration::load(&paths.config_url);
-        let decide: Box<dyn crate::decide_client::DecideJudge> = if configuration.decide_enabled {
-            Box::new(crate::decide_client::SocketDecideClient::new(paths.decide_socket_url))
-        } else {
-            Box::new(crate::decide_client::NoopDecideClient)
-        };
-        McpServer { home, sink, diagnostics, install_runner, decide }
+        McpServer { home, sink, diagnostics, install_runner }
     }
 
     /// 도우미 레인은 로테이션된 보이스를 쓴다. 명시적 세션 id가 우선하고, 없으면 이 프로세스가
@@ -357,12 +349,11 @@ where
                         }
                     }
                     let companion_voice = self.companion_voice(&parsed);
-                    let result = crate::mcp_speak_tool::McpSpeakTool::execute_with_decide(
+                    let result = crate::mcp_speak_tool::McpSpeakTool::execute(
                         &parsed,
                         &self.sink,
                         &self.diagnostics,
                         companion_voice.as_deref(),
-                        self.decide.as_ref(),
                     );
                     // 서브에이전트 발화는 사용자 브리핑이 아니므로 긴 턴 알림을 막지 않는다.
                     if let (false, SpeechPriority::Main, Some((store, session, now))) =

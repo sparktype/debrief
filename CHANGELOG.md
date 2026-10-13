@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### 제거
+
+- 로컬 판단 모델 `decide` 연동을 제거합니다. 턴 브리핑 침묵 판단, `emotion: "auto"`, subagent→main 승격, 미등록 `agent_type` 자동 분류, `debrief doctor`의 `decide.reachable`·모드 추천이 사라집니다. 미등록 `agent_type`은 `default` 역할 보이스를 쓰고, `emotion: "auto"`는 이제 인자 오류입니다. 기존 설정의 `decideEnabled` 키는 무시됩니다.
+
 ### 수정
 
 - `debrief install`이 Codex/Grok `config.toml`의 debrief 블록에서 설치 경로(`command`)만 달라진 경우를 고치지 못하고 사용자 수정으로 보존만 하던 문제. 이전에 debrief가 설치한 기록이 있고 `command` 줄을 빼면 우리 조각과 같다면 낡은 경로로 보고 복구합니다. BEGIN 마커만 사라진 블록도 같은 조건에서 제자리에서 복구합니다. 다른 값을 직접 바꾼 블록과 설치 기록이 없는 외부 `debrief` 테이블은 이전처럼 보존합니다. 이 문제로 `debrief doctor`가 권하는 `install --codex --repair`가 `mcp.codex.stalePath`를 고치지 못했습니다.

@@ -52,8 +52,6 @@ pub struct DebriefConfiguration {
     pub category_voices: HashMap<String, String>,
     #[serde(default)]
     pub voice_speeds: HashMap<String, f64>,
-    #[serde(default = "default_decide_enabled")]
-    pub decide_enabled: bool,
     /// 에이전트가 말하지 않은 턴이 이 시간(초) 이상 걸렸으면 Stop 훅이 알린다. 0이면 끈다.
     #[serde(default = "default_long_turn_seconds")]
     pub long_turn_seconds: u64,
@@ -76,10 +74,6 @@ fn default_companion_enabled() -> bool {
     true
 }
 
-fn default_decide_enabled() -> bool {
-    true
-}
-
 fn default_long_turn_seconds() -> u64 {
     60
 }
@@ -97,7 +91,6 @@ impl Default for DebriefConfiguration {
             volume_ceilings: DebriefConfiguration::default_volume_ceilings(),
             category_voices: HashMap::new(),
             voice_speeds: HashMap::new(),
-            decide_enabled: default_decide_enabled(),
             long_turn_seconds: default_long_turn_seconds(),
             session_label: default_session_label(),
             dnd_sync: false,
@@ -278,36 +271,13 @@ mod tests {
     }
 
     #[test]
-    fn decide_enabled_defaults_to_true() {
-        let configuration = DebriefConfiguration::default();
-        assert!(configuration.decide_enabled);
-    }
-
-    #[test]
-    fn decide_fields_missing_from_disk_load_as_defaults() {
+    fn legacy_decide_enabled_key_is_ignored_on_load() {
         let directory = temporary_directory();
         let url = directory.join("config.json");
-        fs::write(&url, "{}").unwrap();
+        fs::write(&url, r#"{"mode":"focus","decideEnabled":false}"#).unwrap();
 
         let loaded = DebriefConfiguration::load(&url);
-        assert!(loaded.decide_enabled);
-
-        fs::remove_dir_all(&directory).ok();
-    }
-
-    #[test]
-    fn decide_fields_round_trip_through_save_and_load() {
-        let directory = temporary_directory();
-        let url = directory.join("config.json");
-
-        let configuration = DebriefConfiguration {
-            decide_enabled: false,
-            ..Default::default()
-        };
-        configuration.save(&url).unwrap();
-
-        let loaded = DebriefConfiguration::load(&url);
-        assert!(!loaded.decide_enabled);
+        assert_eq!(loaded.mode, DebriefMode::Focus);
 
         fs::remove_dir_all(&directory).ok();
     }
