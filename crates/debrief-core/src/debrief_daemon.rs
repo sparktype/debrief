@@ -1,6 +1,7 @@
 // 발화 요청 수신→큐→합성→재생을 묶는 상주 데몬 루프
 use crate::audio_player::AudioPlaying;
 use crate::configuration::DebriefConfiguration;
+use crate::daemon_control::{Control, Inbound};
 use crate::mode_policy::ModePolicy;
 use crate::speech_queue::{QueueDecision, SpeechQueue};
 use crate::speech_request::SpeechRequest;
@@ -15,7 +16,7 @@ pub enum DebriefDaemonError {
 }
 
 pub trait SpeechRequestSource: Send + Sync {
-    fn accept(&self) -> Result<SpeechRequest, UnixSocketError>;
+    fn accept(&self) -> Result<Inbound, UnixSocketError>;
     fn close(&self);
 }
 
@@ -81,9 +82,10 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 break;
             }
             match source.accept() {
-                Ok(request) => {
+                Ok(Inbound::Speech(request)) => {
                     self.submit(request);
                 }
+                Ok(Inbound::Control(control)) => self.control(control),
                 Err(error) => {
                     if self.state.lock().unwrap().shutting_down {
                         break;
@@ -128,17 +130,8 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
 
         let decision = self.queue.enqueue(request);
         let mut state = self.state.lock().unwrap();
-        if decision == QueueDecision::Accepted && state.worker.is_none() {
-            let queue = self.queue.clone();
-            let backend = self.backend.clone();
-            let audio = self.audio.clone();
-            let configuration = self.configuration.clone();
-            let record_error = self.record_error.clone();
-            let shared_state = self.state.clone();
-            let history = self.history.clone();
-            state.worker = Some(std::thread::spawn(move || {
-                Self::consume(queue, backend, audio, configuration, record_error, shared_state, history);
-            }));
+        if decision == QueueDecision::Accepted {
+            self.ensure_worker(&mut state);
         } else if decision == QueueDecision::RejectedCapacity {
             if let Some(record_error) = &self.record_error {
                 record_error("queue", "capacity", "발화 대기열이 가득 차 요청을 건너뛰었습니다");
@@ -149,6 +142,56 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             }
         }
         Some(decision)
+    }
+
+    pub fn control(&self, control: Control) {
+        if self.state.lock().unwrap().shutting_down {
+            return;
+        }
+        match control {
+            Control::Skip => self.stop_active(),
+            Control::SkipAll => {
+                self.queue.clear();
+                self.stop_active();
+            }
+            Control::Replay(count) => {
+                let items: Vec<SpeechRequest> = {
+                    let history = self.history.lock().unwrap();
+                    let skip = history.len().saturating_sub(count as usize);
+                    history.iter().skip(skip).cloned().collect()
+                };
+                for item in items {
+                    if self.queue.enqueue_replay(item) == QueueDecision::Accepted {
+                        let mut state = self.state.lock().unwrap();
+                        self.ensure_worker(&mut state);
+                    }
+                }
+            }
+        }
+    }
+
+    fn stop_active(&self) {
+        let mut state = self.state.lock().unwrap();
+        if state.active.is_some() {
+            state.discard_active = true;
+            self.audio.stop();
+        }
+    }
+
+    fn ensure_worker(&self, state: &mut DaemonState) {
+        if state.worker.is_some() {
+            return;
+        }
+        let queue = self.queue.clone();
+        let backend = self.backend.clone();
+        let audio = self.audio.clone();
+        let configuration = self.configuration.clone();
+        let record_error = self.record_error.clone();
+        let shared_state = self.state.clone();
+        let history = self.history.clone();
+        state.worker = Some(std::thread::spawn(move || {
+            Self::consume(queue, backend, audio, configuration, record_error, shared_state, history);
+        }));
     }
 
     pub fn shutdown(&self) {
@@ -467,7 +510,7 @@ mod tests {
         }
     }
     impl SpeechRequestSource for WaitingSource {
-        fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+        fn accept(&self) -> Result<Inbound, UnixSocketError> {
             *self.accepting.lock().unwrap() = true;
             let mut unblock = self.unblock.lock().unwrap();
             while !*unblock {
@@ -487,7 +530,7 @@ mod tests {
         let source = Arc::new(WaitingSource::new());
         struct SourceAdapter(Arc<WaitingSource>);
         impl SpeechRequestSource for SourceAdapter {
-            fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+            fn accept(&self) -> Result<Inbound, UnixSocketError> {
                 self.0.accept()
             }
             fn close(&self) {
@@ -528,12 +571,12 @@ mod tests {
         results: Mutex<Vec<Result<SpeechRequest, UnixSocketError>>>,
     }
     impl SpeechRequestSource for SequenceSource {
-        fn accept(&self) -> Result<SpeechRequest, UnixSocketError> {
+        fn accept(&self) -> Result<Inbound, UnixSocketError> {
             let mut results = self.results.lock().unwrap();
             if results.is_empty() {
                 return Err(UnixSocketError::Disconnected);
             }
-            results.remove(0)
+            results.remove(0).map(Inbound::Speech)
         }
         fn close(&self) {}
     }
@@ -631,6 +674,92 @@ mod tests {
         }
         let expected: Vec<String> = (2..12).map(|i| format!("t{i:02}")).collect();
         assert_eq!(daemon.history_texts(), expected);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_stops_only_the_active_request() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(6)), DebriefConfiguration::default, None);
+        daemon.submit(request(SpeechPriority::Main, "first.", 0.5)); // 마커 6, 재생에서 막힌다
+        daemon.audio.wait_until_started(6);
+        daemon.submit(request(SpeechPriority::Main, "next", 0.5));
+        daemon.control(Control::Skip);
+        daemon.audio.wait_until_count(2);
+        assert_eq!(daemon.audio.markers(), vec![6, 4]);
+        assert_eq!(daemon.audio.stop_count(), 1);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_all_also_clears_the_queue() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(6)), DebriefConfiguration::default, None);
+        daemon.submit(request(SpeechPriority::Main, "first.", 0.5));
+        daemon.audio.wait_until_started(6);
+        daemon.submit(request(SpeechPriority::Main, "next", 0.5));
+        daemon.control(Control::SkipAll);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(daemon.audio.markers(), vec![6]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_during_earcon_drops_the_speech() {
+        // 효과음 마커는 0이다 — 효과음 재생에서 막아 두고 skip한다.
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(0)), DebriefConfiguration::default, None);
+        daemon.submit(with_cue("hello", crate::earcon::Earcon::Attention));
+        daemon.audio.wait_until_started(0);
+        daemon.control(Control::Skip);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(daemon.audio.markers(), vec![0]);
+        assert!(daemon.history_texts().is_empty());
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn replay_plays_oldest_first_and_does_not_grow_history() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::from_secs(60)), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        for (index, text) in ["a", "bb", "ccc"].into_iter().enumerate() {
+            daemon.submit(request(SpeechPriority::Main, text, 0.5));
+            daemon.audio.wait_until_count(index + 1);
+        }
+        daemon.control(Control::Replay(2));
+        daemon.audio.wait_until_count(5);
+        assert_eq!(daemon.audio.markers(), vec![1, 2, 3, 2, 3]);
+        assert_eq!(daemon.history_texts(), vec!["a", "bb", "ccc"]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn replay_more_than_history_plays_what_exists() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None);
+        daemon.control(Control::Replay(3)); // 빈 기록 — 아무 일도 없어야 한다
+        daemon.submit(request(SpeechPriority::Main, "only", 0.5));
+        daemon.audio.wait_until_count(1);
+        daemon.control(Control::Replay(10));
+        daemon.audio.wait_until_count(2);
+        assert_eq!(daemon.audio.markers(), vec![4, 4]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn replay_respects_mute_at_playback_time() {
+        let muted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = muted.clone();
+        let daemon = DebriefDaemon::new(
+            None,
+            SpeechQueue::new(8, Duration::ZERO),
+            RecordingBackend::new(None),
+            RecordingAudio::new(None),
+            move || DebriefConfiguration { muted: flag.load(std::sync::atomic::Ordering::SeqCst), ..Default::default() },
+            None,
+        );
+        daemon.submit(request(SpeechPriority::Main, "said", 0.5));
+        daemon.audio.wait_until_count(1);
+        muted.store(true, std::sync::atomic::Ordering::SeqCst);
+        daemon.control(Control::Replay(1));
+        daemon.backend.wait_until_count(2);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(daemon.audio.markers(), vec![4]);
         daemon.shutdown();
     }
 }

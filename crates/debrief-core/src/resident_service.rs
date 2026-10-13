@@ -30,7 +30,7 @@ pub fn is_foreign_host_running(home: &Path, process_exists: &dyn Fn(i32) -> bool
 }
 
 impl SpeechRequestSource for UnixSocketServer {
-    fn accept(&self) -> Result<crate::speech_request::SpeechRequest, UnixSocketError> {
+    fn accept(&self) -> Result<crate::daemon_control::Inbound, UnixSocketError> {
         UnixSocketServer::accept(self)
     }
     fn close(&self) {
@@ -160,7 +160,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
 
         struct ServerSource(Arc<UnixSocketServer>);
         impl SpeechRequestSource for ServerSource {
-            fn accept(&self) -> Result<crate::speech_request::SpeechRequest, UnixSocketError> {
+            fn accept(&self) -> Result<crate::daemon_control::Inbound, UnixSocketError> {
                 self.0.accept()
             }
             fn close(&self) {

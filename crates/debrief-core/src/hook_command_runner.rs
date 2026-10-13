@@ -123,7 +123,7 @@ mod tests {
         let output = HookCommandRunner::run(payload, HostSource::Claude, &home);
 
         assert_eq!(String::from_utf8(output).unwrap(), "{}");
-        let request = received.join().unwrap().unwrap();
+        let crate::daemon_control::Inbound::Speech(request) = received.join().unwrap().unwrap() else { panic!("발화가 아님") };
         assert_eq!(request.envelope.text, "권한 승인을 기다리고 있습니다.");
         assert_eq!(request.lane, crate::speech_lane::SpeechLane::Work);
         assert!(crate::diagnostics::Diagnostics::new(&home).current_error().is_none());

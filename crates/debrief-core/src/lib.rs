@@ -1,5 +1,6 @@
 pub mod audio_player;
 pub mod configuration;
+pub mod daemon_control;
 pub mod debrief_command;
 pub mod debrief_daemon;
 pub mod debrief_version;
@@ -38,6 +39,7 @@ pub mod voice_catalog;
 
 pub use audio_player::{AudioPlayerError, AudioPlaying};
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
+pub use daemon_control::{Control, Inbound};
 pub use debrief_command::{CliMessages, DebriefCommand};
 pub use debrief_daemon::{DebriefDaemon, DebriefDaemonError, ErrorRecorder, SpeechRequestSource};
 pub use debrief_version::DebriefVersion;
