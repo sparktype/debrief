@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### 추가
+
+- 모델 다운로드가 `HF_ENDPOINT` 미러를 따릅니다(huggingface.co 호스트만 바꾸고 sha256 검증은 그대로).
+
+### 변경
+
+- `model: DownloadFailed`에 실패한 자산 경로·URL·원인이 붙습니다. 기존 파일 복사 실패도 구분해 보여 줍니다.
+
 ## [0.3.1] - 2026-10-18
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 새 바이너리를 복사하면 데몬도 다시 올라갑니다. 훅·스킬은 바뀌지 않았습니다.

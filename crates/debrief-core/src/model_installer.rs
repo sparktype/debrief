@@ -8,11 +8,14 @@ pub trait ModelDownloading: Send + Sync {
     fn download(&self, asset: &ModelAsset, destination: &Path) -> Result<(), ModelInstallerError>;
 }
 
-pub struct UreqModelDownloader;
+pub struct UreqModelDownloader {
+    endpoint: Option<String>,
+}
 
 impl UreqModelDownloader {
+    /// `HF_ENDPOINT`(huggingface_hub와 같은 이름)가 있으면 그 미러에서 받는다. 무결성은 매니페스트 sha256이 지킨다.
     pub fn new() -> Self {
-        UreqModelDownloader
+        UreqModelDownloader { endpoint: std::env::var("HF_ENDPOINT").ok() }
     }
 }
 
@@ -22,31 +25,44 @@ impl Default for UreqModelDownloader {
     }
 }
 
+const HUGGING_FACE: &str = "https://huggingface.co";
+
+/// 매니페스트 URL의 huggingface.co 호스트만 미러로 바꾼다. 매니페스트 자체는 그대로 둬야 설치 표식 비교가 유지된다.
+fn mirrored_url(url: &str, endpoint: Option<&str>) -> String {
+    let endpoint = endpoint.map(|value| value.trim_end_matches('/')).filter(|value| !value.is_empty());
+    match (endpoint, url.strip_prefix(HUGGING_FACE)) {
+        (Some(endpoint), Some(rest)) => format!("{endpoint}{rest}"),
+        _ => url.to_string(),
+    }
+}
+
 impl ModelDownloading for UreqModelDownloader {
     fn download(&self, asset: &ModelAsset, destination: &Path) -> Result<(), ModelInstallerError> {
         use ureq::tls::{TlsConfig, TlsProvider};
 
+        let url = mirrored_url(&asset.url, self.endpoint.as_deref());
+        let failed = |cause: String| ModelInstallerError::DownloadFailed(format!("{} ({url}): {cause}", asset.relative_path));
         let tls_config = TlsConfig::builder().provider(TlsProvider::NativeTls).build();
         let config = ureq::Agent::config_builder().tls_config(tls_config).build();
         let agent = ureq::Agent::new_with_config(config);
 
-        let mut response = agent.get(&asset.url).call().map_err(|_| ModelInstallerError::DownloadFailed)?;
+        let mut response = agent.get(&url).call().map_err(|error| failed(error.to_string()))?;
 
-        let mut file = std::fs::File::create(destination).map_err(|_| ModelInstallerError::DownloadFailed)?;
-        std::io::copy(&mut response.body_mut().as_reader(), &mut file)
-            .map_err(|_| ModelInstallerError::DownloadFailed)?;
+        let mut file = std::fs::File::create(destination).map_err(|error| failed(error.to_string()))?;
+        std::io::copy(&mut response.body_mut().as_reader(), &mut file).map_err(|error| failed(error.to_string()))?;
 
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o600))
-            .map_err(|_| ModelInstallerError::DownloadFailed)?;
-        file.sync_all().map_err(|_| ModelInstallerError::DownloadFailed)?;
+            .map_err(|error| failed(error.to_string()))?;
+        file.sync_all().map_err(|error| failed(error.to_string()))?;
         Ok(())
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum ModelInstallerError {
-    DownloadFailed,
+    /// 자산 경로·URL·원인
+    DownloadFailed(String),
     ByteCountMismatch,
     ChecksumMismatch,
     InvalidCurrentPointer,
@@ -177,7 +193,9 @@ impl<D: ModelDownloading> ModelInstaller<D> {
                 .map_err(|_| ModelInstallerError::AtomicReplacementFailed)?;
             let existing = final_dir.join(&asset.relative_path);
             if repair && Self::is_asset_valid(asset, &existing) {
-                fs::copy(&existing, &destination).map_err(|_| ModelInstallerError::DownloadFailed)?;
+                fs::copy(&existing, &destination).map_err(|error| {
+                    ModelInstallerError::DownloadFailed(format!("{}: 기존 파일 복사 실패: {error}", asset.relative_path))
+                })?;
             } else {
                 self.downloader.download(asset, &destination)?;
             }
@@ -276,8 +294,8 @@ mod tests {
     impl ModelDownloading for FakeModelDownloader {
         fn download(&self, asset: &ModelAsset, destination: &Path) -> Result<(), ModelInstallerError> {
             self.requested_paths.lock().unwrap().push(asset.relative_path.clone());
-            let data = self.contents.get(&asset.url).ok_or(ModelInstallerError::DownloadFailed)?;
-            fs::write(destination, data).map_err(|_| ModelInstallerError::DownloadFailed)
+            let data = self.contents.get(&asset.url).ok_or(ModelInstallerError::DownloadFailed(asset.url.clone()))?;
+            fs::write(destination, data).map_err(|error| ModelInstallerError::DownloadFailed(error.to_string()))
         }
     }
 
@@ -370,6 +388,34 @@ mod tests {
         assert!(!root.join("supertonic-3").join(&new_manifest.revision).exists());
 
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn hf_endpoint_replaces_only_the_huggingface_host() {
+        let url = "https://huggingface.co/Supertone/supertonic-3/resolve/abc/onnx/tts.json";
+        assert_eq!(mirrored_url(url, None), url);
+        assert_eq!(mirrored_url(url, Some("")), url);
+        assert_eq!(
+            mirrored_url(url, Some("https://hf-mirror.com/")),
+            "https://hf-mirror.com/Supertone/supertonic-3/resolve/abc/onnx/tts.json"
+        );
+        assert_eq!(mirrored_url("https://example.invalid/resolve/abc/x", Some("https://hf-mirror.com")), "https://example.invalid/resolve/abc/x");
+    }
+
+    #[test]
+    fn download_failure_names_the_asset_url_and_cause() {
+        let manifest = ModelManifest::supertonic3();
+        let asset = manifest.assets.iter().find(|a| a.relative_path == "onnx/tts.json").unwrap();
+        let dir = temporary_directory();
+        let downloader = UreqModelDownloader { endpoint: Some("https://127.0.0.1:1".to_string()) };
+
+        let Err(ModelInstallerError::DownloadFailed(detail)) = downloader.download(asset, &dir.join("tts.json")) else {
+            panic!("unreachable endpoint must fail");
+        };
+        assert!(detail.contains("onnx/tts.json"), "{detail}");
+        assert!(detail.contains("https://127.0.0.1:1/Supertone/"), "{detail}");
+
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

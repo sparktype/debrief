@@ -52,7 +52,7 @@ export PATH="$HOME/.local/bin:$PATH"
 debrief status
 ```
 
-`HF_HUB_OFFLINE`이 켜져 있으면 모델 다운로드 전에 해제합니다. 이미 검증된 모델이 있으면 `debrief install --repair`로 다시 받지 않습니다. 설치가 끝나면 `debrief doctor`로 확인합니다.
+`HF_HUB_OFFLINE`이 켜져 있으면 모델 다운로드 전에 해제합니다. huggingface.co에 닿지 않는 망이면 `HF_ENDPOINT=https://<미러> debrief install`로 미러에서 받습니다(sha256 검증은 그대로). 이미 검증된 모델이 있으면 `debrief install --repair`로 다시 받지 않습니다. 설치가 끝나면 `debrief doctor`로 확인합니다.
 
 `debrief install`은 다음 순서로 진행합니다.
 
