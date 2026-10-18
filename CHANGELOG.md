@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-18
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 새 바이너리를 복사하면 데몬도 다시 올라갑니다. 훅·스킬은 바뀌지 않았습니다.
+
 ### 추가
 
 - `debrief restart`: 실행 중이어도 데몬을 내렸다가 다시 올립니다(실행 파일·plist·설정은 그대로).
