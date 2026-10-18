@@ -24,6 +24,10 @@ impl HookCommandRunner {
         let session_state = SessionStateStore::new(paths.session_state_url.clone());
         let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_dnd_raised(dnd_raised);
         let mut result = engine.handle(&event, source);
+        if let Some(control) = result.control.take() {
+            // 데몬이 꺼져 있으면 끊을 것도 없다 — 알림 실패 기록을 덮지 않게 결과를 무시한다.
+            let _ = UnixSocketClient::new(paths.socket_url.clone()).send_control(&control);
+        }
         if let Some(notice) = result.notice.take() {
             match UnixSocketClient::new(paths.socket_url.clone()).submit(&notice) {
                 Ok(()) => result.submitted = true,

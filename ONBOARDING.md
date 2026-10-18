@@ -62,7 +62,7 @@ debrief stop
 - **Mode** — `normal` (default); `focus` / `quiet` / `night` suppress `priority=subagent`; quiet/night also lower volume ceilings; `verbose` includes subagent speech
 - **Mute** — pause or restore speech
 - **도우미 음성** — `debrief companion` turns companion-lane speech on or off (work lane still plays when mute is off)
-- **skip / replay** — `skip` stops the current utterance (`--all` also clears the queue); `replay [n]` replays the last n played utterances (1–10, oldest first; memory only)
+- **skip / replay** — `skip` stops the current utterance (`--all` also clears the queue); submitting a new prompt in Claude or Codex automatically drops that session’s earlier companion briefing (decision waits, notices, and other sessions stay); `replay [n]` replays the last n played utterances (1–10, oldest first; memory only)
 - **Earcons** — short tones before decision, attention, failure, and done notices. Set `"earcons": false` in `config.json` to turn them off; mute silences them too
 - **doctor** — findings, including MCP wiring. The first matching recovery is `debrief install --repair` or `debrief start`
 - **start / stop** — bootstrap an existing LaunchAgent, or disable and bootout it. Stop keeps the binary and the plist

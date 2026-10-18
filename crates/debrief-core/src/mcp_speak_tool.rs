@@ -100,6 +100,7 @@ impl McpSpeakTool {
             decision: arguments.decision,
             cue: arguments.decision.then_some(crate::earcon::Earcon::Decision),
             replayed: false,
+            session: arguments.session.clone(),
         };
         match sink.submit(request) {
             Ok(()) => {
@@ -336,6 +337,10 @@ mod tests {
         assert_eq!(sink.recorded().len(), 1);
         assert_eq!(sink.recorded()[0].envelope.text, "완료했습니다.");
         assert_eq!(sink.recorded()[0].priority, SpeechPriority::Main);
+        assert_eq!(sink.recorded()[0].session, None);
+        let in_session = McpSpeakArguments { session: Some("alpha".to_string()), ..args };
+        McpSpeakTool::execute(&in_session, &sink, &crate::diagnostics::Diagnostics::new(&home), None);
+        assert_eq!(sink.recorded()[1].session, Some("alpha".to_string()));
         fs::remove_dir_all(&home).ok();
     }
 

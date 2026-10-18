@@ -31,11 +31,18 @@ pub struct SpeechRequest {
     pub cue: Option<crate::earcon::Earcon>,
     /// 데몬 내부 표시: replay로 다시 넣은 요청은 기록에 쌓지 않는다. 프레임에 실리지 않는다.
     pub replayed: bool,
+    /// 호스트 세션 id(MCP speak의 `session`). 새 프롬프트가 오면 이 세션의 지난 브리핑을 끊는 데 쓴다.
+    pub session: Option<String>,
 }
 
 impl SpeechRequest {
     pub fn is_main(&self) -> bool {
         matches!(self.priority, SpeechPriority::Main)
+    }
+
+    /// 새 프롬프트로 낡은 이 세션의 도우미 브리핑인가(결정 대기는 끝까지 들려준다).
+    pub fn is_stale_briefing_of(&self, session: &str) -> bool {
+        self.session.as_deref() == Some(session) && matches!(self.lane, SpeechLane::Companion) && !self.decision
     }
 
     /// 텍스트 없이 효과음만 내는 요청(훅 전용).

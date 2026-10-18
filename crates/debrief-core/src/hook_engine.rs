@@ -18,6 +18,8 @@ pub struct HookResult {
     pub delivery_error: Option<String>,
     /// 데몬에 바로 보낼 고정 문구 알림. 대부분의 이벤트에서는 `None`이다.
     pub notice: Option<SpeechRequest>,
+    /// 데몬에 보낼 제어 명령. 새 프롬프트는 이 세션의 낡은 브리핑을 끊는다.
+    pub control: Option<crate::daemon_control::Control>,
 }
 
 pub struct HookEngine<'a> {
@@ -92,10 +94,12 @@ impl<'a> HookEngine<'a> {
                     format!("{context} {}", Self::mode_guidance(&self.configuration, self.dnd_raised))
                 };
                 let stdout = HookAdapter::context_output(&context, event);
-                HookResult { stdout, submitted: false, delivery_error: None, notice }
+                let control = matches!(event.name, HookEventName::UserPromptSubmit)
+                    .then(|| crate::daemon_control::Control::SkipSession(event.session_id.clone()));
+                HookResult { stdout, submitted: false, delivery_error: None, notice, control }
             }
             _ => {
-                HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice }
+                HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice, control: None }
             }
         }
     }
@@ -225,6 +229,7 @@ impl<'a> HookEngine<'a> {
             decision: false,
             cue: Self::cue_for(event.name),
             replayed: false,
+            session: None,
         })
     }
 }
@@ -250,6 +255,16 @@ mod tests {
             cwd: None,
             subtype: None,
         }
+    }
+
+    #[test]
+    fn prompt_submit_asks_to_skip_the_sessions_stale_briefing() {
+        use crate::daemon_control::Control;
+        let engine = HookEngine::new(None);
+        let submit = engine.handle(&event(HookEventName::UserPromptSubmit, "alpha", Some("t"), None, None), HostSource::Claude);
+        assert_eq!(submit.control, Some(Control::SkipSession("alpha".to_string())));
+        let start = engine.handle(&event(HookEventName::SessionStart, "alpha", None, None, None), HostSource::Claude);
+        assert_eq!(start.control, None);
     }
 
     #[test]

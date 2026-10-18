@@ -155,6 +155,14 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 self.queue.clear();
                 self.stop_active();
             }
+            Control::SkipSession(session) => {
+                self.queue.remove_where(|pending| pending.is_stale_briefing_of(&session));
+                let mut state = self.state.lock().unwrap();
+                if state.active.as_ref().is_some_and(|active| active.is_stale_briefing_of(&session)) {
+                    state.discard_active = true;
+                    self.audio.stop();
+                }
+            }
             Control::Replay(count) => {
                 let items: Vec<SpeechRequest> = {
                     let history = self.history.lock().unwrap();
@@ -415,6 +423,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         }
     }
 
@@ -587,6 +596,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         };
         let work = SpeechRequest {
             envelope: SpeechEnvelope { v: 1, text: "work".to_string(), voice: "M1".to_string(), speed: 1.0, volume: 0.5 },
@@ -597,6 +607,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         };
         assert_eq!(daemon.submit(companion), None);
         daemon.submit(work);
@@ -819,6 +830,35 @@ mod tests {
         daemon.audio.wait_until_count(2);
         assert_eq!(daemon.audio.markers(), vec![6, 4]);
         assert_eq!(daemon.audio.stop_count(), 1);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_session_drops_only_that_sessions_companion_briefings() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(6)), DebriefConfiguration::default, None);
+        let in_session = |text: &str, session: &str| SpeechRequest { session: Some(session.to_string()), ..request(SpeechPriority::Main, text, 0.5) };
+        daemon.submit(in_session("first.", "a")); // 마커 6, 재생에서 막힌다
+        daemon.audio.wait_until_started(6);
+        // 마커는 텍스트 길이다: a-old 5, b-keeps 7, a-work-x 8, a-decide-x 10.
+        daemon.submit(in_session("a-old", "a"));
+        daemon.submit(in_session("b-keeps", "b"));
+        daemon.submit(SpeechRequest { lane: SpeechLane::Work, ..in_session("a-work-x", "a") });
+        daemon.submit(SpeechRequest { decision: true, ..in_session("a-decide-x", "a") });
+        daemon.control(Control::SkipSession("a".to_string()));
+        daemon.audio.wait_until_count(4);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(daemon.audio.markers(), vec![6, 10, 7, 8]);
+        assert_eq!(daemon.audio.stop_count(), 1);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn skip_session_leaves_another_sessions_active_briefing() {
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(Some(6)), DebriefConfiguration::default, None);
+        daemon.submit(SpeechRequest { session: Some("b".to_string()), ..request(SpeechPriority::Main, "first.", 0.5) });
+        daemon.audio.wait_until_started(6);
+        daemon.control(Control::SkipSession("a".to_string()));
+        assert_eq!(daemon.audio.stop_count(), 0);
         daemon.shutdown();
     }
 

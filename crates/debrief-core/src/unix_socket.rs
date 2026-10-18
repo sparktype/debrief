@@ -173,6 +173,7 @@ impl UnixSocketServer {
         let control = match control.as_str()? {
             "skip" => Control::Skip,
             "skipAll" => Control::SkipAll,
+            "skipSession" => Control::SkipSession(value.get("session")?.as_str()?.to_string()),
             "replay" => {
                 let count = value.get("count")?.as_u64()?;
                 if !(1..=Control::MAXIMUM_REPLAY as u64).contains(&count) {
@@ -190,6 +191,7 @@ impl UnixSocketServer {
         let value = match control {
             Control::Skip => serde_json::json!({"control": "skip"}),
             Control::SkipAll => serde_json::json!({"control": "skipAll"}),
+            Control::SkipSession(session) => serde_json::json!({"control": "skipSession", "session": session}),
             Control::Replay(count) => serde_json::json!({"control": "replay", "count": count}),
         };
         serde_json::to_vec(&value).expect("control always serializes")
@@ -224,7 +226,8 @@ impl UnixSocketServer {
         let agent_type = value.get("agentType").and_then(|v| v.as_str()).map(|s| s.to_string());
         let decision = value.get("decision").and_then(|v| v.as_bool()).unwrap_or(false);
         let cue = value.get("cue").and_then(|v| v.as_str()).and_then(crate::earcon::Earcon::from_str_value);
-        Some(SpeechRequest { envelope, priority, lane, emotion, agent_type, decision, cue, replayed: false })
+        let session = value.get("session").and_then(|v| v.as_str()).map(|s| s.to_string());
+        Some(SpeechRequest { envelope, priority, lane, emotion, agent_type, decision, cue, replayed: false, session })
     }
 
     fn encode_speech_request(request: &SpeechRequest) -> Vec<u8> {
@@ -252,6 +255,7 @@ impl UnixSocketServer {
             "agentType": request.agent_type,
             "decision": request.decision,
             "cue": request.cue.map(|cue| cue.as_str()),
+            "session": request.session,
         });
         serde_json::to_vec(&value).expect("speech request always serializes")
     }
@@ -535,6 +539,7 @@ impl DirectSpeechCommand {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         };
         let socket_url = crate::paths::DebriefPaths::for_home(home).socket_url;
         UnixSocketClient::new(socket_url).submit(&request).map_err(DirectSpeechCommandError::Socket)
@@ -572,7 +577,7 @@ mod tests {
         let server = std::sync::Arc::new(UnixSocketServer::new(socket_url.clone()).unwrap());
         let client = UnixSocketClient::new(socket_url.clone());
         let envelope = SpeechEnvelope { v: 1, text: "완료".to_string(), voice: "F1".to_string(), speed: 0.93, volume: 0.6 };
-        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None, decision: false, cue: None, replayed: false };
+        let fixture = SpeechRequest { envelope, priority: SpeechPriority::Main, lane: SpeechLane::Companion, emotion: SpeechEmotion::Neutral, agent_type: None, decision: false, cue: None, replayed: false, session: None };
 
         let server_clone = server.clone();
         let received = std::thread::spawn(move || server_clone.accept());
@@ -597,6 +602,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         };
 
         let result = client.submit(&request);
@@ -629,6 +635,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         };
         let start = std::time::Instant::now();
 
@@ -747,6 +754,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         }
     }
 
@@ -777,10 +785,14 @@ mod tests {
     #[test]
     fn control_frames_round_trip_and_bad_counts_are_rejected() {
         use crate::daemon_control::{Control, Inbound};
-        for control in [Control::Skip, Control::SkipAll, Control::Replay(1), Control::Replay(10)] {
+        for control in [Control::Skip, Control::SkipAll, Control::Replay(1), Control::Replay(10), Control::SkipSession("s-1".to_string())] {
             let payload = UnixSocketServer::encode_control(&control);
             assert_eq!(UnixSocketServer::decode_inbound(&payload), Some(Inbound::Control(control)));
         }
+        assert_eq!(UnixSocketServer::decode_inbound(br#"{"control":"skipSession"}"#), None);
+        let with_session = SpeechRequest { session: Some("s-1".to_string()), ..fixture("hi") };
+        let payload = UnixSocketServer::encode_speech_request(&with_session);
+        assert_eq!(UnixSocketServer::decode_inbound(&payload), Some(Inbound::Speech(with_session)));
         for bad in [r#"{"control":"replay","count":0}"#, r#"{"control":"replay","count":11}"#, r#"{"control":"replay"}"#, r#"{"control":"rewind"}"#] {
             assert_eq!(UnixSocketServer::decode_inbound(bad.as_bytes()), None, "{bad}");
         }

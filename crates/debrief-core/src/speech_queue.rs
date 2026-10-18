@@ -66,6 +66,10 @@ impl SpeechQueue {
         self.state.lock().unwrap().pending.clear();
     }
 
+    pub fn remove_where(&self, predicate: impl Fn(&SpeechRequest) -> bool) {
+        self.state.lock().unwrap().pending.retain(|pending| !predicate(pending));
+    }
+
     fn insert(&self, state: &mut QueueState, request: SpeechRequest) -> QueueDecision {
         if request.is_main() {
             state.pending.retain(|pending| pending.is_main());
@@ -154,6 +158,7 @@ mod tests {
             decision: false,
             cue: None,
             replayed: false,
+            session: None,
         }
     }
 
