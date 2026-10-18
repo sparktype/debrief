@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-18
+
+바이너리를 교체한 뒤 `debrief stop` 다음 `debrief start`로 데몬을 재시작하세요. Claude·Codex 훅과 스킬은 바뀌지 않아 `install --repair`가 필요 없습니다. Gemini CLI를 쓰려면 `debrief install --gemini`를 실행합니다.
+
+### 추가
+
+- 새 프롬프트를 보내면 같은 세션의 지난 도우미 브리핑을 자동으로 끊습니다(Claude·Codex·Gemini). 결정 대기, 훅 알림, 다른 세션 발화는 그대로 재생합니다. speak의 `session`이 데몬까지 전달됩니다.
+- 발음 사전: `config.json`의 `pronunciations`(예: `{"MCP": "엠씨피"}`)로 합성 직전에 단어 단위로 표기를 바꿉니다. 대소문자는 무시하고 긴 항목이 우선입니다. 다시 듣기 기록은 원문을 유지합니다.
+- `debrief mic [on|off|toggle]`(옵트인): 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). `doctor`에 `mic.readable`·`mic.unreadable`로 표시됩니다.
+- Gemini CLI 호스트(옵트인 `debrief install --gemini`): `~/.gemini/settings.json`에 MCP 서버와 훅(SessionStart·BeforeAgent·AfterAgent·Notification·SessionEnd·PreCompress)을 넣습니다. 이후 플래그 없는 `install --repair`와 `uninstall`에도 포함됩니다. 도구 이름은 `mcp_debrief_speak`입니다.
+
+### 변경
+
+- 45초 넘게 대기한 발화는 재생 차례가 와도 버립니다(결정 대기·다시 듣기 제외).
+- 재생 전인 서브에이전트 완료 발화가 겹치면 "서브에이전트 작업 N개가 끝났습니다." 한 줄로 합칩니다. 합쳐진 발화의 개별 문장은 재생되지 않습니다.
+
 ## [0.2.3] - 2026-10-18
 
 바이너리만 교체하면 됩니다. `debrief stop` 다음 `debrief start`로 데몬을 재시작하세요.
