@@ -16,14 +16,22 @@ pub enum QueueDecision {
     RejectedCapacity,
 }
 
+/// 대기 중인 요청과 들어온 시각, 합쳐진 서브에이전트 완료 수.
+struct Pending {
+    request: SpeechRequest,
+    enqueued_at: Instant,
+    merged: usize,
+}
+
 struct QueueState {
-    pending: VecDeque<SpeechRequest>,
+    pending: VecDeque<Pending>,
     recent_digests: Vec<([u8; 32], Instant)>,
 }
 
 pub struct SpeechQueue {
     capacity: usize,
     duplicate_window: Duration,
+    max_wait: Duration,
     state: Mutex<QueueState>,
     condvar: Condvar,
 }
@@ -34,9 +42,18 @@ impl SpeechQueue {
         SpeechQueue {
             capacity,
             duplicate_window,
+            max_wait: Self::MAXIMUM_WAIT,
             state: Mutex::new(QueueState { pending: VecDeque::new(), recent_digests: Vec::new() }),
             condvar: Condvar::new(),
         }
+    }
+
+    /// 이보다 오래 기다린 발화는 재생 차례가 와도 버린다(결정 대기·다시 듣기 제외).
+    pub const MAXIMUM_WAIT: Duration = Duration::from_secs(45);
+
+    pub fn with_max_wait(mut self, max_wait: Duration) -> Self {
+        self.max_wait = max_wait;
+        self
     }
 
     pub fn enqueue(&self, request: SpeechRequest) -> QueueDecision {
@@ -67,21 +84,29 @@ impl SpeechQueue {
     }
 
     pub fn remove_where(&self, predicate: impl Fn(&SpeechRequest) -> bool) {
-        self.state.lock().unwrap().pending.retain(|pending| !predicate(pending));
+        self.state.lock().unwrap().pending.retain(|pending| !predicate(&pending.request));
     }
 
     fn insert(&self, state: &mut QueueState, request: SpeechRequest) -> QueueDecision {
         if request.is_main() {
-            state.pending.retain(|pending| pending.is_main());
+            state.pending.retain(|pending| pending.request.is_main());
+        }
+        // 대기 중인 서브에이전트 완료가 있으면 새로 쌓지 않고 개수만 센 고정 문구 한 줄로 합친다.
+        if !request.is_main() && !request.replayed {
+            if let Some(waiting) = state.pending.iter_mut().find(|pending| !pending.request.is_main() && !pending.request.replayed) {
+                waiting.merged += 1;
+                waiting.request.envelope.text = format!("서브에이전트 작업 {}개가 끝났습니다.", waiting.merged);
+                return QueueDecision::Accepted;
+            }
         }
         // replay는 사용자가 고른 과거 묶음이다. 용량으로 최신 항목을 잃지 않게 상한을 건너뛰고(최대 10개),
         // 결정 대기라도 새치기하지 않아 오래된 순서를 지킨다. 재생 정책의 decision은 그대로 둔다.
         let is_decision = request.decision && request.is_main() && !request.replayed;
 
         if !request.replayed && state.pending.len() >= self.capacity {
-            let evictable = state.pending.iter().position(|pending| !pending.is_main()).or_else(|| {
+            let evictable = state.pending.iter().position(|pending| !pending.request.is_main()).or_else(|| {
                 // 결정 대기는 거부하지 않고 가장 오래된 일반 main을 밀어낸다.
-                is_decision.then(|| state.pending.iter().position(|pending| !pending.decision)).flatten()
+                is_decision.then(|| state.pending.iter().position(|pending| !pending.request.decision)).flatten()
             });
             match evictable {
                 Some(index) => {
@@ -91,11 +116,12 @@ impl SpeechQueue {
             }
         }
 
+        let pending = Pending { request, enqueued_at: Instant::now(), merged: 1 };
         if is_decision {
-            let index = state.pending.iter().position(|pending| !pending.decision).unwrap_or(state.pending.len());
-            state.pending.insert(index, request);
+            let index = state.pending.iter().position(|pending| !pending.request.decision).unwrap_or(state.pending.len());
+            state.pending.insert(index, pending);
         } else {
-            state.pending.push_back(request);
+            state.pending.push_back(pending);
         }
         self.condvar.notify_one();
         QueueDecision::Accepted
@@ -104,8 +130,11 @@ impl SpeechQueue {
     pub fn next(&self) -> SpeechRequest {
         let mut state = self.state.lock().unwrap();
         loop {
-            if let Some(request) = state.pending.pop_front() {
-                return request;
+            while let Some(pending) = state.pending.pop_front() {
+                let request = &pending.request;
+                if request.decision || request.replayed || pending.enqueued_at.elapsed() <= self.max_wait {
+                    return pending.request;
+                }
             }
             state = self.condvar.wait(state).unwrap();
         }
@@ -116,7 +145,7 @@ impl SpeechQueue {
     }
 
     pub fn pending_texts(&self) -> Vec<String> {
-        self.state.lock().unwrap().pending.iter().map(|request| request.envelope.text.clone()).collect()
+        self.state.lock().unwrap().pending.iter().map(|pending| pending.request.envelope.text.clone()).collect()
     }
 
     fn digest(envelope: &SpeechEnvelope) -> [u8; 32] {
@@ -180,15 +209,19 @@ mod tests {
     }
 
     #[test]
-    fn full_queue_evicts_oldest_subagent_but_rejects_when_all_main() {
-        let mixed = SpeechQueue::new(3, Duration::ZERO);
-        mixed.enqueue(request(SpeechPriority::Main, "main"));
-        mixed.enqueue(request(SpeechPriority::Subagent, "oldest"));
-        mixed.enqueue(request(SpeechPriority::Subagent, "newer"));
+    fn waiting_subagent_completions_merge_into_one_counted_line() {
+        let queue = SpeechQueue::new(2, Duration::ZERO);
+        queue.enqueue(request(SpeechPriority::Main, "main"));
+        queue.enqueue(request(SpeechPriority::Subagent, "first"));
+        assert_eq!(queue.enqueue(request(SpeechPriority::Subagent, "second")), QueueDecision::Accepted);
+        assert_eq!(queue.enqueue(request(SpeechPriority::Subagent, "third")), QueueDecision::Accepted);
+        assert_eq!(queue.pending_texts(), vec!["main", "서브에이전트 작업 3개가 끝났습니다."]);
+        assert_eq!(queue.next().envelope.text, "main");
+        assert_eq!(queue.next().envelope.voice, "F1");
+    }
 
-        assert_eq!(mixed.enqueue(request(SpeechPriority::Subagent, "incoming")), QueueDecision::Accepted);
-        assert_eq!(mixed.pending_texts(), vec!["main".to_string(), "newer".to_string(), "incoming".to_string()]);
-
+    #[test]
+    fn rejects_subagent_when_full_of_mains() {
         let main_only = SpeechQueue::new(2, Duration::ZERO);
         main_only.enqueue(request(SpeechPriority::Main, "one"));
         main_only.enqueue(request(SpeechPriority::Main, "two"));
@@ -246,6 +279,18 @@ mod tests {
         assert_eq!(queue.enqueue(decision("d")), QueueDecision::Accepted);
         assert_eq!(queue.pending_texts(), vec!["d", "b"]);
         assert_eq!(queue.enqueue(request(SpeechPriority::Main, "c")), QueueDecision::RejectedCapacity);
+    }
+
+    #[test]
+    fn next_drops_requests_that_waited_too_long_except_decisions_and_replays() {
+        let queue = SpeechQueue::new(8, Duration::ZERO).with_max_wait(Duration::from_millis(20));
+        queue.enqueue(request(SpeechPriority::Main, "stale"));
+        queue.enqueue_replay(request(SpeechPriority::Main, "old-replay"));
+        queue.enqueue(decision("old-decision"));
+        std::thread::sleep(Duration::from_millis(40));
+        queue.enqueue(request(SpeechPriority::Main, "fresh"));
+        let texts: Vec<String> = (0..3).map(|_| queue.next().envelope.text).collect();
+        assert_eq!(texts, vec!["old-decision", "old-replay", "fresh"]);
     }
 
     #[test]

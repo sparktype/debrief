@@ -62,6 +62,7 @@ cargo build --release
 - 훅 알림(에이전트가 말할 수 없는 순간): 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification idle_prompt·agent_needs_input / Elicitation), 자동 모드 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴의 완료. 팀 이벤트(TeammateIdle·TaskCompleted)는 `teamNotices`를 켠 경우만. 잦은 유형은 쿨다운(2~5분). LLM 생성 없는 고정 문구(`lane=work`)이며 `mute`로만 꺼집니다. 알림 앞에 효과음(주의·실패·완료)이 붙고 `earcons: false`로 끌 수 있습니다
 - 멀티 세션: 다른 프로젝트 세션이 30분 안에 활성이면 speak 앞에 `"<프로젝트>. "`를 붙입니다(`sessionLabel`, 기본 켜짐)
 - 발음 사전: 설정 `pronunciations`(단어 → 읽을 표기)를 데몬이 합성 직전에 단어 단위·대소문자 무시로 적용합니다
+- 대기열 정리: 45초 넘게 기다린 발화는 재생 차례에 버립니다(결정 대기·다시 듣기 제외). 대기 중인 서브에이전트 완료가 겹치면 "서브에이전트 작업 N개가 끝났습니다." 한 줄로 합칩니다
 - 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인. `doctor`는 호스트별 훅 이벤트 누락도 `hooks.<host>.missing`으로 알려 줍니다
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
