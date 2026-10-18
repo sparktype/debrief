@@ -3,6 +3,7 @@ use crate::audio_player::AudioPlaying;
 use crate::configuration::DebriefConfiguration;
 use crate::daemon_control::{Control, Inbound};
 use crate::mode_policy::ModePolicy;
+use crate::pronunciation::Pronunciation;
 use crate::speech_emotion::EmotionProsody;
 use crate::speech_queue::{QueueDecision, SpeechQueue};
 use crate::speech_request::SpeechRequest;
@@ -259,7 +260,8 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             if request.is_cue_only() {
                 admit_and_cue();
             } else {
-                let text = EmotionProsody::spoken_text(request.emotion, &request.envelope.text);
+                let spoken = Pronunciation::apply(&request.envelope.text, &configuration().pronunciations);
+                let text = EmotionProsody::spoken_text(request.emotion, &spoken);
                 let pause_seconds = EmotionProsody::pause_seconds(request.emotion);
                 let (sender, receiver) = std::sync::mpsc::channel::<PcmBuffer>();
                 // 재생 스레드가 앞 문장을 트는 동안 이 스레드는 다음 문장을 합성한다.
@@ -535,6 +537,21 @@ mod tests {
         assert_eq!(daemon.backend.texts.lock().unwrap().clone(), vec!["<laugh> 끝났습니다.".to_string()]);
         wait_for_history(&daemon, 1);
         assert_eq!(daemon.history_texts(), vec!["끝<났>습니다.".to_string()]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn synthesizes_with_the_pronunciation_lexicon_but_keeps_history_text() {
+        let configuration = || DebriefConfiguration {
+            pronunciations: HashMap::from([("MCP".to_string(), "엠씨피".to_string())]),
+            ..DebriefConfiguration::default()
+        };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), configuration, None);
+        daemon.submit(request(SpeechPriority::Main, "MCP를 고쳤습니다.", 0.5));
+        daemon.backend.wait_until_count(1);
+        assert_eq!(daemon.backend.texts(), vec!["엠씨피를 고쳤습니다.".to_string()]);
+        wait_for_history(&daemon, 1);
+        assert_eq!(daemon.history_texts(), vec!["MCP를 고쳤습니다.".to_string()]);
         daemon.shutdown();
     }
 

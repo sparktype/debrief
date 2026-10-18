@@ -24,6 +24,7 @@ pub mod mode_policy;
 pub mod model_installer;
 pub mod model_manifest;
 pub mod paths;
+pub mod pronunciation;
 pub mod resident_service;
 pub mod runtime_installer;
 pub mod session_state;

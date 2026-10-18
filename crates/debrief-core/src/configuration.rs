@@ -67,6 +67,9 @@ pub struct DebriefConfiguration {
     /// 결정·주의·실패·완료 알림 앞의 짧은 효과음. 일반 브리핑에는 없다.
     #[serde(default = "default_earcons")]
     pub earcons: bool,
+    /// 합성 직전 단어 치환(영어 용어 → 읽을 표기). 키는 대소문자를 무시하고 단어 단위로 맞춘다.
+    #[serde(default)]
+    pub pronunciations: HashMap<String, String>,
 }
 
 fn default_mode() -> DebriefMode {
@@ -103,6 +106,7 @@ impl Default for DebriefConfiguration {
             dnd_sync: false,
             team_notices: false,
             earcons: default_earcons(),
+            pronunciations: HashMap::new(),
         }
     }
 }
