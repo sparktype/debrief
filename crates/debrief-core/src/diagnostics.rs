@@ -201,6 +201,15 @@ impl<'a> Diagnostics<'a> {
             });
         }
 
+        if DebriefConfiguration::load(&self.paths.config_url).mic_sync {
+            let readable = crate::macos_mic::MacosMic::is_in_use().is_some();
+            findings.push(DiagnosticFinding {
+                code: if readable { "mic.readable".to_string() } else { "mic.unreadable".to_string() },
+                ok: readable,
+                recovery: (!readable).then(|| "마이크 사용 상태를 읽을 수 없어(macOS 14.2 이상 필요) 연동이 꺼진 것처럼 동작합니다".to_string()),
+            });
+        }
+
         if let Some(error) = self.current_error() {
             findings.push(DiagnosticFinding {
                 code: format!("last_error.{}", error.code),
@@ -607,6 +616,17 @@ mod tests {
         let statuses = Diagnostics::new(&home).host_mcp_statuses();
         assert!(statuses.iter().any(|s| s.host == HostSource::Claude && s.state == crate::host_mcp_status::HostMcpState::Missing));
 
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn doctor_reports_mic_readability_only_when_sync_is_on() {
+        let home = temporary_home();
+        let diagnostics = Diagnostics::new(&home);
+        assert!(!diagnostics.doctor().iter().any(|f| f.code.starts_with("mic.")));
+        let config_url = DebriefPaths::for_home(&home).config_url;
+        crate::configuration::DebriefConfiguration { mic_sync: true, ..Default::default() }.save(&config_url).unwrap();
+        assert!(diagnostics.doctor().iter().any(|f| f.code == "mic.readable" || f.code == "mic.unreadable"));
         fs::remove_dir_all(&home).ok();
     }
 

@@ -12,13 +12,13 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 포함되는 것:
 
-- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `skip`, `replay`, `start`, `stop`)
+- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `mic`, `skip`, `replay`, `start`, `stop`)
 - MCP `speak`, `install`
 - Claude / Codex 훅 (SessionStart, UserPromptSubmit, SubagentStart 컨텍스트 + PermissionRequest, Stop 고정 문구 알림 + SessionEnd 정리. Claude에는 StopFailure, Notification, Elicitation, PermissionDenied, TeammateIdle, TaskCompleted 알림 추가)과 세 호스트용 스킬
 
 범위 밖:
 
-- 음성 인식, 마이크, debrief 쪽 요약
+- 음성 인식, 마이크 녹음(사용 중 여부만 `debrief mic`가 읽음), debrief 쪽 요약
 - `debrief speak` 명령, 메뉴바 앱, Stop 훅에서 문장을 뽑는 방식
 
 ## 요구 사항
@@ -178,6 +178,7 @@ debrief status
 | `categoryVoices` | 역할 이름 → 목소리(`F1`–`M5`). 훅이 서브에이전트·작업 레인에 안내하는 역할 목소리를 덮어씁니다. 비어 있거나 알 수 없는 역할·목소리는 아래 역할 기본값 | 설정 파일을 직접 고칩니다 |
 | `voiceSpeeds` | 역할별 속도. 비어 있으면 요청의 `speed` | 설치가 비워 둡니다 |
 | `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다 | 설정 파일에서 `"earcons": false` |
+| `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
 | `pronunciations` | 단어 → 읽을 표기. 합성 직전에 단어 단위로 대소문자를 무시하고 바꿉니다(예: `{"MCP": "엠씨피", "cargo": "카고"}`). 다시 듣기 기록은 원문을 유지합니다 | 설정 파일을 직접 고칩니다 |
 
 호스트 배선은 설정 파일과 별개입니다. `debrief install`이 절대 경로로 넣고, `debrief install --repair`가 소유한 파일만 다시 맞춥니다. 직접 고친 파일은 다이제스트가 다르면 남습니다.

@@ -48,6 +48,6 @@
 - [x] 1. 새 프롬프트 제출 시 같은 세션의 companion 브리핑 끊기 (SpeechRequest.session, Control::SkipSession, UserPromptSubmit 훅)
 - [x] 2. 발음 사전 (`~/.config/debrief/lexicon`, 합성 직전 단어 치환)
 - [x] 3. 대기열 TTL + 서브에이전트 완료 합치기
-- [ ] 4. 마이크 사용 중이면 자동 quiet (옵트인)
+- [x] 4. 마이크 사용 중이면 자동 quiet (옵트인)
 - [ ] 5. 호스트 추가
 - [ ] 기능마다 cargo test / clippy -D warnings / release 빌드 후 커밋

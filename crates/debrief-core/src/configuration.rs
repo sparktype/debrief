@@ -61,6 +61,9 @@ pub struct DebriefConfiguration {
     /// macOS 방해금지(집중 모드)가 켜져 있는 동안 유효 모드를 최소 quiet로 올린다. 기본 꺼짐.
     #[serde(default)]
     pub dnd_sync: bool,
+    /// 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올린다. 기본 꺼짐.
+    #[serde(default)]
+    pub mic_sync: bool,
     /// 에이전트 팀의 TeammateIdle·TaskCompleted 알림. 잦을 수 있어 기본 꺼짐.
     #[serde(default)]
     pub team_notices: bool,
@@ -104,6 +107,7 @@ impl Default for DebriefConfiguration {
             long_turn_seconds: default_long_turn_seconds(),
             session_label: default_session_label(),
             dnd_sync: false,
+            mic_sync: false,
             team_notices: false,
             earcons: default_earcons(),
             pronunciations: HashMap::new(),
@@ -132,14 +136,25 @@ impl DebriefConfiguration {
         effective
     }
 
-    /// 데몬이 발화마다 쓰는 설정 — 저장된 설정에 방해금지 상태를 반영한다.
-    pub fn load_effective(url: &Path, home: &Path) -> Self {
-        let configuration = Self::load(url);
-        if !configuration.dnd_sync {
-            return configuration;
+    /// 마이크 연동이 켜져 있고 다른 앱이 마이크를 쓰는 중이면 유효 모드만 최소 quiet로 올린다(night은 그대로).
+    pub fn with_mic_in_use(&self, in_use: bool) -> Self {
+        let mut effective = self.clone();
+        if self.mic_sync && in_use && effective.mode != DebriefMode::Night {
+            effective.mode = DebriefMode::Quiet;
         }
-        let active = crate::macos_dnd::MacosDnd::is_active(home).unwrap_or(false);
-        configuration.with_dnd(active)
+        effective
+    }
+
+    /// 데몬이 발화마다 쓰는 설정 — 저장된 설정에 방해금지·마이크 사용 상태를 반영한다.
+    pub fn load_effective(url: &Path, home: &Path) -> Self {
+        let mut effective = Self::load(url);
+        if effective.dnd_sync {
+            effective = effective.with_dnd(crate::macos_dnd::MacosDnd::is_active(home).unwrap_or(false));
+        }
+        if effective.mic_sync {
+            effective = effective.with_mic_in_use(crate::macos_mic::MacosMic::is_in_use().unwrap_or(false));
+        }
+        effective
     }
 
     pub fn load(url: &Path) -> Self {
@@ -188,6 +203,7 @@ pub enum ConfigurationCommandError {
     InvalidMuteAction(String),
     InvalidCompanionAction(String),
     InvalidDndAction(String),
+    InvalidMicAction(String),
 }
 
 pub struct ConfigurationCommands;
@@ -238,6 +254,19 @@ impl ConfigurationCommands {
             "off" => configuration.dnd_sync = false,
             "toggle" => configuration.dnd_sync = !configuration.dnd_sync,
             invalid => return Err(ConfigurationCommandError::InvalidDndAction(invalid.to_string())),
+        }
+        configuration.save(&url).expect("save should succeed in this context");
+        Ok(configuration)
+    }
+
+    pub fn apply_mic(raw_value: Option<&str>, home: &Path) -> Result<DebriefConfiguration, ConfigurationCommandError> {
+        let url = DebriefPaths::for_home(home).config_url;
+        let mut configuration = DebriefConfiguration::load(&url);
+        match raw_value.unwrap_or("toggle") {
+            "on" => configuration.mic_sync = true,
+            "off" => configuration.mic_sync = false,
+            "toggle" => configuration.mic_sync = !configuration.mic_sync,
+            invalid => return Err(ConfigurationCommandError::InvalidMicAction(invalid.to_string())),
         }
         configuration.save(&url).expect("save should succeed in this context");
         Ok(configuration)
@@ -374,6 +403,31 @@ mod tests {
             let configuration = DebriefConfiguration { mode, dnd_sync: true, ..DebriefConfiguration::default() };
             assert_eq!(configuration.with_dnd(true).mode, expected, "{mode:?}");
         }
+    }
+
+    #[test]
+    fn mic_sync_defaults_off_and_raises_mode_to_quiet_while_the_mic_is_in_use() {
+        let default = DebriefConfiguration::default();
+        assert!(!default.mic_sync);
+        assert_eq!(default.with_mic_in_use(true).mode, DebriefMode::Normal, "옵트인 전에는 바꾸지 않는다");
+        let synced = DebriefConfiguration { mic_sync: true, ..DebriefConfiguration::default() };
+        assert_eq!(synced.with_mic_in_use(false).mode, DebriefMode::Normal);
+        assert_eq!(synced.with_mic_in_use(true).mode, DebriefMode::Quiet);
+        let night = DebriefConfiguration { mode: DebriefMode::Night, ..synced };
+        assert_eq!(night.with_mic_in_use(true).mode, DebriefMode::Night);
+    }
+
+    #[test]
+    fn apply_mic_toggles_and_rejects_unknown_actions() {
+        let directory = temporary_directory();
+        let home = directory.as_path();
+        assert!(ConfigurationCommands::apply_mic(Some("on"), home).unwrap().mic_sync);
+        assert!(!ConfigurationCommands::apply_mic(None, home).unwrap().mic_sync, "인자 없으면 toggle");
+        assert_eq!(
+            ConfigurationCommands::apply_mic(Some("maybe"), home),
+            Err(ConfigurationCommandError::InvalidMicAction("maybe".to_string()))
+        );
+        fs::remove_dir_all(&directory).ok();
     }
 
     #[test]

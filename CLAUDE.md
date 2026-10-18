@@ -57,13 +57,14 @@ cargo build --release
 - Supertonic 3 + ONNX Runtime (`ort` crate) + 오디오 재생 (`cpal`)
 - MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`/`intent`). `intent: "decision"`(main 전용)은 결정 효과음과 함께 quiet·night·도우미 꺼짐을 뚫고 mute만 막습니다. 응답은 `{"ok":true,"mode":…}`(+`muted`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
-- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `skip [--all]` / `replay [n]` / `hook` / `mcp` (`speak` CLI 없음). `skip`·`replay`는 데몬 소켓 제어 명령이며, Claude·Codex의 UserPromptSubmit은 같은 세션의 지난 companion 브리핑(결정 대기 제외)을 자동으로 끊고, replay 기록은 재생된 발화 최대 10개(데몬 메모리)
+- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `status` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `mic` / `skip [--all]` / `replay [n]` / `hook` / `mcp` (`speak` CLI 없음). `skip`·`replay`는 데몬 소켓 제어 명령이며, Claude·Codex의 UserPromptSubmit은 같은 세션의 지난 companion 브리핑(결정 대기 제외)을 자동으로 끊고, replay 기록은 재생된 발화 최대 10개(데몬 메모리)
 - Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래). SessionEnd — 세션 상태 정리. Claude 전용 StopFailure · Notification · Elicitation · PermissionDenied · TeammateIdle · TaskCompleted — 고정 문구 알림. Claude 전용 PreCompact · PostCompact — 자동 압축만(시작 고정 문구, 끝 완료음). 설계는 `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
 - 훅 알림(에이전트가 말할 수 없는 순간): 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification idle_prompt·agent_needs_input / Elicitation), 자동 모드 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴의 완료. 팀 이벤트(TeammateIdle·TaskCompleted)는 `teamNotices`를 켠 경우만. 잦은 유형은 쿨다운(2~5분). LLM 생성 없는 고정 문구(`lane=work`)이며 `mute`로만 꺼집니다. 알림 앞에 효과음(주의·실패·완료)이 붙고 `earcons: false`로 끌 수 있습니다
 - 멀티 세션: 다른 프로젝트 세션이 30분 안에 활성이면 speak 앞에 `"<프로젝트>. "`를 붙입니다(`sessionLabel`, 기본 켜짐)
 - 발음 사전: 설정 `pronunciations`(단어 → 읽을 표기)를 데몬이 합성 직전에 단어 단위·대소문자 무시로 적용합니다
 - 대기열 정리: 45초 넘게 기다린 발화는 재생 차례에 버립니다(결정 대기·다시 듣기 제외). 대기 중인 서브에이전트 완료가 겹치면 "서브에이전트 작업 N개가 끝났습니다." 한 줄로 합칩니다
 - 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인. `doctor`는 호스트별 훅 이벤트 누락도 `hooks.<host>.missing`으로 알려 줍니다
+- 마이크 사용 연동(옵트인 `debrief mic on`): 다른 앱이 마이크 입력을 쓰는 동안(CoreAudio 프로세스 `IsRunningInput`, macOS 14.2+) 유효 모드를 최소 quiet로 올립니다. 오디오를 녹음·분석하지 않습니다. `doctor`의 `mic.readable`·`mic.unreadable`로 판독 여부 확인
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
@@ -71,7 +72,7 @@ cargo build --release
 
 **제외**
 
-- STT / Whisper / 마이크
+- STT / Whisper / 마이크 녹음 (사용 중 여부 판독만 예외)
 - debrief 자체 텍스트 생성(LLM 호출)이나 외부 판단 모델(`decide` 등)에 의한 요약·브리핑·침묵 판단·추천
 - Python / Node / FastAPI / Prometheus / DLQ
 - HTML comment speech envelope / Stop·SubagentStop speech extraction

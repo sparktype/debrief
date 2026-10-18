@@ -247,6 +247,11 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             println!("{}", if updated.dnd_sync { CliMessages::DND_ON } else { CliMessages::DND_OFF });
             Ok(())
         }),
+        DebriefCommand::Mic(action) => print_configuration_result(|| {
+            let updated = ConfigurationCommands::apply_mic(action.as_deref(), home)?;
+            println!("{}", if updated.mic_sync { CliMessages::MIC_ON } else { CliMessages::MIC_OFF });
+            Ok(())
+        }),
         DebriefCommand::Hook { source } => {
             let Some(host) = (match source.as_str() {
                 "codex" => Some(HostSource::Codex),
