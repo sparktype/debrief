@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### 추가
+
+- `debrief restart`: 실행 중이어도 데몬을 내렸다가 다시 올립니다(실행 파일·plist·설정은 그대로).
+
+### 변경
+
+- `debrief status`가 버전과 함께 서비스 상태와 설정 토글을 블릿으로 나눠 보여 줍니다.
+- 설치 오류 `Io`에 실패 단계와 원인이 붙습니다(예: `Io("hosts: SettingsRootMustBeObject")`).
+- launchctl의 중간 메시지(`Boot-out failed`, 교체 중 첫 `Bootstrap failed: 5`)를 숨깁니다. 결과는 debrief 메시지와 종료 코드로 알립니다.
+
 ## [0.3.0] - 2026-10-18
 
 바이너리를 교체한 뒤 `debrief stop` 다음 `debrief start`로 데몬을 재시작하세요. Claude·Codex 훅과 스킬은 바뀌지 않아 `install --repair`가 필요 없습니다. Gemini CLI를 쓰려면 `debrief install --gemini`를 실행합니다.

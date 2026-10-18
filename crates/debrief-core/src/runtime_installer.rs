@@ -127,6 +127,15 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
         Ok(ServiceStartResult::Started)
     }
 
+    /// 실행 중이어도 에이전트를 내리고 다시 올린다. plist와 실행 파일은 바꾸지 않는다(새 바이너리는 `install`).
+    pub fn restart(&self) -> Result<(), RuntimeInstallerError> {
+        let paths = DebriefPaths::for_home(&self.home);
+        if !paths.launch_agent_url.exists() {
+            return Err(RuntimeInstallerError::LaunchAgentMissing);
+        }
+        self.bootstrap_launch_agent(&paths)
+    }
+
     /// 에이전트를 비활성화하고 부트아웃한다. plist와 실행 파일은 유지한다.
     pub fn stop(&self) -> Result<(), RuntimeInstallerError> {
         self.disable_and_bootout()
@@ -532,6 +541,29 @@ mod tests {
 
         let result = installer.install(&HashSet::new(), true);
         assert!(result.is_err());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn restart_reregisters_even_while_running_and_refuses_without_plist() {
+        let home = temporary_home();
+        let paths = DebriefPaths::for_home(&home);
+        let events = EventLog::new();
+        let launchctl = FakeLaunchctlRunner { events: &events, executable_to_observe: None, fail_bootstrap: false };
+        let model = FakeRuntimeModelInstaller { events: &events, directory: home.clone(), installed_executable: None };
+        let installer = RuntimeInstaller::new(home.clone(), paths.executable_url.clone(), model, &launchctl, 501);
+
+        assert_eq!(installer.restart(), Err(RuntimeInstallerError::LaunchAgentMissing));
+        assert!(events.values().is_empty());
+
+        fs::create_dir_all(paths.launch_agent_url.parent().unwrap()).unwrap();
+        fs::write(&paths.launch_agent_url, "plist").unwrap();
+        fs::create_dir_all(paths.pid_url.parent().unwrap()).unwrap();
+        fs::write(&paths.pid_url, std::process::id().to_string()).unwrap();
+        assert_eq!(installer.restart(), Ok(()));
+        assert_eq!(events.values(), vec!["enable", "bootout", "bootstrap"]);
+        assert_eq!(fs::read(&paths.launch_agent_url).unwrap(), b"plist", "plist는 다시 쓰지 않는다");
 
         fs::remove_dir_all(&home).ok();
     }

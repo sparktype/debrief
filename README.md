@@ -86,6 +86,7 @@ debrief skip [--all]
 debrief replay [n]
 debrief start
 debrief stop
+debrief restart
 debrief uninstall [--codex] [--claude] [--grok]
 ```
 
@@ -124,6 +125,7 @@ debrief 0.3.0
 | `debrief doctor` | 진단입니다. 정상이 아닌 항목이 있으면 종료 코드 1입니다. |
 | `debrief start` | 있는 plist만 부트스트랩합니다. plist가 없으면 `debrief install`을 안내하고 종료 코드 1입니다. 이미 실행 중이면 프로세스를 바꾸지 않습니다. |
 | `debrief stop` | 에이전트를 끄고 bootout 합니다. 실행 파일과 plist는 남습니다. |
+| `debrief restart` | 실행 중이어도 에이전트를 내렸다가 다시 올립니다. 실행 파일·plist·설정은 바꾸지 않고, 데몬 메모리의 다시 듣기 기록은 사라집니다. brew로 업그레이드한 새 바이너리는 `debrief install`이 복사합니다. |
 | `debrief uninstall` | 배선을 제거하고, 다이제스트가 설치 기록과 같은 실행 파일만 지웁니다. |
 
 ### 모드

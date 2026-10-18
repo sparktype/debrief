@@ -221,6 +221,7 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
         DebriefCommand::Replay(count) => run_control(home, Control::Replay(count)),
         DebriefCommand::Start => run_start(home),
         DebriefCommand::Stop => run_stop(home),
+        DebriefCommand::Restart => run_restart(home),
         DebriefCommand::Status => {
             println!("{}", Diagnostics::new(home).status_text());
             0
@@ -315,6 +316,25 @@ fn run_start(home: &std::path::Path) -> i32 {
         }
         Ok(ServiceStartResult::Started) => {
             println!("{}", CliMessages::STARTED);
+            0
+        }
+        Err(RuntimeInstallerError::LaunchAgentMissing) => {
+            eprintln!("{}", CliMessages::LAUNCH_AGENT_MISSING);
+            1
+        }
+        Err(error) => {
+            eprintln!("{}", CliMessages::start_failed(&format!("{error:?}")));
+            1
+        }
+    }
+}
+
+fn run_restart(home: &std::path::Path) -> i32 {
+    let launchctl = ProcessLaunchctlRunner::new();
+    let runtime = make_runtime(home, current_executable_url(), &launchctl);
+    match runtime.restart() {
+        Ok(()) => {
+            println!("{}", CliMessages::RESTARTED);
             0
         }
         Err(RuntimeInstallerError::LaunchAgentMissing) => {

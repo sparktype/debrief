@@ -11,6 +11,7 @@ pub enum DebriefCommand {
     Daemon,
     Start,
     Stop,
+    Restart,
     Status,
     Mute(Option<String>),
     Mode(Option<String>),
@@ -38,6 +39,7 @@ impl DebriefCommand {
                 "  debrief daemon\n",
                 "  debrief start\n",
                 "  debrief stop\n",
+                "  debrief restart   (re-launch the daemon; replay history is cleared)\n",
                 "  debrief status\n",
                 "  debrief doctor\n\n",
                 "Controls (written to config.json; applied on the next utterance):\n",
@@ -97,6 +99,10 @@ impl DebriefCommand {
             "stop" => {
                 Self::require_empty(tail, name)?;
                 Ok(DebriefCommand::Stop)
+            }
+            "restart" => {
+                Self::require_empty(tail, name)?;
+                Ok(DebriefCommand::Restart)
             }
             "status" => {
                 Self::require_empty(tail, name)?;
@@ -221,6 +227,7 @@ impl CliMessages {
     pub const MIC_OFF: &'static str = "마이크 사용 연동을 껐습니다.";
     pub const STARTED: &'static str = "서비스를 시작했습니다.";
     pub const STOPPED: &'static str = "서비스를 중지했습니다.";
+    pub const RESTARTED: &'static str = "서비스를 다시 시작했습니다.";
     pub const ALREADY_RUNNING: &'static str = "이미 실행 중입니다.";
     pub const DAEMON_NOT_RUNNING: &'static str = "debrief 데몬이 실행 중이 아닙니다. `debrief start`로 시작하세요.";
     pub const DAEMON_OUTDATED: &'static str =
@@ -273,6 +280,8 @@ mod tests {
         assert_eq!(parse(&["daemon"]), Ok(DebriefCommand::Daemon));
         assert_eq!(parse(&["start"]), Ok(DebriefCommand::Start));
         assert_eq!(parse(&["stop"]), Ok(DebriefCommand::Stop));
+        assert_eq!(parse(&["restart"]), Ok(DebriefCommand::Restart));
+        assert!(parse(&["restart", "now"]).is_err());
         assert_eq!(parse(&["status"]), Ok(DebriefCommand::Status));
         assert_eq!(parse(&["doctor"]), Ok(DebriefCommand::Doctor));
         assert_eq!(parse(&["mute"]), Ok(DebriefCommand::Mute(None)));
@@ -317,6 +326,7 @@ mod tests {
         assert_eq!(CliMessages::mode_set("focus"), "모드를 focus로 설정했습니다.");
         assert_eq!(CliMessages::STARTED, "서비스를 시작했습니다.");
         assert_eq!(CliMessages::STOPPED, "서비스를 중지했습니다.");
+        assert_eq!(CliMessages::RESTARTED, "서비스를 다시 시작했습니다.");
         assert_eq!(CliMessages::ALREADY_RUNNING, "이미 실행 중입니다.");
         assert_eq!(CliMessages::LAUNCH_AGENT_MISSING, "LaunchAgent가 없습니다. debrief install을 실행하세요.");
         assert_eq!(CliMessages::start_failed("boom"), "서비스를 시작하지 못했습니다. boom");

@@ -57,6 +57,7 @@ debrief replay [n]
 debrief doctor
 debrief start
 debrief stop
+debrief restart
 ```
 
 - **Mode** — `normal` (default); `focus` / `quiet` / `night` suppress `priority=subagent`; quiet/night also lower volume ceilings; `verbose` includes subagent speech
