@@ -128,13 +128,44 @@ impl<'a> Diagnostics<'a> {
             }
             None => "없음".to_string(),
         };
+        let configuration = DebriefConfiguration::load(&self.paths.config_url);
+        // 방해금지·마이크 연동으로 지금 올라가 있는 모드는 저장된 모드 옆에 함께 보인다.
+        let effective = DebriefConfiguration::load_effective(&self.paths.config_url, &self.paths.home).mode;
+        let mode = if effective == snapshot.mode {
+            snapshot.mode.as_str().to_string()
+        } else {
+            format!("{} (지금 {})", snapshot.mode.as_str(), effective.as_str())
+        };
+        let on_off = |on: bool| if on { "켜짐" } else { "꺼짐" };
+        let long_turn = match configuration.long_turn_seconds {
+            0 => "꺼짐".to_string(),
+            seconds => format!("{seconds}초"),
+        };
+        let service = [
+            ("프로세스", process.to_string()),
+            ("소켓", if snapshot.socket_present { "있음" } else { "없음" }.to_string()),
+            ("LaunchAgent", if snapshot.launch_agent_installed { "설치됨" } else { "없음" }.to_string()),
+            ("모델", model),
+        ];
+        let settings = [
+            ("음소거", on_off(snapshot.muted).to_string()),
+            ("모드", mode),
+            ("도우미 음성", on_off(snapshot.companion_enabled).to_string()),
+            ("효과음", on_off(configuration.earcons).to_string()),
+            ("방해금지 연동", on_off(configuration.dnd_sync).to_string()),
+            ("마이크 연동", on_off(configuration.mic_sync).to_string()),
+            ("세션 레이블", on_off(configuration.session_label).to_string()),
+            ("팀 알림", on_off(configuration.team_notices).to_string()),
+            ("긴 턴 완료 알림", long_turn),
+        ];
+        let bullets = |items: &[(&str, String)]| {
+            items.iter().map(|(label, value)| format!("  • {label}: {value}")).collect::<Vec<_>>().join("\n")
+        };
         format!(
-            "프로세스: {process}\n음소거: {}\n모드: {}\n도우미 음성: {}\n모델: {model}\n소켓: {}\nLaunchAgent: {}",
-            if snapshot.muted { "켜짐" } else { "꺼짐" },
-            snapshot.mode.as_str(),
-            if snapshot.companion_enabled { "켜짐" } else { "꺼짐" },
-            if snapshot.socket_present { "있음" } else { "없음" },
-            if snapshot.launch_agent_installed { "설치됨" } else { "없음" },
+            "debrief {}\n\n서비스\n{}\n\n설정\n{}",
+            crate::debrief_version::DebriefVersion::CURRENT,
+            bullets(&service),
+            bullets(&settings)
         )
     }
 
@@ -537,21 +568,41 @@ mod tests {
     fn status_text_uses_cli_lines() {
         let home = temporary_home();
         let paths = DebriefPaths::for_home(&home);
-        DebriefConfiguration { mode: DebriefMode::Night, muted: true, companion_enabled: false, ..Default::default() }
-            .save(&paths.config_url)
-            .unwrap();
+        DebriefConfiguration {
+            mode: DebriefMode::Night,
+            muted: true,
+            companion_enabled: false,
+            mic_sync: true,
+            earcons: false,
+            ..Default::default()
+        }
+        .save(&paths.config_url)
+        .unwrap();
         install_model_marker(&paths, true);
         fs::create_dir_all(paths.launch_agent_url.parent().unwrap()).unwrap();
         fs::write(&paths.launch_agent_url, "plist").unwrap();
 
         let text = Diagnostics::with_process_check(&home, |_| false).status_text();
-        assert!(text.contains("프로세스: 없음"));
-        assert!(text.contains("음소거: 켜짐"));
-        assert!(text.contains("모드: night"));
-        assert!(text.contains("도우미 음성: 꺼짐"));
-        assert!(text.contains(&format!("모델: {} (사용할 수 없음)", ModelManifest::supertonic3().revision)));
-        assert!(text.contains("소켓: 없음"));
-        assert!(text.contains("LaunchAgent: 설치됨"));
+        assert!(text.starts_with(&format!("debrief {}\n", crate::debrief_version::DebriefVersion::CURRENT)));
+        assert!(text.contains("\n서비스\n"));
+        assert!(text.contains("\n설정\n"));
+        for line in [
+            "  • 프로세스: 없음",
+            "  • 소켓: 없음",
+            "  • LaunchAgent: 설치됨",
+            "  • 음소거: 켜짐",
+            "  • 모드: night",
+            "  • 도우미 음성: 꺼짐",
+            "  • 효과음: 꺼짐",
+            "  • 방해금지 연동: 꺼짐",
+            "  • 마이크 연동: 켜짐",
+            "  • 세션 레이블: 켜짐",
+            "  • 팀 알림: 꺼짐",
+            "  • 긴 턴 완료 알림: 60초",
+        ] {
+            assert!(text.lines().any(|l| l == line), "{line}\n{text}");
+        }
+        assert!(text.contains(&format!("  • 모델: {} (사용할 수 없음)", ModelManifest::supertonic3().revision)));
         assert!(!text.to_lowercase().contains("menu"));
 
         fs::remove_dir_all(&home).ok();
