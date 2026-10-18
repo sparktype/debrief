@@ -31,8 +31,11 @@ impl Default for ProcessLaunchctlRunner {
 
 impl LaunchctlRunning for ProcessLaunchctlRunner {
     fn run(&self, arguments: &[String], allow_failure: bool) -> Result<(), LaunchctlError> {
+        // 예상된 실패(없는 서비스 bootout, 교체 중 첫 bootstrap EIO)의 launchctl 메시지가 성공 출력에 섞이지 않게 숨긴다.
+        // 최종 실패는 호출자가 종료 코드(`LaunchctlFailed`)로 보고한다.
         let status = std::process::Command::new("/bin/launchctl")
             .args(arguments)
+            .stderr(std::process::Stdio::null())
             .status()
             .map_err(|_| LaunchctlError::SpawnFailed)?;
         if !allow_failure && !status.success() {
