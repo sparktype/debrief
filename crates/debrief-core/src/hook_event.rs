@@ -7,6 +7,7 @@ pub enum HostSource {
     Codex,
     Claude,
     Grok,
+    Gemini,
 }
 
 impl HostSource {
@@ -15,6 +16,7 @@ impl HostSource {
             HostSource::Codex => "codex",
             HostSource::Claude => "claude",
             HostSource::Grok => "grok",
+            HostSource::Gemini => "gemini",
         }
     }
 }
@@ -76,6 +78,33 @@ impl HookEventName {
             "TaskCompleted" => Some(HookEventName::TaskCompleted),
             "PreCompact" => Some(HookEventName::PreCompact),
             "PostCompact" => Some(HookEventName::PostCompact),
+            _ => None,
+        }
+    }
+
+    /// Gemini CLI가 같은 순간을 부르는 이름(`BeforeAgent` 등). 다른 호스트는 내부 이름 그대로다.
+    pub fn native_name(&self, host: HostSource) -> &'static str {
+        match (host, self) {
+            (HostSource::Gemini, HookEventName::UserPromptSubmit) => "BeforeAgent",
+            (HostSource::Gemini, HookEventName::Stop) => "AfterAgent",
+            (HostSource::Gemini, HookEventName::PermissionRequest) => "Notification",
+            (HostSource::Gemini, HookEventName::PreCompact) => "PreCompress",
+            _ => self.as_str(),
+        }
+    }
+
+    pub fn from_native(value: &str, host: HostSource) -> Option<Self> {
+        if host != HostSource::Gemini {
+            return Self::from_str_value(value);
+        }
+        // Gemini의 Notification은 도구 권한 요청(ToolPermission)만 문서화되어 있다.
+        match value {
+            "SessionStart" => Some(HookEventName::SessionStart),
+            "BeforeAgent" => Some(HookEventName::UserPromptSubmit),
+            "AfterAgent" => Some(HookEventName::Stop),
+            "Notification" => Some(HookEventName::PermissionRequest),
+            "PreCompress" => Some(HookEventName::PreCompact),
+            "SessionEnd" => Some(HookEventName::SessionEnd),
             _ => None,
         }
     }

@@ -92,6 +92,7 @@ impl<'a> Diagnostics<'a> {
         );
         host_settings_readable.insert("claude", Self::settings_readable(&self.paths.home.join(".claude/settings.json")));
         host_settings_readable.insert("grok", Self::settings_readable_toml(&self.paths.home.join(".grok/config.toml")));
+        host_settings_readable.insert("gemini", Self::settings_readable(&self.paths.home.join(".gemini/settings.json")));
 
         StatusSnapshot {
             mode: configuration.mode,
@@ -166,7 +167,7 @@ impl<'a> Diagnostics<'a> {
         let mcp_statuses = self.host_mcp_statuses();
         let unreadable_mcp_hosts: std::collections::HashSet<_> =
             mcp_statuses.iter().filter(|s| s.state == crate::host_mcp_status::HostMcpState::Unreadable).map(|s| s.host).collect();
-        for host in [HostSource::Codex, HostSource::Claude, HostSource::Grok] {
+        for host in [HostSource::Codex, HostSource::Claude, HostSource::Grok, HostSource::Gemini] {
             if snapshot.host_settings_readable.get(host.as_str()) == Some(&false) {
                 // MCP probe가 이미 다루면 단일 mcp.*.unreadable을 우선한다.
                 if unreadable_mcp_hosts.contains(&host) {
@@ -331,6 +332,7 @@ impl<'a> Diagnostics<'a> {
         for (host, settings) in [
             (HostSource::Codex, self.paths.home.join(".codex/hooks.json")),
             (HostSource::Claude, self.paths.home.join(".claude/settings.json")),
+            (HostSource::Gemini, self.paths.home.join(".gemini/settings.json")),
         ] {
             let Some(hooks) = std::fs::read(&settings)
                 .ok()
@@ -349,7 +351,7 @@ impl<'a> Diagnostics<'a> {
             }
             let missing: Vec<&str> = crate::embedded_templates::EmbeddedTemplates::hook_events(host)
                 .iter()
-                .map(|event| event.as_str())
+                .map(|event| event.native_name(host))
                 .filter(|name| !present.contains(name))
                 .collect();
             findings.push(if missing.is_empty() {
@@ -423,6 +425,11 @@ impl<'a> Diagnostics<'a> {
                 code: "host.claude.invalid_json".to_string(),
                 ok: false,
                 recovery: Some("repair the host JSON, then run debrief install --claude --repair".to_string()),
+            },
+            HostSource::Gemini => DiagnosticFinding {
+                code: "host.gemini.invalid_json".to_string(),
+                ok: false,
+                recovery: Some("repair ~/.gemini/settings.json, then run debrief install --gemini --repair".to_string()),
             },
         }
     }

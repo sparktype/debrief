@@ -53,6 +53,7 @@ impl HostMcpStatus {
             HostSource::Claude => "Claude",
             HostSource::Codex => "Codex",
             HostSource::Grok => "Grok",
+            HostSource::Gemini => "Gemini",
         }
     }
 
@@ -78,6 +79,7 @@ impl HostMcpStatus {
             HostSource::Claude => "--claude",
             HostSource::Codex => "--codex",
             HostSource::Grok => "--grok",
+            HostSource::Gemini => "--gemini",
         };
         match self.state {
             HostMcpState::Unreadable => Some(format!("에이전트 설정을 수정한 뒤 debrief install {flag} --repair")),
@@ -112,22 +114,22 @@ impl HostMcpProbe {
 
     pub fn status(host: HostSource, home: &Path, expected_executable: &Path) -> HostMcpStatus {
         let state = match host {
-            HostSource::Claude => Self::probe_claude(home, expected_executable),
+            // Claude Code는 사용자 범위 MCP 서버를 ~/.claude.json에서 읽는다, settings.json이 아니다.
+            HostSource::Claude => Self::probe_json(&home.join(".claude.json"), expected_executable),
+            HostSource::Gemini => Self::probe_json(&home.join(".gemini/settings.json"), expected_executable),
             HostSource::Codex => Self::probe_toml(&home.join(".codex/config.toml"), expected_executable),
             HostSource::Grok => Self::probe_toml(&home.join(".grok/config.toml"), expected_executable),
         };
         HostMcpStatus { host, state }
     }
 
-    // MARK: - Claude JSON
+    // MARK: - Claude / Gemini JSON
 
-    fn probe_claude(home: &Path, expected: &Path) -> HostMcpState {
-        // Claude Code는 사용자 범위 MCP 서버를 ~/.claude.json에서 읽는다, settings.json이 아니다.
-        let url = home.join(".claude.json");
+    fn probe_json(url: &Path, expected: &Path) -> HostMcpState {
         if !url.exists() {
             return HostMcpState::Absent;
         }
-        let Ok(data) = std::fs::read(&url) else { return HostMcpState::Unreadable };
+        let Ok(data) = std::fs::read(url) else { return HostMcpState::Unreadable };
         let Ok(serde_json::Value::Object(root)) = serde_json::from_slice::<serde_json::Value>(&data) else {
             return HostMcpState::Unreadable;
         };

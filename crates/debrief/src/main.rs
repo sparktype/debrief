@@ -116,11 +116,19 @@ fn dirs_home() -> PathBuf {
     std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/"))
 }
 
-fn selected_hosts(codex: bool, claude: bool, grok: bool) -> HashSet<HostSource> {
-    if !codex && !claude && !grok {
-        return [HostSource::Codex, HostSource::Claude, HostSource::Grok].into_iter().collect();
+/// 플래그가 없으면 Codex·Claude·Grok에 더해, `gemini_by_default`면 Gemini도 고른다(Gemini는 옵트인).
+fn selected_hosts(codex: bool, claude: bool, grok: bool, gemini: bool, gemini_by_default: bool) -> HashSet<HostSource> {
+    if !codex && !claude && !grok && !gemini {
+        let mut hosts: HashSet<HostSource> = [HostSource::Codex, HostSource::Claude, HostSource::Grok].into_iter().collect();
+        if gemini_by_default {
+            hosts.insert(HostSource::Gemini);
+        }
+        return hosts;
     }
     let mut hosts = HashSet::new();
+    if gemini {
+        hosts.insert(HostSource::Gemini);
+    }
     if codex {
         hosts.insert(HostSource::Codex);
     }
@@ -158,9 +166,12 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             println!("{}", DebriefCommand::usage_text());
             0
         }
-        DebriefCommand::Install { codex, claude, grok, repair } => {
+        DebriefCommand::Install { codex, claude, grok, gemini, repair } => {
             let paths = DebriefPaths::for_home(home);
-            let hosts = selected_hosts(codex, claude, grok);
+            // 이미 Gemini를 배선했다면 플래그 없는 `install --repair`도 함께 고친다.
+            let gemini_installed = debrief_core::InstallManifest::load(&paths.install_manifest_url)
+                .is_ok_and(|manifest| manifest.hooks.iter().any(|owned| owned.host == HostSource::Gemini));
+            let hosts = selected_hosts(codex, claude, grok, gemini, gemini_installed);
             let source_executable = current_executable_url();
             let launchctl = ProcessLaunchctlRunner::new();
             let runtime = make_runtime(home, source_executable, &launchctl);
@@ -185,8 +196,8 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                 }
             }
         }
-        DebriefCommand::Uninstall { codex, claude, grok } => {
-            let hosts = selected_hosts(codex, claude, grok);
+        DebriefCommand::Uninstall { codex, claude, grok, gemini } => {
+            let hosts = selected_hosts(codex, claude, grok, gemini, true);
             let source_executable = current_executable_url();
             let launchctl = ProcessLaunchctlRunner::new();
             let runtime = make_runtime(home, source_executable, &launchctl);
@@ -256,9 +267,10 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             let Some(host) = (match source.as_str() {
                 "codex" => Some(HostSource::Codex),
                 "claude" => Some(HostSource::Claude),
+                "gemini" => Some(HostSource::Gemini),
                 _ => None,
             }) else {
-                eprintln!("error: --source must be codex or claude");
+                eprintln!("error: --source must be codex, claude, or gemini");
                 return 64;
             };
             let mut input = Vec::new();

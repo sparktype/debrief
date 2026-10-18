@@ -40,7 +40,20 @@ impl EmbeddedTemplates {
         HookEventName::PostCompact,
     ];
 
+    /// Gemini CLI가 지원하는 순간(서브에이전트 시작·압축 끝은 없다). 키는 설치기가 `native_name`으로 바꾼다.
+    const GEMINI_HOOK_EVENTS: [HookEventName; 6] = [
+        HookEventName::SessionStart,
+        HookEventName::UserPromptSubmit,
+        HookEventName::PermissionRequest,
+        HookEventName::Stop,
+        HookEventName::SessionEnd,
+        HookEventName::PreCompact,
+    ];
+
     pub fn hook_events(host: HostSource) -> Vec<HookEventName> {
+        if host == HostSource::Gemini {
+            return Self::GEMINI_HOOK_EVENTS.to_vec();
+        }
         let mut events = Self::COMMON_HOOK_EVENTS.to_vec();
         if host == HostSource::Claude {
             events.extend(Self::CLAUDE_ONLY_HOOK_EVENTS);
@@ -55,8 +68,8 @@ impl EmbeddedTemplates {
             hooks: vec![EmbeddedHookHandler {
                 r#type: "command".to_string(),
                 command: format!("{} hook --source {}", Self::shell_quote(&executable.to_string_lossy()), source.as_str()),
-                // 최초 실행 시 콜드 스타트가 2초를 넘을 수 있다.
-                timeout: 5,
+                // 최초 실행 시 콜드 스타트가 2초를 넘을 수 있다. Gemini는 밀리초 단위다.
+                timeout: if source == HostSource::Gemini { 5000 } else { 5 },
             }],
         }
     }
@@ -360,6 +373,25 @@ mod tests {
             assert!(skill.contains("ownership"));
             assert!(!skill.to_lowercase().contains("debrief summarizes"));
         }
+    }
+
+    #[test]
+    fn gemini_hooks_cover_its_native_events_with_millisecond_timeout() {
+        assert_eq!(
+            EmbeddedTemplates::hook_events(HostSource::Gemini),
+            vec![
+                HookEventName::SessionStart,
+                HookEventName::UserPromptSubmit,
+                HookEventName::PermissionRequest,
+                HookEventName::Stop,
+                HookEventName::SessionEnd,
+                HookEventName::PreCompact,
+            ]
+        );
+        let entry = EmbeddedTemplates::hook_entry(Path::new("/bin/debrief"), HostSource::Gemini);
+        assert_eq!(entry.hooks[0].timeout, 5000);
+        assert!(entry.hooks[0].command.ends_with("hook --source gemini"));
+        assert_eq!(EmbeddedTemplates::hook_entry(Path::new("/bin/debrief"), HostSource::Claude).hooks[0].timeout, 5);
     }
 
     #[test]

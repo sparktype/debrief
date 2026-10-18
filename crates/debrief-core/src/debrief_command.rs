@@ -6,8 +6,8 @@ use std::collections::HashSet;
 /// 프로세스 진입 모드. 에이전트는 `hook`/`mcp`를, 사람은 CLI를 쓴다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DebriefCommand {
-    Install { codex: bool, claude: bool, grok: bool, repair: bool },
-    Uninstall { codex: bool, claude: bool, grok: bool },
+    Install { codex: bool, claude: bool, grok: bool, gemini: bool, repair: bool },
+    Uninstall { codex: bool, claude: bool, grok: bool, gemini: bool },
     Daemon,
     Start,
     Stop,
@@ -32,8 +32,8 @@ impl DebriefCommand {
             version = DebriefVersion::CURRENT,
             body = concat!(
                 "Install / repair (release build, then):\n",
-                "  debrief install [--codex] [--claude] [--grok] [--repair]\n",
-                "  debrief uninstall [--codex] [--claude] [--grok]\n\n",
+                "  debrief install [--codex] [--claude] [--grok] [--gemini] [--repair]   (Gemini CLI is opt-in)\n",
+                "  debrief uninstall [--codex] [--claude] [--grok] [--gemini]\n\n",
                 "Service:\n",
                 "  debrief daemon\n",
                 "  debrief start\n",
@@ -50,7 +50,7 @@ impl DebriefCommand {
                 "  debrief replay [n]     (replay the last n utterances, 1-10, default 1)\n\n",
                 "Agents:\n",
                 "  debrief mcp\n",
-                "  debrief hook --source <codex|claude>\n",
+                "  debrief hook --source <codex|claude|gemini>\n",
                 "  debrief help",
             )
         )
@@ -68,20 +68,22 @@ impl DebriefCommand {
                 Ok(DebriefCommand::Help)
             }
             "install" => {
-                Self::require_only(tail, &["--codex", "--claude", "--grok", "--repair"])?;
+                Self::require_only(tail, &["--codex", "--claude", "--grok", "--gemini", "--repair"])?;
                 Ok(DebriefCommand::Install {
                     codex: tail.iter().any(|a| a == "--codex"),
                     claude: tail.iter().any(|a| a == "--claude"),
                     grok: tail.iter().any(|a| a == "--grok"),
+                    gemini: tail.iter().any(|a| a == "--gemini"),
                     repair: tail.iter().any(|a| a == "--repair"),
                 })
             }
             "uninstall" => {
-                Self::require_only(tail, &["--codex", "--claude", "--grok"])?;
+                Self::require_only(tail, &["--codex", "--claude", "--grok", "--gemini"])?;
                 Ok(DebriefCommand::Uninstall {
                     codex: tail.iter().any(|a| a == "--codex"),
                     claude: tail.iter().any(|a| a == "--claude"),
                     grok: tail.iter().any(|a| a == "--grok"),
+                    gemini: tail.iter().any(|a| a == "--gemini"),
                 })
             }
             "daemon" => {
@@ -137,8 +139,8 @@ impl DebriefCommand {
             }
             "hook" => {
                 let source = Self::required_value("--source", tail)?;
-                if source != "codex" && source != "claude" {
-                    return Err(CommandError::Usage("--source must be codex or claude".to_string()));
+                if !["codex", "claude", "gemini"].contains(&source.as_str()) {
+                    return Err(CommandError::Usage("--source must be codex, claude, or gemini".to_string()));
                 }
                 Self::require_flag_pairs(tail, &["--source"])?;
                 Ok(DebriefCommand::Hook { source })
@@ -287,6 +289,7 @@ mod tests {
         assert_eq!(parse(&["mic", "off"]), Ok(DebriefCommand::Mic(Some("off".to_string()))));
         assert!(parse(&["mic", "maybe"]).is_err());
         assert_eq!(parse(&["hook", "--source", "claude"]), Ok(DebriefCommand::Hook { source: "claude".to_string() }));
+        assert_eq!(parse(&["hook", "--source", "gemini"]), Ok(DebriefCommand::Hook { source: "gemini".to_string() }));
     }
 
     #[test]
@@ -338,11 +341,23 @@ mod tests {
     fn parses_install_grok_flag() {
         assert_eq!(
             parse(&["install", "--grok"]),
-            Ok(DebriefCommand::Install { codex: false, claude: false, grok: true, repair: false })
+            Ok(DebriefCommand::Install { codex: false, claude: false, grok: true, gemini: false, repair: false })
         );
         assert_eq!(
             parse(&["install", "--codex", "--claude", "--grok", "--repair"]),
-            Ok(DebriefCommand::Install { codex: true, claude: true, grok: true, repair: true })
+            Ok(DebriefCommand::Install { codex: true, claude: true, grok: true, gemini: false, repair: true })
+        );
+    }
+
+    #[test]
+    fn parses_gemini_flags() {
+        assert_eq!(
+            parse(&["install", "--gemini", "--repair"]),
+            Ok(DebriefCommand::Install { codex: false, claude: false, grok: false, gemini: true, repair: true })
+        );
+        assert_eq!(
+            parse(&["uninstall", "--gemini"]),
+            Ok(DebriefCommand::Uninstall { codex: false, claude: false, grok: false, gemini: true })
         );
     }
 
@@ -350,7 +365,7 @@ mod tests {
     fn parses_uninstall_grok_flag() {
         assert_eq!(
             parse(&["uninstall", "--grok"]),
-            Ok(DebriefCommand::Uninstall { codex: false, claude: false, grok: true })
+            Ok(DebriefCommand::Uninstall { codex: false, claude: false, grok: true, gemini: false })
         );
     }
 

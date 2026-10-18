@@ -234,6 +234,7 @@ No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and co
             HostSource::Claude => "MCP tool `speak` on server `debrief` (may appear as `mcp__debrief__speak`)",
             HostSource::Codex => "MCP tool `speak` on server `debrief`",
             HostSource::Grok => "MCP tool `debrief__speak` (search_tool / use_tool; server `debrief`)",
+            HostSource::Gemini => "MCP tool `speak` on server `debrief` (appears as `mcp_debrief_speak`)",
         }
     }
 

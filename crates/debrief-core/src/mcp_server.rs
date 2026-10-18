@@ -125,8 +125,8 @@ After install: Claude restart; Grok run /mcps to refresh tools.",
                 "properties": {
                     "hosts": {
                         "type": "array",
-                        "description": "Hosts to wire: codex, claude, grok. Omit for all.",
-                        "items": {"type": "string", "enum": ["codex", "claude", "grok"]},
+                        "description": "Hosts to wire: codex, claude, grok, gemini. Omit for codex, claude, and grok.",
+                        "items": {"type": "string", "enum": ["codex", "claude", "grok", "gemini"]},
                     },
                     "repair": {
                         "type": "boolean",

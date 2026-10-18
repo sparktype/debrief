@@ -89,7 +89,8 @@ impl McpInstallTool {
             "codex" => Ok(HostSource::Codex),
             "claude" => Ok(HostSource::Claude),
             "grok" => Ok(HostSource::Grok),
-            other => Err(CommandError::Usage(format!("install hosts entries must be codex, claude, or grok (got {other})"))),
+            "gemini" => Ok(HostSource::Gemini),
+            other => Err(CommandError::Usage(format!("install hosts entries must be codex, claude, grok, or gemini (got {other})"))),
         }
     }
 

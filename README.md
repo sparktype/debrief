@@ -193,6 +193,7 @@ debrief status
 | Codex | `~/.agents/skills/` | 같은 세 스킬 |
 | Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. 훅은 없음. `/mcps` |
 | Grok | `~/.grok/skills/` | 같은 세 스킬 |
+| Gemini CLI (옵트인 `--gemini`) | `~/.gemini/settings.json` | `mcpServers.debrief`(도구 이름 `mcp_debrief_speak`) + 훅 SessionStart·BeforeAgent·AfterAgent·Notification(권한)·SessionEnd·PreCompress. 스킬은 Gemini가 읽는 `~/.agents/skills/`를 공유합니다. 매 호출 확인이 번거로우면 Gemini에서 이 도구를 항상 허용으로 고르세요 |
 
 Grok 조각은 이 형태입니다. `command`는 설치된 실행 파일의 절대 경로입니다.
 

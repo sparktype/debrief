@@ -93,7 +93,7 @@ impl<'a> HookEngine<'a> {
                 } else {
                     format!("{context} {}", Self::mode_guidance(&self.configuration, self.dnd_raised))
                 };
-                let stdout = HookAdapter::context_output(&context, event);
+                let stdout = HookAdapter::context_output(&context, event, source);
                 let control = matches!(event.name, HookEventName::UserPromptSubmit)
                     .then(|| crate::daemon_control::Control::SkipSession(event.session_id.clone()));
                 HookResult { stdout, submitted: false, delivery_error: None, notice, control }

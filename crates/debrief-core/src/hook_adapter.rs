@@ -21,12 +21,12 @@ impl HookAdapter {
 
         let raw_event = string_in(payload, &["hook_event_name", "hookEventName", "event_name", "eventName"])
             .ok_or(HookAdapterError::MissingEventName)?;
-        let event_name = HookEventName::from_str_value(&raw_event)
+        let event_name = HookEventName::from_native(&raw_event, source)
             .ok_or_else(|| HookAdapterError::UnsupportedEvent(raw_event.clone()))?;
 
         let session_keys: &[&str] = match source {
             HostSource::Codex => &["session_id", "sessionId", "conversation_id", "conversationId"],
-            HostSource::Claude | HostSource::Grok => &["session_id", "sessionId"],
+            HostSource::Claude | HostSource::Grok | HostSource::Gemini => &["session_id", "sessionId"],
         };
         let session_id = string_in(payload, session_keys)
             .filter(|value| !value.is_empty())
@@ -46,10 +46,10 @@ impl HookAdapter {
         })
     }
 
-    pub fn context_output(context: &str, event: &HookEvent) -> Vec<u8> {
+    pub fn context_output(context: &str, event: &HookEvent, source: HostSource) -> Vec<u8> {
         let output = json!({
             "hookSpecificOutput": {
-                "hookEventName": event.name.as_str(),
+                "hookEventName": event.name.native_name(source),
                 "additionalContext": context,
             }
         });
@@ -130,7 +130,7 @@ mod tests {
                 cwd: None,
                 subtype: None,
             };
-            let data = HookAdapter::context_output("context", &event);
+            let data = HookAdapter::context_output("context", &event, HostSource::Claude);
             let text = String::from_utf8(data).unwrap();
             assert!(text.contains("hookSpecificOutput"));
             assert!(text.contains("additionalContext"));
@@ -173,6 +173,32 @@ mod tests {
         let event = HookAdapter::decode(&data, HostSource::Claude).unwrap();
         assert_eq!(event.name, HookEventName::SubagentStart);
         assert_eq!(event.agent_type, Some("Explore".to_string()));
+    }
+
+    #[test]
+    fn decodes_gemini_native_events_and_echoes_their_names() {
+        let cases = [
+            (json!({"hook_event_name": "SessionStart", "session_id": "g", "source": "startup"}), HookEventName::SessionStart, None),
+            (json!({"hook_event_name": "BeforeAgent", "session_id": "g", "prompt": "p"}), HookEventName::UserPromptSubmit, None),
+            (json!({"hook_event_name": "AfterAgent", "session_id": "g", "prompt_response": "r"}), HookEventName::Stop, None),
+            (json!({"hook_event_name": "Notification", "session_id": "g", "notification_type": "ToolPermission"}), HookEventName::PermissionRequest, Some("ToolPermission")),
+            (json!({"hook_event_name": "PreCompress", "session_id": "g", "trigger": "auto"}), HookEventName::PreCompact, Some("auto")),
+            (json!({"hook_event_name": "SessionEnd", "session_id": "g", "reason": "exit"}), HookEventName::SessionEnd, None),
+        ];
+        for (payload, name, subtype) in cases {
+            let native = payload["hook_event_name"].as_str().unwrap().to_string();
+            let event = HookAdapter::decode(&serde_json::to_vec(&payload).unwrap(), HostSource::Gemini).unwrap();
+            assert_eq!(event.name, name);
+            assert_eq!(event.subtype.as_deref(), subtype, "{native}");
+            assert_eq!(name.native_name(HostSource::Gemini), native);
+        }
+        let unsupported = json!({"hook_event_name": "UserPromptSubmit", "session_id": "g"});
+        assert!(HookAdapter::decode(&serde_json::to_vec(&unsupported).unwrap(), HostSource::Gemini).is_err());
+
+        let event = HookAdapter::decode(br#"{"hook_event_name":"BeforeAgent","session_id":"g"}"#, HostSource::Gemini).unwrap();
+        let output: serde_json::Value = serde_json::from_slice(&HookAdapter::context_output("c", &event, HostSource::Gemini)).unwrap();
+        assert_eq!(output["hookSpecificOutput"]["hookEventName"], "BeforeAgent");
+        assert_eq!(output["hookSpecificOutput"]["additionalContext"], "c");
     }
 
     #[test]

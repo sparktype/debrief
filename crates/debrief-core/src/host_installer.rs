@@ -66,10 +66,14 @@ impl HostInstaller {
                 }
                 HostSource::Claude => {
                     self.install_json_host(host, &previous_files, &previous_hooks, &mut owned_hooks, &mut owned_files, &mut preserved)?;
-                    self.install_claude_mcp(&previous_files, &mut owned_files, &mut preserved)?;
+                    self.install_json_mcp(host, &self.claude_user_config_url(), &previous_files, &mut owned_files, &mut preserved)?;
                 }
                 HostSource::Grok => {
                     self.install_grok_host(&previous_files, &mut owned_files, &mut preserved)?;
+                }
+                HostSource::Gemini => {
+                    self.install_json_host(host, &previous_files, &previous_hooks, &mut owned_hooks, &mut owned_files, &mut preserved)?;
+                    self.install_json_mcp(host, &self.settings_url(host), &previous_files, &mut owned_files, &mut preserved)?;
                 }
             }
 
@@ -98,10 +102,14 @@ impl HostInstaller {
                 }
                 HostSource::Claude => {
                     self.uninstall_json_host(host, &manifest, &mut preserved)?;
-                    self.uninstall_claude_mcp(&manifest, &mut preserved)?;
+                    self.uninstall_json_mcp(host, &self.claude_user_config_url(), &manifest, &mut preserved)?;
                 }
                 HostSource::Grok => {
                     self.uninstall_grok_host(&manifest, &mut preserved)?;
+                }
+                HostSource::Gemini => {
+                    self.uninstall_json_host(host, &manifest, &mut preserved)?;
+                    self.uninstall_json_mcp(host, &self.settings_url(host), &manifest, &mut preserved)?;
                 }
             }
             manifest.hooks.retain(|h| h.host != host);
@@ -131,12 +139,12 @@ impl HostInstaller {
         let host_events = EmbeddedTemplates::hook_events(host);
         let active_events: HashSet<HookEventName> = host_events.iter().copied().collect();
         for owned in previous_hooks.iter().filter(|owned| !active_events.contains(&owned.event)) {
-            let mut entries = Self::event_entries(owned.event, &hooks)?;
+            let mut entries = Self::event_entries(host, owned.event, &hooks)?;
             entries.retain(|entry| InstallerDigest::json(entry).ok().as_deref() != Some(owned.sha256.as_str()));
             if entries.is_empty() {
-                hooks.remove(Self::event_key(owned.event));
+                hooks.remove(Self::event_key(host, owned.event));
             } else {
-                hooks.insert(Self::event_key(owned.event).to_string(), Value::Array(entries));
+                hooks.insert(Self::event_key(host, owned.event).to_string(), Value::Array(entries));
             }
         }
 
@@ -144,40 +152,48 @@ impl HostInstaller {
             let entry = EmbeddedTemplates::hook_entry(&self.executable, host);
             let object = Self::hook_entry_json(&entry);
             let digest = InstallerDigest::json(&object).map_err(|_| HostInstallerError::Io)?;
-            let mut entries = Self::event_entries(event, &hooks)?;
+            let mut entries = Self::event_entries(host, event, &hooks)?;
             let already_present = entries
                 .iter()
                 .any(|existing| InstallerDigest::json(existing).ok().as_deref() == Some(digest.as_str()));
             if !already_present {
                 entries.push(object);
             }
-            hooks.insert(Self::event_key(event).to_string(), Value::Array(entries));
+            hooks.insert(Self::event_key(host, event).to_string(), Value::Array(entries));
             owned_hooks.push(OwnedHook { host, event, sha256: digest });
         }
         root.insert("hooks".to_string(), Value::Object(hooks));
 
         // Claude Code는 settings.json의 mcpServers를 무시한다(사용자 MCP는 ~/.claude.json에
         // 산다) — 과거 설치가 여기 남겼을 debrief 항목은 낡은 것이므로 제거한다.
-        self.strip_legacy_json_mcp_if_owned(&mut root, host, previous_files)?;
+        // Gemini는 같은 settings.json의 mcpServers가 정식 위치다(install_json_mcp가 맡는다).
+        if host != HostSource::Gemini {
+            self.strip_legacy_json_mcp_if_owned(&mut root, host, previous_files)?;
+        }
 
         Self::backup_if_needed(&settings_url)?;
         Self::write_settings(&root, &settings_url)?;
 
-        self.install_skills(host, previous_files, owned_files, preserved)?;
+        // Gemini는 `~/.agents/skills`(Codex 스킬 위치)를 별칭으로 읽으므로 같은 이름 스킬을 또 두지 않는다.
+        if host != HostSource::Gemini {
+            self.install_skills(host, previous_files, owned_files, preserved)?;
+        }
         Ok(())
     }
 
-    fn install_claude_mcp(
+    /// JSON `mcpServers.debrief` — Claude는 `~/.claude.json`, Gemini는 `~/.gemini/settings.json`.
+    fn install_json_mcp(
         &self,
+        host: HostSource,
+        url: &Path,
         previous_files: &[OwnedInstalledFile],
         owned_files: &mut Vec<OwnedInstalledFile>,
         preserved: &mut Vec<String>,
     ) -> Result<(), HostInstallerError> {
-        let url = self.claude_user_config_url();
-        let mut root = Self::read_settings(&url)?;
-        self.merge_json_mcp(&mut root, HostSource::Claude, previous_files, owned_files, preserved)?;
-        Self::backup_if_needed(&url)?;
-        Self::write_settings(&root, &url)?;
+        let mut root = Self::read_settings(url)?;
+        self.merge_json_mcp(&mut root, host, previous_files, owned_files, preserved)?;
+        Self::backup_if_needed(url)?;
+        Self::write_settings(&root, url)?;
         Ok(())
     }
 
@@ -256,18 +272,20 @@ impl HostInstaller {
             let mut root = Self::read_settings(&settings_url)?;
             let mut hooks = Self::hooks_object(&root)?;
             for owned in manifest.hooks.iter().filter(|owned| owned.host == host) {
-                let mut entries = Self::event_entries(owned.event, &hooks)?;
+                let mut entries = Self::event_entries(host, owned.event, &hooks)?;
                 entries.retain(|entry| InstallerDigest::json(entry).ok().as_deref() != Some(owned.sha256.as_str()));
                 if entries.is_empty() {
-                    hooks.remove(Self::event_key(owned.event));
+                    hooks.remove(Self::event_key(host, owned.event));
                 } else {
-                    hooks.insert(Self::event_key(owned.event).to_string(), Value::Array(entries));
+                    hooks.insert(Self::event_key(host, owned.event).to_string(), Value::Array(entries));
                 }
             }
             root.insert("hooks".to_string(), Value::Object(hooks));
 
-            let previous: Vec<_> = manifest.files.iter().filter(|f| f.host == host).cloned().collect();
-            self.strip_legacy_json_mcp_if_owned(&mut root, host, &previous)?;
+            if host != HostSource::Gemini {
+                let previous: Vec<_> = manifest.files.iter().filter(|f| f.host == host).cloned().collect();
+                self.strip_legacy_json_mcp_if_owned(&mut root, host, &previous)?;
+            }
 
             Self::write_settings(&root, &settings_url)?;
         }
@@ -281,23 +299,28 @@ impl HostInstaller {
         Ok(())
     }
 
-    fn uninstall_claude_mcp(&self, manifest: &InstallManifest, preserved: &mut Vec<String>) -> Result<(), HostInstallerError> {
-        let url = self.claude_user_config_url();
-        let mcp_path = Self::mcp_ownership_path(HostSource::Claude);
+    fn uninstall_json_mcp(
+        &self,
+        host: HostSource,
+        url: &Path,
+        manifest: &InstallManifest,
+        preserved: &mut Vec<String>,
+    ) -> Result<(), HostInstallerError> {
+        let mcp_path = Self::mcp_ownership_path(host);
         if !url.exists() {
             return Ok(());
         }
-        let Some(owned) = manifest.files.iter().find(|f| f.host == HostSource::Claude && f.path == mcp_path) else {
+        let Some(owned) = manifest.files.iter().find(|f| f.host == host && f.path == mcp_path) else {
             return Ok(());
         };
-        let mut root = Self::read_settings(&url)?;
+        let mut root = Self::read_settings(url)?;
         let Some(Value::Object(mcp_servers)) = root.get("mcpServers").cloned() else { return Ok(()) };
         let mut mcp_servers = mcp_servers;
         let Some(existing) = mcp_servers.get("debrief").cloned() else { return Ok(()) };
         if InstallerDigest::json(&existing).ok().as_deref() == Some(owned.sha256.as_str()) {
             mcp_servers.remove("debrief");
             root.insert("mcpServers".to_string(), Value::Object(mcp_servers));
-            Self::write_settings(&root, &url)?;
+            Self::write_settings(&root, url)?;
         } else {
             preserved.push(mcp_path);
         }
@@ -491,6 +514,7 @@ impl HostInstaller {
             HostSource::Codex => self.home.join(".codex/hooks.json"),
             HostSource::Claude => self.home.join(".claude/settings.json"),
             HostSource::Grok => self.home.join(".grok/config.toml"),
+            HostSource::Gemini => self.home.join(".gemini/settings.json"),
         }
     }
 
@@ -500,6 +524,7 @@ impl HostInstaller {
             HostSource::Codex => self.home.join(".codex/config.toml"),
             HostSource::Grok => self.home.join(".grok/config.toml"),
             HostSource::Claude => unreachable!("Claude MCP is JSON in ~/.claude.json"),
+            HostSource::Gemini => unreachable!("Gemini MCP is JSON in ~/.gemini/settings.json"),
         }
     }
 
@@ -513,6 +538,7 @@ impl HostInstaller {
             HostSource::Codex => self.home.join(".agents/skills"),
             HostSource::Claude => self.home.join(".claude/skills"),
             HostSource::Grok => self.home.join(".grok/skills"),
+            HostSource::Gemini => unreachable!("Gemini reads ~/.agents/skills; debrief installs no Gemini skills"),
         }
     }
 
@@ -535,15 +561,15 @@ impl HostInstaller {
         }
     }
 
-    fn event_key(event: HookEventName) -> &'static str {
-        event.as_str()
+    fn event_key(host: HostSource, event: HookEventName) -> &'static str {
+        event.native_name(host)
     }
 
-    fn event_entries(event: HookEventName, hooks: &Map<String, Value>) -> Result<Vec<Value>, HostInstallerError> {
-        match hooks.get(Self::event_key(event)) {
+    fn event_entries(host: HostSource, event: HookEventName, hooks: &Map<String, Value>) -> Result<Vec<Value>, HostInstallerError> {
+        match hooks.get(Self::event_key(host, event)) {
             None => Ok(Vec::new()),
             Some(Value::Array(entries)) => Ok(entries.clone()),
-            Some(_) => Err(HostInstallerError::EventHooksMustBeArray(Self::event_key(event).to_string())),
+            Some(_) => Err(HostInstallerError::EventHooksMustBeArray(Self::event_key(host, event).to_string())),
         }
     }
 
@@ -737,6 +763,45 @@ mod tests {
             assert!(home.join(format!(".grok/skills/debrief-{name}/SKILL.md")).exists());
         }
 
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn gemini_installs_native_hooks_and_mcp_into_its_settings_and_uninstalls_them() {
+        let home = temporary_home();
+        let settings = home.join(".gemini/settings.json");
+        write_json(
+            &serde_json::json!({
+                "theme": "dark",
+                "mcpServers": {"keep": {"command": "unrelated"}},
+                "hooks": {"BeforeTool": [{"hooks": [{"type": "command", "command": "keep"}]}]},
+            }),
+            &settings,
+        );
+        let gemini: HashSet<HostSource> = [HostSource::Gemini].into_iter().collect();
+        let installer = HostInstaller::new(home.clone(), PathBuf::from("/tmp/debrief-bin"), None);
+        installer.install(&gemini).unwrap();
+        installer.install(&gemini).unwrap();
+
+        let root = json_at(&settings);
+        assert_eq!(root["theme"], "dark");
+        assert!(root["mcpServers"]["keep"].is_object());
+        assert_eq!(root["mcpServers"]["debrief"]["command"], "/tmp/debrief-bin");
+        let hooks = &root["hooks"];
+        for key in ["SessionStart", "BeforeAgent", "AfterAgent", "Notification", "SessionEnd", "PreCompress"] {
+            assert_eq!(hooks[key].as_array().map(|a| a.len()), Some(1), "{key}");
+            assert_eq!(hooks[key][0]["hooks"][0]["timeout"], 5000, "{key}");
+        }
+        assert!(hooks.get("UserPromptSubmit").is_none());
+        assert!(hooks["BeforeTool"].is_array());
+        assert!(!home.join(".gemini/skills").exists(), "Gemini는 ~/.agents/skills 별칭을 읽어 스킬을 따로 두지 않는다");
+
+        installer.uninstall(&gemini).unwrap();
+        let root = json_at(&settings);
+        assert!(root["mcpServers"].get("debrief").is_none());
+        assert!(root["mcpServers"]["keep"].is_object());
+        assert!(root["hooks"].get("BeforeAgent").is_none());
+        assert!(root["hooks"]["BeforeTool"].is_array());
         fs::remove_dir_all(&home).ok();
     }
 

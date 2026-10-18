@@ -67,6 +67,7 @@ cargo build --release
 - 마이크 사용 연동(옵트인 `debrief mic on`): 다른 앱이 마이크 입력을 쓰는 동안(CoreAudio 프로세스 `IsRunningInput`, macOS 14.2+) 유효 모드를 최소 quiet로 올립니다. 오디오를 녹음·분석하지 않습니다. `doctor`의 `mic.readable`·`mic.unreadable`로 판독 여부 확인
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
 - Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
+- Gemini CLI(옵트인 `debrief install --gemini`, 이후 플래그 없는 repair·uninstall에 포함): `~/.gemini/settings.json`에 `mcpServers.debrief` + 훅. 네이티브 이름 매핑 BeforeAgent→UserPromptSubmit, AfterAgent→Stop, Notification(ToolPermission)→PermissionRequest, PreCompress→PreCompact(`HookEventName::native_name`). 훅 timeout은 밀리초(5000). 스킬은 따로 두지 않습니다(Gemini가 `~/.agents/skills` 별칭을 읽음). 도구 이름 `mcp_debrief_speak` · `mcp_debrief_install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
 - 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. 시작 계열 훅 context는 유효 모드 지침(focus·quiet·night·muted)을 덧붙입니다. lane·emotion은 `2026-07-22-reflective-companion-design.md`
 

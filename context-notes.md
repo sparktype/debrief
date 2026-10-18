@@ -68,3 +68,8 @@
 - 4번: 신호는 CoreAudio `kAudioHardwarePropertyProcessObjectList`('prs#') + 프로세스별 `kAudioProcessPropertyIsRunningInput`('piri'). 기본 입력 장치의 `DeviceIsRunningSomewhere`는 헤드셋처럼 입출력이 같은 장치면 debrief 자신의 재생·음악 재생에도 켜져 오탐이라 버렸다. 새 의존성 없이 CoreAudio FFI(이미 cpal이 링크) 30줄. 마이크 권한(TCC)이 필요 없고 녹음하지 않는다.
 - 4번: macOS 14.2 미만이면 읽기 실패 → 꺼진 것처럼 동작, doctor가 `mic.unreadable`. 이 Mac(27.2)에서 `Some(false)` 판독 확인. 실제 통화 중 `true`가 되는지는 에이전트가 확인하지 못함(마이크를 켜려면 권한이 필요).
 - 4번: 방해금지와 같은 규칙(night 유지, 저장 모드 불변). 훅 모드 지침의 `(dnd)` 표시는 마이크로 올라가도 그대로 붙는다(문구만 부정확, 동작 영향 없음).
+- 5번: 호스트는 Gemini CLI로 정했다. 공식 문서로 컨텍스트 주입(SessionStart·BeforeAgent `hookSpecificOutput.additionalContext`)과 MCP(`settings.json` `mcpServers`)를 확인했다. Cursor는 프롬프트 훅의 컨텍스트 주입을 공식 문서로 확인하지 못해 보류.
+- 5번: Gemini는 옵트인. 플래그 없는 `install`은 manifest에 Gemini 훅이 있을 때만 Gemini를 포함하고(repair가 계속 고치도록), 플래그 없는 `uninstall`은 항상 포함한다(바이너리를 지운 뒤 낡은 훅이 남지 않게). MCP `install` 도구 기본값에는 넣지 않았다.
+- 5번: `trust: true`는 넣지 않았다(Gemini 도구 확인을 모두 건너뛰게 되어 install 도구까지 무확인 실행). 사용자가 Gemini에서 항상 허용을 고르면 된다.
+- 5번: doctor는 Gemini 훅 누락(`hooks.gemini.*`)과 설정 JSON 손상(`host.gemini.invalid_json`)만 보고하고, MCP 상태 목록(`statuses`)에는 넣지 않았다 — 옵트인 전 `~/.gemini/settings.json`이 있으면 `mcp.gemini.missing` 경고가 늘 뜨기 때문.
+- 사고(5번 검증 중): 임시 HOME으로 `debrief install --gemini`를 실행했더니 실제 사용자 세션 `gui/501/com.debrief.tts` 라벨이 임시 바이너리로 올라갔다. 바로 bootout해 되돌렸다(테스트 전에도 데몬은 꺼져 있었음). 앞으로 install 스모크 테스트는 임시 HOME이어도 launchctl을 건드리므로 실행하지 않는다.
