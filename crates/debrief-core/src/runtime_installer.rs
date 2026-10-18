@@ -39,7 +39,8 @@ pub enum RuntimeInstallerError {
     AtomicExecutableReplacementFailed,
     ExecutablePathIsDirectory,
     LaunchAgentMissing,
-    Io,
+    /// 실패한 단계와 원인(`hosts: SettingsRootMustBeObject` 등). 원인을 버리면 사용자가 고칠 곳을 모른다.
+    Io(String),
 }
 
 impl RuntimeInstallerError {
@@ -49,7 +50,7 @@ impl RuntimeInstallerError {
             RuntimeInstallerError::AtomicExecutableReplacementFailed => "실행 파일을 바꾸지 못했습니다.".to_string(),
             RuntimeInstallerError::ExecutablePathIsDirectory => EXECUTABLE_PATH_IS_DIRECTORY_MESSAGE.to_string(),
             RuntimeInstallerError::LaunchAgentMissing => LAUNCH_AGENT_MISSING_MESSAGE.to_string(),
-            RuntimeInstallerError::Io => "입출력 오류가 발생했습니다.".to_string(),
+            RuntimeInstallerError::Io(detail) => format!("입출력 오류가 발생했습니다 ({detail})."),
         }
     }
 }
@@ -86,10 +87,10 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
         let paths = DebriefPaths::for_home(&self.home);
         let previous_executable = fs::read(&paths.executable_url).ok();
         self.install_executable(&self.source_executable, &paths.executable_url)?;
-        self.model_installer.install(repair).map_err(|_| RuntimeInstallerError::Io)?;
+        self.model_installer.install(repair).map_err(|error| RuntimeInstallerError::Io(format!("model: {error:?}")))?;
         let host_result = HostInstaller::new(self.home.clone(), paths.executable_url.clone(), None)
             .install(hosts)
-            .map_err(|_| RuntimeInstallerError::Io)?;
+            .map_err(|error| RuntimeInstallerError::Io(format!("hosts: {error:?}")))?;
         let launch_agent_data = EmbeddedTemplates::launch_agent(&paths.executable_url);
         let executable_changed = previous_executable.as_deref() != fs::read(&paths.executable_url).ok().as_deref();
         let plist_changed = fs::read(&paths.launch_agent_url).ok().as_deref() != Some(launch_agent_data.as_bytes());
@@ -99,7 +100,7 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
         // 없으면 재작성과 bootout/bootstrap 재등록을 모두 건너뛴다.
         if plist_changed {
             crate::install_manifest::AtomicInstallerFile::write(launch_agent_data.as_bytes(), &paths.launch_agent_url, 0o600)
-                .map_err(|_| RuntimeInstallerError::Io)?;
+                .map_err(|error| RuntimeInstallerError::Io(format!("launch_agent: {error:?}")))?;
         }
         self.record_runtime_ownership(&paths)?;
         if executable_changed || plist_changed || !self.is_agent_healthy() {
@@ -151,9 +152,9 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
 
     pub fn uninstall(&self, hosts: &HashSet<HostSource>) -> Result<HostInstallResult, RuntimeInstallerError> {
         let paths = DebriefPaths::for_home(&self.home);
-        let mut manifest = InstallManifest::load(&paths.install_manifest_url).map_err(|_| RuntimeInstallerError::Io)?;
+        let mut manifest = InstallManifest::load(&paths.install_manifest_url).map_err(|error| RuntimeInstallerError::Io(format!("manifest: {error:?}")))?;
         let host_result =
-            HostInstaller::new(self.home.clone(), paths.executable_url.clone(), None).uninstall(hosts).map_err(|_| RuntimeInstallerError::Io)?;
+            HostInstaller::new(self.home.clone(), paths.executable_url.clone(), None).uninstall(hosts).map_err(|error| RuntimeInstallerError::Io(format!("hosts: {error:?}")))?;
         let mut preserved = host_result.preserved_modified_files;
         self.disable_and_bootout()?;
         let removable = [paths.launch_agent_url.clone(), paths.executable_url.clone()];
@@ -171,7 +172,7 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
             }
         }
         manifest.runtime_files.retain(|owned| !removable.iter().any(|url| url.as_path() == Path::new(&owned.path)));
-        manifest.save(&paths.install_manifest_url).map_err(|_| RuntimeInstallerError::Io)?;
+        manifest.save(&paths.install_manifest_url).map_err(|error| RuntimeInstallerError::Io(format!("manifest: {error:?}")))?;
         preserved.sort();
         Ok(HostInstallResult { codex_review_required: false, preserved_modified_files: preserved })
     }
@@ -232,14 +233,14 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
     }
 
     fn record_runtime_ownership(&self, paths: &DebriefPaths) -> Result<(), RuntimeInstallerError> {
-        let mut manifest = InstallManifest::load(&paths.install_manifest_url).map_err(|_| RuntimeInstallerError::Io)?;
+        let mut manifest = InstallManifest::load(&paths.install_manifest_url).map_err(|error| RuntimeInstallerError::Io(format!("manifest: {error:?}")))?;
         let urls = [paths.executable_url.clone(), paths.launch_agent_url.clone()];
         manifest.runtime_files.retain(|owned| !urls.iter().any(|url| url.as_path() == Path::new(&owned.path)));
         for url in &urls {
-            let data = fs::read(url).map_err(|_| RuntimeInstallerError::Io)?;
+            let data = fs::read(url).map_err(|error| RuntimeInstallerError::Io(format!("runtime_file: {error:?}")))?;
             manifest.runtime_files.push(OwnedRuntimeFile { path: url.to_string_lossy().to_string(), sha256: InstallerDigest::data(&data) });
         }
-        manifest.save(&paths.install_manifest_url).map_err(|_| RuntimeInstallerError::Io)
+        manifest.save(&paths.install_manifest_url).map_err(|error| RuntimeInstallerError::Io(format!("manifest: {error:?}")))
     }
 
     fn path_cstr(path: &Path) -> std::ffi::CString {
@@ -496,6 +497,26 @@ mod tests {
         assert_eq!(RuntimeInstallerError::ExecutablePathIsDirectory.description(), EXECUTABLE_PATH_IS_DIRECTORY_MESSAGE);
 
         fs::remove_dir_all(&blocked).ok();
+    }
+
+    #[test]
+    fn host_wiring_failure_names_the_step_and_cause() {
+        let home = temporary_home();
+        let source = home.join("build/debrief");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, "binary").unwrap();
+        fs::create_dir_all(home.join(".claude")).unwrap();
+        fs::write(home.join(".claude/settings.json"), "[]").unwrap();
+        let events = EventLog::new();
+        let launchctl = FakeLaunchctlRunner { events: &events, executable_to_observe: None, fail_bootstrap: false };
+        let model = FakeRuntimeModelInstaller { events: &events, directory: home.clone(), installed_executable: None };
+        let installer = RuntimeInstaller::new(home.clone(), source, model, &launchctl, 501);
+
+        let error = installer.install(&[HostSource::Claude].into_iter().collect(), false).unwrap_err();
+        assert_eq!(error, RuntimeInstallerError::Io("hosts: SettingsRootMustBeObject".to_string()));
+        assert!(error.description().contains("hosts: SettingsRootMustBeObject"));
+
+        fs::remove_dir_all(&home).ok();
     }
 
     #[test]
