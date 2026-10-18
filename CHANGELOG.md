@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-18
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 적용합니다. huggingface.co가 막힌 망이면 `HF_ENDPOINT=https://<미러> debrief install`을 씁니다.
+
 ### 추가
 
 - 모델 다운로드가 `HF_ENDPOINT` 미러를 따릅니다(huggingface.co 호스트만 바꾸고 sha256 검증은 그대로).
