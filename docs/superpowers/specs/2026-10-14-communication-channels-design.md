@@ -70,7 +70,7 @@ pub enum Earcon { Decision, Attention, Failure, Done }
 | Failure | 587Hz → 440Hz, 각 140ms | StopFailure |
 | Done | 523Hz 100ms | 긴 턴 완료(Stop) · TaskCompleted · 자동 PostCompact |
 
-- 44.1kHz 모노 사인파, 앞뒤 10ms 선형 페이드(클릭 방지). 진폭은 1.0 이하. 오디오 파일을 번들하지 않는다.
+- 44.1kHz 모노, 기본음+2·3배음(1:0.5:0.25) 벨 음색에 지수 감쇠. 앞뒤 10ms 선형 페이드(클릭 방지), 앞 0.08초 무음(무선 이어폰 깨움), 음 사이 0.1초 간격. 진폭은 1.0 이하. 오디오 파일을 번들하지 않는다. (2026-10-18 개정: 이전에는 순수 사인파)
 - 일반 턴 브리핑 · PreCompact 문구 · TeammateIdle에는 효과음이 없다.
 
 ### 제어 명령
