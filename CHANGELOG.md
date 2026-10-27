@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+### 추가
+
+- Codex 훅에 PreCompact·PostCompact(자동 압축 알림)와 Interrupt(중단한 턴의 브리핑 끊기)를 배선합니다. `debrief install --codex --repair` 후 Codex `/hooks`에서 다시 신뢰합니다.
+- 데몬 소켓이 응답하지 않으면 프롬프트 시점에 화면에 `debrief restart` 안내를 띄웁니다(Claude·Codex, 세션당 10분에 한 번).
+- 음소거 중이거나 데몬에 전하지 못한 훅 알림을 Claude Code 터미널 데스크톱 알림으로 띄웁니다.
+- 옵트인 `briefingReminder`: 말없이 끝난 긴 턴에 Stop 훅이 한 번 브리핑을 요청합니다.
+- `debrief status --line`: 상태 표시줄용 한 줄.
+- 옵트인 `permissionRelay`와 `debrief allow|deny [id]`: Claude Code 채널(research preview) 권한 요청을 중계합니다.
+
+### 수정
+
+- 연결하자마자 닫힌 클라이언트가 데몬의 소켓 accept 루프를 끝내던 문제를 고쳤습니다.
+
 ## [0.3.2] - 2026-10-18
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 적용합니다. huggingface.co가 막힌 망이면 `HF_ENDPOINT=https://<미러> debrief install`을 씁니다.

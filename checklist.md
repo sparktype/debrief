@@ -53,11 +53,14 @@
 - [x] 기능마다 cargo test / clippy -D warnings / release 빌드 후 커밋
 
 ## 2026-10-27 에이전트 연동 강화 6개 (2→1→4→3→6→5 순서)
-- [ ] 2. Codex 새 이벤트: PreCompact·PostCompact(trigger auto)·Interrupt(같은 세션 브리핑 끊기, 턴 종료)
-- [ ] 1. 데몬에 닿지 않으면 SessionStart·UserPromptSubmit에서 `systemMessage`로 화면 경고(세션당 10분 쿨다운, Claude·Codex)
-- [ ] 4. 음소거 중이거나 데몬 전송 실패 시 훅 알림을 `terminalSequence` 데스크톱 알림으로 대체(Claude)
-- [ ] 3. 옵트인 `briefingReminder`: 말없이 끝난 긴 턴의 Stop을 한 번 되돌려 speak를 요청(Claude additionalContext, Codex decision block)
-- [ ] 6. `debrief status --line`: statusline용 한 줄
-- [ ] 5. 옵트인 `permissionRelay`: Claude Channels 권한 중계 + `debrief allow|deny [id]`
-- [ ] 문서: CLAUDE.md·README·CHANGELOG
-- [ ] 항목마다 cargo test / clippy -D warnings / release 빌드 후 커밋
+- [x] 2. Codex 새 이벤트: PreCompact·PostCompact(trigger auto)·Interrupt(같은 세션 브리핑 끊기, 턴 종료)
+- [x] 1. 데몬에 닿지 않으면 SessionStart·UserPromptSubmit에서 `systemMessage`로 화면 경고(세션당 10분 쿨다운, Claude·Codex)
+- [x] 4. 음소거 중이거나 데몬 전송 실패 시 훅 알림을 `terminalSequence` 데스크톱 알림으로 대체(Claude)
+- [x] 3. 옵트인 `briefingReminder`: 말없이 끝난 긴 턴의 Stop을 한 번 되돌려 speak를 요청(Claude additionalContext, Codex decision block)
+- [x] 6. `debrief status --line`: statusline용 한 줄
+- [x] 5. 옵트인 `permissionRelay`: Claude Channels 권한 중계 + `debrief allow|deny [id]`
+- [x] 문서: CLAUDE.md·README·CHANGELOG
+- [x] 항목마다 cargo test / clippy -D warnings / release 빌드 후 커밋
+- [x] 추가 발견: 연결 직후 닫힌 클라이언트가 데몬 accept 루프를 끝내던 버그 수정
+- [ ] 사용자 실기기 확인: Codex `/hooks` 재신뢰 후 압축·중단, 데몬 끈 상태 경고, 음소거 중 데스크톱 알림, 리마인더, 채널 권한 중계
+- [ ] 릴리스 여부 결정
