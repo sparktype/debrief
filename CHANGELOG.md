@@ -5,18 +5,27 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-27
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 적용합니다. 훅이 바뀌었으니 Codex는 `/hooks`에서 debrief 훅을 다시 신뢰하고, Claude Code는 새 세션부터 반영됩니다.
+
 ### 추가
 
-- Codex 훅에 PreCompact·PostCompact(자동 압축 알림)와 Interrupt(중단한 턴의 브리핑 끊기)를 배선합니다. `debrief install --codex --repair` 후 Codex `/hooks`에서 다시 신뢰합니다.
-- 데몬 소켓이 응답하지 않으면 프롬프트 시점에 화면에 `debrief restart` 안내를 띄웁니다(Claude·Codex, 세션당 10분에 한 번).
-- 음소거 중이거나 데몬에 전하지 못한 훅 알림을 Claude Code 터미널 데스크톱 알림으로 띄웁니다.
-- 옵트인 `briefingReminder`: 말없이 끝난 긴 턴에 Stop 훅이 한 번 브리핑을 요청합니다.
-- `debrief status --line`: 상태 표시줄용 한 줄.
-- 옵트인 `permissionRelay`와 `debrief allow|deny [id]`: Claude Code 채널(research preview) 권한 요청을 중계합니다.
+- Codex 훅에 PreCompact·PostCompact(자동 압축 시작 문구·끝 완료음)와 Interrupt(중단한 턴의 브리핑 끊기)를 배선합니다.
+- 데몬 소켓이 응답하지 않으면 Claude·Codex의 SessionStart·UserPromptSubmit 훅이 화면에 `debrief restart` 안내를 띄웁니다(세션당 10분에 한 번, 음소거면 생략).
+- 음소거 중이거나 데몬에 전하지 못한 훅 알림(권한 요청·입력 대기·실패 등)을 Claude Code 터미널 데스크톱 알림으로 띄웁니다(Ghostty·Warp는 OSC 777, 그 밖은 OSC 9).
+- 옵트인 `briefingReminder`: 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다. 되돌린 뒤에도 말없으면 기존 완료 알림이 나오고, quiet·night·음소거에서는 되돌리지 않습니다.
+- `debrief status --line`: 상태 표시줄(Claude Code `statusLine`, claude-hud)용 한 줄. `debrief 꺼짐`·`debrief 음소거`·`debrief normal` 등.
+- 옵트인 `permissionRelay`와 `debrief allow|deny [id]`: `claude --dangerously-load-development-channels server:debrief`로 실행한 세션의 도구 승인 요청을 debrief로 중계하고 CLI로 답합니다. Claude Code Channels(research preview)를 씁니다.
+- `debrief status`에 `브리핑 리마인더` 설정 줄이 추가됩니다.
 
 ### 수정
 
-- 연결하자마자 닫힌 클라이언트가 데몬의 소켓 accept 루프를 끝내던 문제를 고쳤습니다.
+- 클라이언트가 연결하자마자 닫히면 데몬이 소켓 설정 오류(EINVAL)를 회복 불가로 보고 accept 루프를 끝내던 문제를 고쳤습니다.
+
+### 변경
+
+- MCP stdio 프레임을 한 번의 쓰기로 내보냅니다(권한 중계 알림과 응답이 섞이지 않게).
 
 ## [0.3.2] - 2026-10-18
 

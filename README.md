@@ -27,7 +27,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 - Codex, Claude Code, Grok 중 하나 이상
 - 소스 설치에는 Rust 툴체인(`rustup`)
 
-버전은 `0.3.2`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
+버전은 `0.4.0`입니다. 설치는 Homebrew 포뮬러 `sparktype/tap/debrief`입니다.
 
 ## 설치
 
@@ -95,7 +95,7 @@ debrief uninstall [--codex] [--claude] [--grok]
 `debrief status`는 데몬이 내려가 있어도 종료 코드 0입니다.
 
 ```text
-debrief 0.3.2
+debrief 0.4.0
 
 서비스
   • 프로세스: 실행 중
