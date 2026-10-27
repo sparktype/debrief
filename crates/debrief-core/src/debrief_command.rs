@@ -20,6 +20,8 @@ pub enum DebriefCommand {
     Mic(Option<String>),
     Skip { all: bool },
     Replay(u8),
+    Allow(Option<String>),
+    Deny(Option<String>),
     Doctor,
     Hook { source: String },
     Mcp,
@@ -49,7 +51,8 @@ impl DebriefCommand {
                 "  debrief dnd [on|off|toggle]   (follow macOS Do Not Disturb: at least quiet while it is on)\n",
                 "  debrief mic [on|off|toggle]   (at least quiet while another app uses the microphone; never records)\n",
                 "  debrief skip [--all]   (stop the current utterance; --all also clears the queue)\n",
-                "  debrief replay [n]     (replay the last n utterances, 1-10, default 1)\n\n",
+                "  debrief replay [n]     (replay the last n utterances, 1-10, default 1)\n",
+                "  debrief allow [id] / debrief deny [id]   (answer a relayed Claude Code permission prompt; permissionRelay)\n\n",
                 "Agents:\n",
                 "  debrief mcp\n",
                 "  debrief hook --source <codex|claude|gemini>\n",
@@ -138,6 +141,14 @@ impl DebriefCommand {
                     _ => return Err(CommandError::Usage("replay accepts one count".to_string())),
                 };
                 Ok(DebriefCommand::Replay(count))
+            }
+            "allow" | "deny" => {
+                let id = match tail {
+                    [] => None,
+                    [id] if crate::permission_relay::PermissionRelay::is_valid_request_id(id) => Some(id.clone()),
+                    _ => return Err(CommandError::Usage(format!("{name} accepts one five-letter request id"))),
+                };
+                Ok(if name == "allow" { DebriefCommand::Allow(id) } else { DebriefCommand::Deny(id) })
             }
             "mcp" => {
                 Self::require_empty(tail, name)?;
@@ -235,6 +246,23 @@ impl CliMessages {
     pub const LAUNCH_AGENT_MISSING: &'static str = crate::runtime_installer::LAUNCH_AGENT_MISSING_MESSAGE;
     pub const EXECUTABLE_PATH_IS_DIRECTORY: &'static str = crate::runtime_installer::EXECUTABLE_PATH_IS_DIRECTORY_MESSAGE;
 
+    pub const NO_PENDING_PERMISSION: &'static str = "대기 중인 승인 요청이 없습니다.";
+    pub const PERMISSION_ALLOWED: &'static str = "승인했습니다.";
+    pub const PERMISSION_DENIED: &'static str = "거부했습니다.";
+    pub const CANCELLED: &'static str = "취소했습니다.";
+
+    pub fn permission_summary(tool_name: &str, description: &str) -> String {
+        format!("{tool_name}: {description}")
+    }
+
+    pub fn choose_permission(command: &str) -> String {
+        format!("대기 중인 요청이 여럿입니다. id를 지정하세요. 예: debrief {command} <id>")
+    }
+
+    pub fn confirm_permission(allow: bool) -> &'static str {
+        if allow { "승인할까요? [y/N] " } else { "거부할까요? [y/N] " }
+    }
+
     pub fn current_mode(mode: &str) -> String {
         format!("현재 모드는 {mode}입니다.")
     }
@@ -286,6 +314,10 @@ mod tests {
         assert_eq!(parse(&["status", "--line"]), Ok(DebriefCommand::Status { line: true }));
         assert!(parse(&["status", "--json"]).is_err());
         assert_eq!(parse(&["doctor"]), Ok(DebriefCommand::Doctor));
+        assert_eq!(parse(&["allow"]), Ok(DebriefCommand::Allow(None)));
+        assert_eq!(parse(&["deny", "abcde"]), Ok(DebriefCommand::Deny(Some("abcde".to_string()))));
+        assert!(parse(&["allow", "abcdl"]).is_err());
+        assert!(parse(&["deny", "abcde", "x"]).is_err());
         assert_eq!(parse(&["mute"]), Ok(DebriefCommand::Mute(None)));
         assert_eq!(parse(&["mute", "on"]), Ok(DebriefCommand::Mute(Some("on".to_string()))));
         assert_eq!(parse(&["mute", "off"]), Ok(DebriefCommand::Mute(Some("off".to_string()))));

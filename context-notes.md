@@ -85,3 +85,9 @@
 - 1번 프로브(`UnixSocketClient::is_reachable`)는 연결 후 쓰기만 닫고 NAK/EOF를 최대 300ms 기다린다. 바로 닫으면 위 버그가 있는 구버전 데몬(≤0.3.2)을 멈추게 하므로 이 방식을 쓴다. UserPromptSubmit은 이미 보내는 SkipSession 제어의 성공 여부를 그대로 쓴다(`SystemCall` 오류만 끊김으로 본다, `Rejected`는 구버전 데몬이 살아 있다는 뜻).
 - 1번 경고는 세션당 10분 쿨다운(`daemon_unreachable` 알림 키 재사용), 음소거면 내지 않는다(침묵이 의도). Gemini는 `systemMessage` 지원을 확인하지 않아 제외.
 - 3번 판정: "말했다"는 MCP speak가 `session` 인자와 함께 와서 `mark_spoken`된 경우뿐이다. 에이전트가 session 없이 말하면 말했는데도 한 번 되돌려진다(훅 context가 session을 안내하므로 드묾). 되돌릴 때는 턴을 닫지 않아 다음 Stop(`stop_hook_active=true`)이 같은 턴으로 다시 판정한다.
+- 5번 설계: 기존 `debrief mcp`가 옵트인 `permissionRelay`일 때만 `experimental.claude/channel` + `claude/channel/permission`을 선언한다. 호스트는 사용자가 `claude --dangerously-load-development-channels server:debrief`(research preview, 허용 목록 밖)로 고른 세션에서만 요청을 보낸다. 채널 이벤트(`notifications/claude/channel`)는 보내지 않는다 — 원격 입력을 세션에 넣는 경로가 생기지 않게 승인 중계만 쓴다.
+- 5번 전달: 요청을 `Application Support/debrief/permissions/<id>.json`(디렉터리 0700, 파일 0600)에 남기고, CLI가 `<id>.verdict`를 쓰면 그 MCP 프로세스의 300ms 폴링 스레드가 stdout에 `notifications/claude/channel/permission`을 쓴다. 소켓을 하나 더 두는 대신 파일을 썼다(같은 사용자 권한이 곧 인증). 캐시 정리 사고 때문에 Caches가 아니라 데이터 디렉터리에 둔다. 요청 id는 `[a-km-z]{5}`만 받아 경로 조작을 막는다.
+- 5번 안전장치: id 없이 `debrief allow`하면 도구·설명·입력 미리보기를 보여 주고 y를 한 번 더 받는다. 대기 요청이 여럿이면 id를 요구한다. 터미널에서 먼저 답해도 호스트가 알려 주지 않으므로 10분 지난 요청은 버린다(그 사이 낡은 id에 판정하면 호스트가 조용히 무시).
+- 5번 음성: 훅 PermissionRequest의 "권한 승인을 기다리고 있습니다."를 그대로 쓰고 중계는 따로 말하지 않는다(같은 순간 두 번 말하지 않게).
+- 5번 `write_frame`을 한 번의 `write_all`로 바꿨다. 판정 스레드와 응답이 같은 stdout을 쓰므로 Content-Length 헤더와 본문 사이에 끼어들지 않게 하기 위함.
+- 검증: 임시 DEBRIEF_HOME에서 `debrief mcp`에 initialize + permission_request를 넣고 `debrief deny <id>` → stdout에 판정 알림, 대기 파일 삭제 확인. 실제 Claude Code 채널 세션에서는 확인하지 않았다.

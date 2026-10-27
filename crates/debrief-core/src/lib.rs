@@ -25,6 +25,7 @@ pub mod mode_policy;
 pub mod model_installer;
 pub mod model_manifest;
 pub mod paths;
+pub mod permission_relay;
 pub mod pronunciation;
 pub mod resident_service;
 pub mod runtime_installer;
@@ -60,6 +61,7 @@ pub use install_manifest::{
 };
 pub use launch_agent_control::{LaunchAgentControl, LaunchctlError, LaunchctlRunning, ProcessLaunchctlRunner};
 pub use mcp_install_tool::{LiveMcpInstallRunner, McpInstallArguments, McpInstallRunning, McpInstallTool};
+pub use permission_relay::{PendingPermission, PermissionRelay, PermissionRelayError};
 pub use mcp_server::{write_frame, Frame, FrameReader, McpFraming, McpJsonRpc, McpServer, McpWireFormat};
 pub use mcp_speak_tool::{CommandError, McpSpeakArguments, McpSpeakTool, McpToolCallResult, SpeechSink};
 pub use mcp_toml_config::McpTomlConfig;

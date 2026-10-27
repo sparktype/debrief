@@ -3,7 +3,7 @@ use debrief_core::{
     current_executable_url, CliMessages, ConfigurationCommands, Control, DebriefCommand, DebriefPaths,
     Diagnostics, HookCommandRunner, HostSource, LiveMcpInstallRunner, McpServer,
     ModelInstaller, ModelManifest, ProcessLaunchctlRunner, ResidentService, ResidentServiceError,
-    RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UnixSocketError, UreqModelDownloader,
+    PermissionRelay, PermissionRelayError, RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UnixSocketError, UreqModelDownloader,
 };
 use debrief_tts::{AudioPlayer, SupertonicEngine};
 use std::collections::HashSet;
@@ -217,6 +217,8 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                 }
             }
         }
+        DebriefCommand::Allow(id) => run_permission_verdict(home, id.as_deref(), true),
+        DebriefCommand::Deny(id) => run_permission_verdict(home, id.as_deref(), false),
         DebriefCommand::Skip { all } => run_control(home, if all { Control::SkipAll } else { Control::Skip }),
         DebriefCommand::Replay(count) => run_control(home, Control::Replay(count)),
         DebriefCommand::Start => run_start(home),
@@ -292,6 +294,9 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             let sink = UnixSocketClient::new(paths.socket_url);
             let install_runner = LiveMcpInstallRunner::new(home.to_path_buf(), current_executable_url());
             let server = McpServer::new(home.to_path_buf(), sink, install_runner);
+            if server.permission_relay_enabled() {
+                spawn_permission_verdict_writer(paths.permissions_directory);
+            }
             server.run(std::io::stdin(), std::io::stdout());
             0
         }
@@ -379,6 +384,70 @@ fn run_control(home: &std::path::Path, control: Control) -> i32 {
         }
         Err(_) => {
             eprintln!("{}", CliMessages::DAEMON_NOT_RUNNING);
+            1
+        }
+    }
+}
+
+/// CLI가 남긴 판정을 이 MCP 프로세스의 호스트(Claude Code)에 권한 알림으로 돌려준다.
+fn spawn_permission_verdict_writer(directory: PathBuf) {
+    std::thread::spawn(move || {
+        let relay = PermissionRelay::new(directory);
+        loop {
+            for (request_id, behavior) in relay.take_verdicts(std::process::id(), debrief_core::session_state::now_seconds()) {
+                let notification = PermissionRelay::verdict_notification(&request_id, behavior);
+                debrief_core::write_frame(&mut std::io::stdout(), &notification, debrief_core::McpWireFormat::NewlineDelimited);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+    });
+}
+
+fn run_permission_verdict(home: &std::path::Path, request_id: Option<&str>, allow: bool) -> i32 {
+    let relay = PermissionRelay::new(DebriefPaths::for_home(home).permissions_directory);
+    let now = debrief_core::session_state::now_seconds();
+    let command = if allow { "allow" } else { "deny" };
+    let request = match relay.target(request_id, now) {
+        Ok((request, false)) => request,
+        Ok((request, true)) => {
+            // id 없이 골랐으면 무엇을 판정하는지 보여 주고 한 번 더 묻는다.
+            println!("{}", CliMessages::permission_summary(&request.tool_name, &request.description));
+            if !request.input_preview.is_empty() {
+                println!("{}", request.input_preview);
+            }
+            print!("{}", CliMessages::confirm_permission(allow));
+            let _ = std::io::stdout().flush();
+            let mut answer = String::new();
+            let _ = std::io::stdin().read_line(&mut answer);
+            if !matches!(answer.trim(), "y" | "Y" | "yes") {
+                println!("{}", CliMessages::CANCELLED);
+                return 1;
+            }
+            request
+        }
+        Err(PermissionRelayError::Ambiguous(pending)) => {
+            for request in pending {
+                println!("  {}  {}", request.request_id, CliMessages::permission_summary(&request.tool_name, &request.description));
+            }
+            eprintln!("{}", CliMessages::choose_permission(command));
+            return 1;
+        }
+        Err(PermissionRelayError::NotPending) => {
+            eprintln!("{}", CliMessages::NO_PENDING_PERMISSION);
+            return 1;
+        }
+        Err(error) => {
+            eprintln!("error: {error:?}");
+            return 1;
+        }
+    };
+    match relay.decide(&request.request_id, allow, now) {
+        Ok(_) => {
+            println!("{}", if allow { CliMessages::PERMISSION_ALLOWED } else { CliMessages::PERMISSION_DENIED });
+            0
+        }
+        Err(error) => {
+            eprintln!("error: {error:?}");
             1
         }
     }

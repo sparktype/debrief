@@ -76,6 +76,9 @@ pub struct DebriefConfiguration {
     /// 말없이 `longTurnSeconds` 넘게 걸린 턴의 Stop을 한 번 되돌려 speak 브리핑을 요청한다. 기본 꺼짐.
     #[serde(default)]
     pub briefing_reminder: bool,
+    /// Claude Code 채널 권한 중계(`debrief allow|deny`). 호스트가 `--channels`로 이 서버를 골라야 동작한다. 기본 꺼짐.
+    #[serde(default)]
+    pub permission_relay: bool,
 }
 
 fn default_mode() -> DebriefMode {
@@ -115,6 +118,7 @@ impl Default for DebriefConfiguration {
             earcons: default_earcons(),
             pronunciations: HashMap::new(),
             briefing_reminder: false,
+            permission_relay: false,
         }
     }
 }

@@ -281,11 +281,12 @@ impl<R: std::io::Read> FrameReader<R> {
 
 pub fn write_frame<W: std::io::Write>(output: &mut W, value: &Value, format: McpWireFormat) {
     let Ok(mut data) = serde_json::to_vec(value) else { return };
+    // 한 번에 쓴다 — 권한 중계 스레드도 같은 stdout에 프레임을 쓰므로 섞이면 안 된다.
     match format {
         McpWireFormat::ContentLength => {
-            let header = format!("Content-Length: {}\r\n\r\n", data.len());
-            let _ = output.write_all(header.as_bytes());
-            let _ = output.write_all(&data);
+            let mut frame = format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes();
+            frame.append(&mut data);
+            let _ = output.write_all(&frame);
         }
         McpWireFormat::NewlineDelimited => {
             data.push(b'\n');
@@ -390,6 +391,13 @@ where
         }
     }
 
+    pub const PERMISSION_REQUEST: &'static str = "notifications/claude/channel/permission_request";
+
+    pub fn permission_relay_enabled(&self) -> bool {
+        crate::configuration::DebriefConfiguration::load(&crate::paths::DebriefPaths::for_home(&self.home).config_url)
+            .permission_relay
+    }
+
     pub fn run<R: std::io::Read, W: std::io::Write>(&self, input: R, mut output: W) {
         let mut reader = FrameReader::new(input);
         #[allow(unused_assignments)]
@@ -400,7 +408,23 @@ where
                 write_frame(&mut output, &McpJsonRpc::parse_error_response(), wire_format);
                 continue;
             };
-            if let Some(response) = McpJsonRpc::handle(&request, |name, args| self.call_tool(name, args)) {
+            let method = request.get("method").and_then(|v| v.as_str());
+            if method == Some(Self::PERMISSION_REQUEST) && self.permission_relay_enabled() {
+                let relay = crate::permission_relay::PermissionRelay::new(
+                    crate::paths::DebriefPaths::for_home(&self.home).permissions_directory,
+                );
+                let params = request.get("params").cloned().unwrap_or_default();
+                if let Err(error) = relay.record(&params, std::process::id(), crate::session_state::now_seconds()) {
+                    let _ = self.diagnostics.record_error("mcp", "permission_relay_failed", &format!("{error:?}"));
+                }
+                continue;
+            }
+            if let Some(mut response) = McpJsonRpc::handle(&request, |name, args| self.call_tool(name, args)) {
+                // 채널 능력은 사용자가 `--channels`로 이 서버를 고른 세션에서만 호스트가 쓴다.
+                if method == Some("initialize") && self.permission_relay_enabled() {
+                    response["result"]["capabilities"]["experimental"] =
+                        json!({"claude/channel": {}, "claude/channel/permission": {}});
+                }
                 write_frame(&mut output, &response, wire_format);
             }
         }
@@ -571,6 +595,38 @@ mod tests {
         let response: Value = serde_json::from_slice(body).unwrap();
         assert_eq!(response["id"], 1);
         assert_eq!(response["result"]["serverInfo"]["name"], "debrief");
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn permission_relay_is_declared_and_records_requests_only_when_enabled() {
+        let home = temporary_home();
+        let paths = crate::paths::DebriefPaths::for_home(&home);
+        let relay = crate::permission_relay::PermissionRelay::new(paths.permissions_directory.clone());
+        let mut input = initialize_body(0);
+        input.push(b'\n');
+        input.extend_from_slice(br#"{"jsonrpc":"2.0","method":"notifications/claude/channel/permission_request","params":{"request_id":"abcde","tool_name":"Bash","description":"Run tests","input_preview":"cargo test"}}"#);
+        input.push(b'\n');
+        let run = || {
+            let mut output = Vec::new();
+            McpServer::new(home.clone(), NoopSink, NoopInstallRunner).run(std::io::Cursor::new(input.clone()), &mut output);
+            let nl = output.iter().position(|&b| b == b'\n').unwrap();
+            assert_eq!(output.len(), nl + 1, "알림에는 응답하지 않는다");
+            serde_json::from_slice::<Value>(&output[..nl]).unwrap()
+        };
+
+        let off = run();
+        assert!(off["result"]["capabilities"].get("experimental").is_none());
+        assert!(relay.pending(crate::session_state::now_seconds()).is_empty());
+
+        crate::configuration::DebriefConfiguration { permission_relay: true, ..Default::default() }.save(&paths.config_url).unwrap();
+        let on = run();
+        let experimental = &on["result"]["capabilities"]["experimental"];
+        assert!(experimental["claude/channel"].is_object() && experimental["claude/channel/permission"].is_object());
+        let pending = relay.pending(crate::session_state::now_seconds());
+        assert_eq!(pending.len(), 1);
+        assert_eq!((pending[0].tool_name.as_str(), pending[0].owner_pid), ("Bash", std::process::id()));
 
         std::fs::remove_dir_all(&home).ok();
     }
