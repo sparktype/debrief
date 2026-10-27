@@ -137,9 +137,9 @@ impl UnixSocketServer {
         if accepted_flags < 0 || unsafe { libc::fcntl(descriptor, libc::F_SETFL, accepted_flags & !libc::O_NONBLOCK) } != 0 {
             return Err(UnixSocketError::SystemCall("fcntl(blocking)".to_string(), Self::errno()));
         }
-        Self::configure(descriptor)?;
-
         let result = (|| -> Result<crate::daemon_control::Inbound, UnixSocketError> {
+            // 연결 직후 닫힌 클라이언트에는 setsockopt가 EINVAL을 낸다 — 그 클라이언트만의 실패다.
+            Self::configure(descriptor)?;
             let header = Self::read_exactly(4, descriptor)?;
             let length = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
             if length > Self::MAXIMUM_PAYLOAD_BYTES {
@@ -694,6 +694,18 @@ mod tests {
             unsafe { libc::close(descriptor) };
             fs::remove_dir_all(&directory).ok();
         }
+    }
+
+    #[test]
+    fn client_that_closes_before_accept_is_recoverable() {
+        let directory = temporary_directory();
+        let socket_url = directory.join("debrief.sock");
+        let server = UnixSocketServer::new(socket_url.clone()).unwrap();
+        drop(std::os::unix::net::UnixStream::connect(&socket_url).unwrap());
+
+        let error = server.accept().unwrap_err();
+        assert!(is_recoverable_accept_error(&error), "{error:?}");
+        fs::remove_dir_all(&directory).ok();
     }
 
     #[test]
