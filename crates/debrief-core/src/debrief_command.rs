@@ -12,7 +12,7 @@ pub enum DebriefCommand {
     Start,
     Stop,
     Restart,
-    Status,
+    Status { line: bool },
     Mute(Option<String>),
     Mode(Option<String>),
     Companion(Option<String>),
@@ -40,7 +40,7 @@ impl DebriefCommand {
                 "  debrief start\n",
                 "  debrief stop\n",
                 "  debrief restart   (re-launch the daemon; replay history is cleared)\n",
-                "  debrief status\n",
+                "  debrief status [--line]   (--line: one line for a status bar)\n",
                 "  debrief doctor\n\n",
                 "Controls (written to config.json; applied on the next utterance):\n",
                 "  debrief mute [on|off|toggle]\n",
@@ -105,8 +105,8 @@ impl DebriefCommand {
                 Ok(DebriefCommand::Restart)
             }
             "status" => {
-                Self::require_empty(tail, name)?;
-                Ok(DebriefCommand::Status)
+                Self::require_only(tail, &["--line"])?;
+                Ok(DebriefCommand::Status { line: !tail.is_empty() })
             }
             "doctor" => {
                 Self::require_empty(tail, name)?;
@@ -282,7 +282,9 @@ mod tests {
         assert_eq!(parse(&["stop"]), Ok(DebriefCommand::Stop));
         assert_eq!(parse(&["restart"]), Ok(DebriefCommand::Restart));
         assert!(parse(&["restart", "now"]).is_err());
-        assert_eq!(parse(&["status"]), Ok(DebriefCommand::Status));
+        assert_eq!(parse(&["status"]), Ok(DebriefCommand::Status { line: false }));
+        assert_eq!(parse(&["status", "--line"]), Ok(DebriefCommand::Status { line: true }));
+        assert!(parse(&["status", "--json"]).is_err());
         assert_eq!(parse(&["doctor"]), Ok(DebriefCommand::Doctor));
         assert_eq!(parse(&["mute"]), Ok(DebriefCommand::Mute(None)));
         assert_eq!(parse(&["mute", "on"]), Ok(DebriefCommand::Mute(Some("on".to_string()))));

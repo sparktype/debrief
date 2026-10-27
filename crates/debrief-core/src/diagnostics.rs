@@ -170,6 +170,22 @@ impl<'a> Diagnostics<'a> {
         )
     }
 
+    /// 상태 표시줄용 한 줄(`debrief status --line`). 데몬 연결 여부는 호출자가 소켓으로 확인해 넘긴다.
+    pub fn status_line(&self, daemon_reachable: bool) -> String {
+        let effective = DebriefConfiguration::load_effective(&self.paths.config_url, &self.paths.home);
+        if !daemon_reachable {
+            return "debrief 꺼짐".to_string();
+        }
+        if effective.muted {
+            return "debrief 음소거".to_string();
+        }
+        let mut line = format!("debrief {}", effective.mode.as_str());
+        if !effective.companion_enabled {
+            line.push_str(" · 도우미 꺼짐");
+        }
+        line
+    }
+
     pub fn doctor(&self) -> Vec<DiagnosticFinding> {
         let snapshot = self.status();
         let recovery = Self::operational_recovery(&snapshot);
@@ -562,6 +578,20 @@ mod tests {
         let findings = Diagnostics::with_process_check(&home, |_| false).doctor();
         assert!(findings.iter().any(|f| f.code == "model.invalid_marker" && !f.ok));
 
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn status_line_names_the_one_state_that_matters() {
+        let home = temporary_home();
+        let paths = DebriefPaths::for_home(&home);
+        let line = |reachable| Diagnostics::with_process_check(&home, |_| false).status_line(reachable);
+        assert_eq!(line(false), "debrief 꺼짐");
+        assert_eq!(line(true), "debrief normal");
+        DebriefConfiguration { mode: DebriefMode::Quiet, companion_enabled: false, ..Default::default() }.save(&paths.config_url).unwrap();
+        assert_eq!(line(true), "debrief quiet · 도우미 꺼짐");
+        DebriefConfiguration { muted: true, ..Default::default() }.save(&paths.config_url).unwrap();
+        assert_eq!(line(true), "debrief 음소거");
         fs::remove_dir_all(&home).ok();
     }
 

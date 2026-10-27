@@ -222,8 +222,13 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
         DebriefCommand::Start => run_start(home),
         DebriefCommand::Stop => run_stop(home),
         DebriefCommand::Restart => run_restart(home),
-        DebriefCommand::Status => {
+        DebriefCommand::Status { line: false } => {
             println!("{}", Diagnostics::new(home).status_text());
+            0
+        }
+        DebriefCommand::Status { line: true } => {
+            let reachable = UnixSocketClient::new(DebriefPaths::for_home(home).socket_url).is_reachable();
+            println!("{}", Diagnostics::new(home).status_line(reachable));
             0
         }
         DebriefCommand::Doctor => {
