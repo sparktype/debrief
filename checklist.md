@@ -51,3 +51,13 @@
 - [x] 4. 마이크 사용 중이면 자동 quiet (옵트인)
 - [x] 5. 호스트 추가 (Gemini CLI)
 - [x] 기능마다 cargo test / clippy -D warnings / release 빌드 후 커밋
+
+## 2026-10-27 에이전트 연동 강화 6개 (2→1→4→3→6→5 순서)
+- [ ] 2. Codex 새 이벤트: PreCompact·PostCompact(trigger auto)·Interrupt(같은 세션 브리핑 끊기, 턴 종료)
+- [ ] 1. 데몬에 닿지 않으면 SessionStart·UserPromptSubmit에서 `systemMessage`로 화면 경고(세션당 10분 쿨다운, Claude·Codex)
+- [ ] 4. 음소거 중이거나 데몬 전송 실패 시 훅 알림을 `terminalSequence` 데스크톱 알림으로 대체(Claude)
+- [ ] 3. 옵트인 `briefingReminder`: 말없이 끝난 긴 턴의 Stop을 한 번 되돌려 speak를 요청(Claude additionalContext, Codex decision block)
+- [ ] 6. `debrief status --line`: statusline용 한 줄
+- [ ] 5. 옵트인 `permissionRelay`: Claude Channels 권한 중계 + `debrief allow|deny [id]`
+- [ ] 문서: CLAUDE.md·README·CHANGELOG
+- [ ] 항목마다 cargo test / clippy -D warnings / release 빌드 후 커밋

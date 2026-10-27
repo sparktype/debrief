@@ -73,3 +73,14 @@
 - 5번: `trust: true`는 넣지 않았다(Gemini 도구 확인을 모두 건너뛰게 되어 install 도구까지 무확인 실행). 사용자가 Gemini에서 항상 허용을 고르면 된다.
 - 5번: doctor는 Gemini 훅 누락(`hooks.gemini.*`)과 설정 JSON 손상(`host.gemini.invalid_json`)만 보고하고, MCP 상태 목록(`statuses`)에는 넣지 않았다 — 옵트인 전 `~/.gemini/settings.json`이 있으면 `mcp.gemini.missing` 경고가 늘 뜨기 때문.
 - 사고(5번 검증 중): 임시 HOME으로 `debrief install --gemini`를 실행했더니 실제 사용자 세션 `gui/501/com.debrief.tts` 라벨이 임시 바이너리로 올라갔다. 바로 bootout해 되돌렸다(테스트 전에도 데몬은 꺼져 있었음). 앞으로 install 스모크 테스트는 임시 HOME이어도 launchctl을 건드리므로 실행하지 않는다.
+
+## 2026-10-27 에이전트 연동 강화 6개
+- 사용자가 조사 추천 6개를 "모두 추가"로 승인. 세부는 에이전트 판단이며 근거를 아래에 남긴다.
+- 근거 문서: Claude Code hooks(code.claude.com/docs/en/hooks), channels-reference, Codex hooks(learn.chatgpt.com/docs/hooks). 2026-10-27 조회.
+- Codex 이벤트 12종 중 PreCompact·PostCompact(`trigger` manual|auto)·Interrupt(`turn_id`, 메인 스레드만)를 추가한다. SubagentStop은 기존 결정대로 설치하지 않는다.
+- 3번은 옵트인(기본 꺼짐). 의도적 침묵(Silence only)도 한 번 되돌려지므로 비용(모델 1회)과 마찰이 있다. 임계값은 새 설정 없이 `longTurnSeconds`를 재사용해 "긴 턴 완료 알림"을 대체하는 위치에 둔다. 되돌린 뒤에도 말하지 않으면 기존 완료 알림으로 떨어진다. mute·quiet·night에서는 되돌리지 않는다(지침이 침묵을 허용).
+- Claude Stop은 `decision: block` 대신 `hookSpecificOutput.additionalContext`를 쓴다(문서: 오류 알림 없이 "Stop hook feedback"으로 표시, 같은 루프 보호). Codex Stop은 additionalContext 미지원이라 `decision: block` + `reason`.
+- 4번 terminalSequence는 Claude 전용. Ghostty·Warp는 OSC 777, 그 밖은 OSC 9(`TERM_PROGRAM`으로 고름).
+- 1번 작업 중 발견한 버그: 클라이언트가 데몬 accept 전에 닫히면 `setsockopt(SO_NOSIGPIPE)`가 EINVAL(22)을 내고 `SystemCall`로 분류돼 회복 불가 → 데몬 accept 루프 종료. 훅이 타임아웃으로 죽는 경우에도 날 수 있었다. 소켓 설정을 클라이언트별 실패(InvalidFrame)로 옮겨 고쳤다(4859392).
+- 1번 프로브(`UnixSocketClient::is_reachable`)는 연결 후 쓰기만 닫고 NAK/EOF를 최대 300ms 기다린다. 바로 닫으면 위 버그가 있는 구버전 데몬(≤0.3.2)을 멈추게 하므로 이 방식을 쓴다. UserPromptSubmit은 이미 보내는 SkipSession 제어의 성공 여부를 그대로 쓴다(`SystemCall` 오류만 끊김으로 본다, `Rejected`는 구버전 데몬이 살아 있다는 뜻).
+- 1번 경고는 세션당 10분 쿨다운(`daemon_unreachable` 알림 키 재사용), 음소거면 내지 않는다(침묵이 의도). Gemini는 `systemMessage` 지원을 확인하지 않아 제외.

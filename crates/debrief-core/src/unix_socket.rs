@@ -439,6 +439,17 @@ impl UnixSocketClient {
         UnixSocketClient { socket_url }
     }
 
+    /// 프레임 없이 데몬이 듣고 있는지만 본다. 쓰기만 닫고 데몬의 NAK(또는 EOF)를 기다려,
+    /// 연결 직후 닫힌 클라이언트를 버티지 못하는 구버전 데몬도 멈추지 않게 한다.
+    pub fn is_reachable(&self) -> bool {
+        use std::io::Read;
+        let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&self.socket_url) else { return false };
+        let _ = stream.shutdown(std::net::Shutdown::Write);
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
+        let _ = stream.read(&mut [0u8; 1]);
+        true
+    }
+
     pub fn submit(&self, request: &SpeechRequest) -> Result<(), UnixSocketError> {
         self.send_payload(&UnixSocketServer::encode_speech_request(request))
     }
@@ -705,6 +716,21 @@ mod tests {
 
         let error = server.accept().unwrap_err();
         assert!(is_recoverable_accept_error(&error), "{error:?}");
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn reachability_probe_sees_a_listener_without_sending_a_frame() {
+        let directory = temporary_directory();
+        let socket_url = directory.join("debrief.sock");
+        let client = UnixSocketClient::new(socket_url.clone());
+        assert!(!client.is_reachable());
+
+        let server = std::sync::Arc::new(UnixSocketServer::new(socket_url).unwrap());
+        let accepting = server.clone();
+        let accepted = std::thread::spawn(move || accepting.accept());
+        assert!(client.is_reachable());
+        assert!(is_recoverable_accept_error(&accepted.join().unwrap().unwrap_err()));
         fs::remove_dir_all(&directory).ok();
     }
 

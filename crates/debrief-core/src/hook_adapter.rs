@@ -56,6 +56,16 @@ impl HookAdapter {
         serde_json::to_vec(&output).expect("context output always serializes")
     }
 
+    /// 훅 출력 JSON 객체에 최상위 필드(`systemMessage`·`terminalSequence` 등)를 더한다.
+    pub fn with_output_field(output: &[u8], key: &str, value: &str) -> Vec<u8> {
+        let mut object = match serde_json::from_slice::<Value>(output) {
+            Ok(Value::Object(object)) => object,
+            _ => serde_json::Map::new(),
+        };
+        object.insert(key.to_string(), Value::String(value.to_string()));
+        serde_json::to_vec(&Value::Object(object)).expect("hook output always serializes")
+    }
+
     pub fn success_output() -> Vec<u8> {
         b"{}".to_vec()
     }

@@ -2,7 +2,7 @@
 use crate::configuration::DebriefConfiguration;
 use crate::hook_adapter::HookAdapter;
 use crate::hook_engine::HookEngine;
-use crate::hook_event::HostSource;
+use crate::hook_event::{HookEventName, HostSource};
 use crate::paths::DebriefPaths;
 use crate::session_state::SessionStateStore;
 use crate::session_voice_rotation::SessionVoiceStore;
@@ -11,6 +11,10 @@ use crate::unix_socket::UnixSocketClient;
 pub struct HookCommandRunner;
 
 impl HookCommandRunner {
+    const UNREACHABLE_COOLDOWN_SECONDS: u64 = 600;
+    const UNREACHABLE_MESSAGE: &'static str =
+        "debrief 데몬에 연결할 수 없어 음성 브리핑이 나오지 않습니다. `debrief restart`로 다시 띄우세요.";
+
     pub fn run(input: &[u8], source: HostSource, home: &std::path::Path) -> Vec<u8> {
         let Ok(event) = HookAdapter::decode(input, source) else {
             return b"{}".to_vec();
@@ -22,11 +26,29 @@ impl HookCommandRunner {
         let configuration = DebriefConfiguration::load_effective(&paths.config_url, home);
         let dnd_raised = configuration.mode != stored.mode;
         let session_state = SessionStateStore::new(paths.session_state_url.clone());
+        let muted = configuration.muted;
         let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_dnd_raised(dnd_raised);
         let mut result = engine.handle(&event, source);
+        let mut daemon_reachable = None;
         if let Some(control) = result.control.take() {
             // 데몬이 꺼져 있으면 끊을 것도 없다 — 알림 실패 기록을 덮지 않게 결과를 무시한다.
-            let _ = UnixSocketClient::new(paths.socket_url.clone()).send_control(&control);
+            let sent = UnixSocketClient::new(paths.socket_url.clone()).send_control(&control);
+            daemon_reachable = Some(!matches!(sent, Err(crate::unix_socket::UnixSocketError::SystemCall(..))));
+        }
+        let prompt_event = matches!(event.name, HookEventName::SessionStart | HookEventName::UserPromptSubmit);
+        if prompt_event && matches!(source, HostSource::Claude | HostSource::Codex) && !muted {
+            let reachable =
+                daemon_reachable.unwrap_or_else(|| UnixSocketClient::new(paths.socket_url.clone()).is_reachable());
+            let now = crate::session_state::now_seconds();
+            let warn = !reachable
+                && session_state
+                    .update(now, |states| {
+                        states.allow_notice(&event.session_id, "daemon_unreachable", now, Self::UNREACHABLE_COOLDOWN_SECONDS)
+                    })
+                    .unwrap_or(false);
+            if warn {
+                result.stdout = HookAdapter::with_output_field(&result.stdout, "systemMessage", Self::UNREACHABLE_MESSAGE);
+            }
         }
         if let Some(notice) = result.notice.take() {
             match UnixSocketClient::new(paths.socket_url.clone()).submit(&notice) {
@@ -134,6 +156,50 @@ mod tests {
         assert_eq!(request.envelope.text, "권한 승인을 기다리고 있습니다.");
         assert_eq!(request.lane, crate::speech_lane::SpeechLane::Work);
         assert!(crate::diagnostics::Diagnostics::new(&home).current_error().is_none());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    fn system_message(output: &[u8]) -> Option<String> {
+        let value: serde_json::Value = serde_json::from_slice(output).unwrap();
+        value["systemMessage"].as_str().map(str::to_string)
+    }
+
+    #[test]
+    fn unreachable_daemon_is_shown_once_per_cooldown_on_prompt_events() {
+        let home = temporary_home();
+        let start = br#"{"hook_event_name":"SessionStart","session_id":"s"}"#;
+        let prompt = br#"{"hook_event_name":"UserPromptSubmit","session_id":"s"}"#;
+
+        let first = HookCommandRunner::run(start, HostSource::Claude, &home);
+        assert!(system_message(&first).unwrap().contains("debrief restart"));
+        assert!(system_message(&HookCommandRunner::run(prompt, HostSource::Claude, &home)).is_none(), "쿨다운 안");
+        let other = br#"{"hook_event_name":"UserPromptSubmit","session_id":"other"}"#;
+        assert!(system_message(&HookCommandRunner::run(other, HostSource::Codex, &home)).is_some(), "세션마다 따로");
+        let gemini = br#"{"hook_event_name":"SessionStart","session_id":"g"}"#;
+        assert!(system_message(&HookCommandRunner::run(gemini, HostSource::Gemini, &home)).is_none());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn reachable_or_muted_daemon_adds_no_system_message() {
+        let home = temporary_home();
+        let paths = DebriefPaths::for_home(&home);
+        let start = br#"{"hook_event_name":"SessionStart","session_id":"s"}"#;
+
+        let muted = DebriefConfiguration { muted: true, ..DebriefConfiguration::default() };
+        muted.save(&paths.config_url).unwrap();
+        assert!(system_message(&HookCommandRunner::run(start, HostSource::Claude, &home)).is_none(), "음소거면 침묵이 의도");
+        DebriefConfiguration::default().save(&paths.config_url).unwrap();
+
+        let server = std::sync::Arc::new(crate::unix_socket::UnixSocketServer::new(paths.socket_url).unwrap());
+        let accepting = server.clone();
+        let probe = std::thread::spawn(move || accepting.accept());
+        let output = HookCommandRunner::run(start, HostSource::Claude, &home);
+        assert!(system_message(&output).is_none(), "{}", String::from_utf8_lossy(&output));
+        let probed = probe.join().unwrap().unwrap_err();
+        assert!(crate::unix_socket::is_recoverable_accept_error(&probed), "빈 연결은 데몬을 멈추지 않는다: {probed:?}");
 
         fs::remove_dir_all(&home).ok();
     }
