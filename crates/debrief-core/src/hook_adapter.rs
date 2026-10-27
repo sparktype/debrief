@@ -202,6 +202,21 @@ mod tests {
     }
 
     #[test]
+    fn decodes_codex_compaction_and_interrupt() {
+        let cases = [
+            (json!({"hook_event_name": "PreCompact", "session_id": "c", "trigger": "auto"}), HookEventName::PreCompact, Some("auto")),
+            (json!({"hook_event_name": "PostCompact", "session_id": "c", "trigger": "manual"}), HookEventName::PostCompact, Some("manual")),
+            (json!({"hook_event_name": "Interrupt", "session_id": "c", "turn_id": "t1"}), HookEventName::Interrupt, None),
+        ];
+        for (payload, name, subtype) in cases {
+            let event = HookAdapter::decode(&serde_json::to_vec(&payload).unwrap(), HostSource::Codex).unwrap();
+            assert_eq!(event.name, name);
+            assert_eq!(event.subtype.as_deref(), subtype, "{name:?}");
+            assert_eq!(HookEventName::from_str_value(name.as_str()), Some(name));
+        }
+    }
+
+    #[test]
     fn decodes_claude_only_events_with_subtype() {
         let cases = [
             (json!({"hook_event_name": "StopFailure", "session_id": "s", "error_type": "rate_limit"}), HookEventName::StopFailure, Some("rate_limit")),

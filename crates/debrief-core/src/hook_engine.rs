@@ -99,7 +99,10 @@ impl<'a> HookEngine<'a> {
                 HookResult { stdout, submitted: false, delivery_error: None, notice, control }
             }
             _ => {
-                HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice, control: None }
+                // 중단된 턴의 브리핑은 이미 낡았다(Codex Interrupt).
+                let control = matches!(event.name, HookEventName::Interrupt)
+                    .then(|| crate::daemon_control::Control::SkipSession(event.session_id.clone()));
+                HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice, control }
             }
         }
     }
@@ -265,6 +268,15 @@ mod tests {
         assert_eq!(submit.control, Some(Control::SkipSession("alpha".to_string())));
         let start = engine.handle(&event(HookEventName::SessionStart, "alpha", None, None, None), HostSource::Claude);
         assert_eq!(start.control, None);
+    }
+
+    #[test]
+    fn codex_interrupt_cuts_the_sessions_briefing_silently() {
+        use crate::daemon_control::Control;
+        let result = HookEngine::new(None).handle(&event(HookEventName::Interrupt, "alpha", Some("t"), None, None), HostSource::Codex);
+        assert_eq!(result.control, Some(Control::SkipSession("alpha".to_string())));
+        assert!(result.notice.is_none());
+        assert_eq!(result.stdout, b"{}");
     }
 
     #[test]

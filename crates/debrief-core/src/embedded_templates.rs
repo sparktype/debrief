@@ -40,6 +40,10 @@ impl EmbeddedTemplates {
         HookEventName::PostCompact,
     ];
 
+    /// Codex에만 있는 이벤트(Claude 쪽 압축은 위 목록에 있다). Interrupt는 그 세션 브리핑을 끊는다.
+    const CODEX_ONLY_HOOK_EVENTS: [HookEventName; 3] =
+        [HookEventName::PreCompact, HookEventName::PostCompact, HookEventName::Interrupt];
+
     /// Gemini CLI가 지원하는 순간(서브에이전트 시작·압축 끝은 없다). 키는 설치기가 `native_name`으로 바꾼다.
     const GEMINI_HOOK_EVENTS: [HookEventName; 6] = [
         HookEventName::SessionStart,
@@ -55,8 +59,10 @@ impl EmbeddedTemplates {
             return Self::GEMINI_HOOK_EVENTS.to_vec();
         }
         let mut events = Self::COMMON_HOOK_EVENTS.to_vec();
-        if host == HostSource::Claude {
-            events.extend(Self::CLAUDE_ONLY_HOOK_EVENTS);
+        match host {
+            HostSource::Claude => events.extend(Self::CLAUDE_ONLY_HOOK_EVENTS),
+            HostSource::Codex => events.extend(Self::CODEX_ONLY_HOOK_EVENTS),
+            HostSource::Grok | HostSource::Gemini => {}
         }
         events
     }
@@ -291,7 +297,8 @@ mod tests {
             EmbeddedTemplates::hook_events(host).iter().map(|e| e.as_str()).collect()
         };
         let common = ["SessionStart", "UserPromptSubmit", "SubagentStart", "PermissionRequest", "Stop", "SessionEnd"];
-        assert_eq!(names(HostSource::Codex), common.into_iter().collect());
+        let codex_only = ["PreCompact", "PostCompact", "Interrupt"];
+        assert_eq!(names(HostSource::Codex), common.into_iter().chain(codex_only).collect());
         let claude_only =
             ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted", "PreCompact", "PostCompact"];
         assert_eq!(names(HostSource::Claude), common.into_iter().chain(claude_only).collect());

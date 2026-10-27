@@ -38,6 +38,8 @@ pub enum HookEventName {
     TaskCompleted,
     PreCompact,
     PostCompact,
+    /// Codex 전용: 사용자가 메인 스레드의 진행 중 턴을 중단했다.
+    Interrupt,
 }
 
 impl HookEventName {
@@ -58,6 +60,7 @@ impl HookEventName {
             HookEventName::TaskCompleted => "TaskCompleted",
             HookEventName::PreCompact => "PreCompact",
             HookEventName::PostCompact => "PostCompact",
+            HookEventName::Interrupt => "Interrupt",
         }
     }
 
@@ -78,6 +81,7 @@ impl HookEventName {
             "TaskCompleted" => Some(HookEventName::TaskCompleted),
             "PreCompact" => Some(HookEventName::PreCompact),
             "PostCompact" => Some(HookEventName::PostCompact),
+            "Interrupt" => Some(HookEventName::Interrupt),
             _ => None,
         }
     }
