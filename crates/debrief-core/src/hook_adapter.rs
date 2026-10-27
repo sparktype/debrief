@@ -43,6 +43,9 @@ impl HookAdapter {
             last_assistant_message: string_in(payload, &["last_assistant_message", "lastAssistantMessage"]),
             cwd: string_in(payload, &["cwd"]),
             subtype: string_in(payload, &["notification_type", "error_type", "trigger"]),
+            stop_hook_active: ["stop_hook_active", "stopHookActive"]
+                .iter()
+                .any(|key| payload.get(*key).and_then(Value::as_bool) == Some(true)),
         })
     }
 
@@ -139,6 +142,7 @@ mod tests {
                 last_assistant_message: None,
                 cwd: None,
                 subtype: None,
+                stop_hook_active: false,
             };
             let data = HookAdapter::context_output("context", &event, HostSource::Claude);
             let text = String::from_utf8(data).unwrap();
@@ -209,6 +213,14 @@ mod tests {
         let output: serde_json::Value = serde_json::from_slice(&HookAdapter::context_output("c", &event, HostSource::Gemini)).unwrap();
         assert_eq!(output["hookSpecificOutput"]["hookEventName"], "BeforeAgent");
         assert_eq!(output["hookSpecificOutput"]["additionalContext"], "c");
+    }
+
+    #[test]
+    fn stop_hook_active_flag_is_decoded() {
+        let active = HookAdapter::decode(br#"{"hook_event_name":"Stop","session_id":"s","stop_hook_active":true}"#, HostSource::Codex).unwrap();
+        assert!(active.stop_hook_active);
+        let plain = HookAdapter::decode(br#"{"hook_event_name":"Stop","session_id":"s"}"#, HostSource::Claude).unwrap();
+        assert!(!plain.stop_hook_active);
     }
 
     #[test]

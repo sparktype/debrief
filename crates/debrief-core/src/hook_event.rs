@@ -124,4 +124,6 @@ pub struct HookEvent {
     pub cwd: Option<String>,
     /// 알림 유형(`notification_type`) 또는 오류 유형(`error_type`). 이벤트에 없으면 `None`.
     pub subtype: Option<String>,
+    /// Stop 훅이 이미 한 번 턴을 이어 가게 한 뒤의 Stop인지(호스트의 무한 반복 방지 신호).
+    pub stop_hook_active: bool,
 }

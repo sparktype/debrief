@@ -73,6 +73,9 @@ pub struct DebriefConfiguration {
     /// 합성 직전 단어 치환(영어 용어 → 읽을 표기). 키는 대소문자를 무시하고 단어 단위로 맞춘다.
     #[serde(default)]
     pub pronunciations: HashMap<String, String>,
+    /// 말없이 `longTurnSeconds` 넘게 걸린 턴의 Stop을 한 번 되돌려 speak 브리핑을 요청한다. 기본 꺼짐.
+    #[serde(default)]
+    pub briefing_reminder: bool,
 }
 
 fn default_mode() -> DebriefMode {
@@ -111,6 +114,7 @@ impl Default for DebriefConfiguration {
             team_notices: false,
             earcons: default_earcons(),
             pronunciations: HashMap::new(),
+            briefing_reminder: false,
         }
     }
 }

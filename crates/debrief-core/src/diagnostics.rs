@@ -157,6 +157,7 @@ impl<'a> Diagnostics<'a> {
             ("세션 레이블", on_off(configuration.session_label).to_string()),
             ("팀 알림", on_off(configuration.team_notices).to_string()),
             ("긴 턴 완료 알림", long_turn),
+            ("브리핑 리마인더", on_off(configuration.briefing_reminder).to_string()),
         ];
         let bullets = |items: &[(&str, String)]| {
             items.iter().map(|(label, value)| format!("  • {label}: {value}")).collect::<Vec<_>>().join("\n")
@@ -599,6 +600,7 @@ mod tests {
             "  • 세션 레이블: 켜짐",
             "  • 팀 알림: 꺼짐",
             "  • 긴 턴 완료 알림: 60초",
+            "  • 브리핑 리마인더: 꺼짐",
         ] {
             assert!(text.lines().any(|l| l == line), "{line}\n{text}");
         }

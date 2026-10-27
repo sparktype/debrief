@@ -225,6 +225,7 @@ No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and co
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         };
         Self::context(&event, HostSource::Claude, None)
     }
@@ -375,6 +376,7 @@ mod tests {
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None);
         assert!(text.contains("mcp__debrief__speak"));
@@ -392,6 +394,7 @@ mod tests {
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None);
         assert!(text.contains("subagent"));
@@ -411,6 +414,7 @@ mod tests {
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None);
         assert!(text.chars().count() < 400);
@@ -431,6 +435,7 @@ mod tests {
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None);
         assert!(text.contains("what changed"));
@@ -454,6 +459,7 @@ mod tests {
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None);
         assert!(text.contains("concerned when blocked or failing"));
@@ -471,6 +477,7 @@ mod tests {
             last_assistant_message: None,
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         }
     }
 

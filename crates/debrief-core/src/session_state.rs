@@ -64,6 +64,12 @@ impl SessionStates {
         }
     }
 
+    /// 턴을 닫지 않고 (경과 초, 에이전트가 이미 말했는지)를 본다. 시작 기록이 없으면 `None`.
+    pub fn peek_turn(&self, session_id: &str, now: u64) -> Option<(u64, bool)> {
+        let entry = self.sessions.get(session_id)?;
+        Some((now.saturating_sub(entry.turn_started?), entry.spoken))
+    }
+
     /// 턴을 마무리하고 (경과 초, 에이전트가 이미 말했는지)를 돌려준다. 시작 기록이 없으면 `None`.
     pub fn finish_turn(&mut self, session_id: &str, now: u64) -> Option<(u64, bool)> {
         let entry = self.sessions.get_mut(session_id)?;

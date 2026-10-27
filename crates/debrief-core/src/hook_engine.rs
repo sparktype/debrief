@@ -73,7 +73,16 @@ impl<'a> HookEngine<'a> {
     }
 
     pub fn handle_at(&self, event: &HookEvent, source: HostSource, now: u64) -> HookResult {
-        let notice = self.notice_for(event, now);
+        let (notice, remind) = self.notice_for(event, now);
+        if remind {
+            return HookResult {
+                stdout: Self::reminder_output(event, source),
+                submitted: false,
+                delivery_error: None,
+                notice: None,
+                control: None,
+            };
+        }
         match event.name {
             HookEventName::SessionStart | HookEventName::UserPromptSubmit | HookEventName::SubagentStart => {
                 // 서브에이전트는 역할 보이스를 유지하고 세션 로테이션의 슬롯을 차지하지 않는다.
@@ -105,6 +114,27 @@ impl<'a> HookEngine<'a> {
                 HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice, control }
             }
         }
+    }
+
+    const REMINDER: &'static str = "debrief: this turn ended without the spoken briefing. Call speak once now \
+(what changed, then the next action), then stop. If there is truly nothing new, stop without speaking.";
+
+    /// Claude는 오류 표시 없는 Stop 피드백(additionalContext), Codex는 `decision: block`으로 턴을 잇는다.
+    fn reminder_output(event: &HookEvent, source: HostSource) -> Vec<u8> {
+        match source {
+            HostSource::Codex => serde_json::to_vec(&serde_json::json!({"decision": "block", "reason": Self::REMINDER}))
+                .expect("reminder output always serializes"),
+            _ => HookAdapter::context_output(Self::REMINDER, event, source),
+        }
+    }
+
+    /// 침묵을 허용하는 모드(quiet·night·음소거)에서는 되돌리지 않는다. 되돌린 뒤의 Stop도 마찬가지다.
+    fn reminder_applies(&self, event: &HookEvent) -> bool {
+        use crate::configuration::DebriefMode;
+        self.configuration.briefing_reminder
+            && !self.configuration.muted
+            && !event.stop_hook_active
+            && matches!(self.configuration.mode, DebriefMode::Normal | DebriefMode::Verbose | DebriefMode::Focus)
     }
 
     /// 같은 종류 알림 사이에 두는 최소 간격(초). 잦을 수 있는 이벤트에만 둔다.
@@ -141,7 +171,9 @@ impl<'a> HookEngine<'a> {
     }
 
     /// 세션 상태를 갱신하고, 이 이벤트가 알림을 내야 하면 요청을 만든다.
-    fn notice_for(&self, event: &HookEvent, now: u64) -> Option<SpeechRequest> {
+    /// 두 번째 값이 참이면 알림 대신 Stop을 되돌려 브리핑을 요청한다(이때 턴은 닫지 않는다).
+    fn notice_for(&self, event: &HookEvent, now: u64) -> (Option<SpeechRequest>, bool) {
+        let remindable = self.reminder_applies(event);
         // 알림을 내는 이벤트인지 먼저 정한다(쿨다운은 실제로 말할 때만 소모한다).
         let wants_notice = match event.name {
             HookEventName::Notification => matches!(event.subtype.as_deref(), Some("idle_prompt" | "agent_needs_input")),
@@ -164,16 +196,23 @@ impl<'a> HookEngine<'a> {
                 .update(now, |states| {
                     if event.name == HookEventName::SessionEnd {
                         states.remove(&event.session_id);
-                        return (None, None, false);
+                        return (None, None, false, false);
                     }
                     states.touch(&event.session_id, project, now);
                     let mut long_turn_elapsed = None;
+                    let long_silent = |(elapsed, spoken): &(u64, bool)| !spoken && threshold > 0 && *elapsed >= threshold;
+                    if event.name == HookEventName::Stop
+                        && remindable
+                        && states.peek_turn(&event.session_id, now).is_some_and(|turn| long_silent(&turn))
+                    {
+                        return (None, None, true, true);
+                    }
                     match event.name {
                         HookEventName::UserPromptSubmit => states.begin_turn(&event.session_id, now),
                         HookEventName::Stop => {
                             long_turn_elapsed = states
                                 .finish_turn(&event.session_id, now)
-                                .filter(|(elapsed, spoken)| !spoken && threshold > 0 && *elapsed >= threshold)
+                                .filter(long_silent)
                                 .map(|(elapsed, _)| elapsed);
                         }
                         // 실패로 끝난 턴은 이후 Stop의 완료 알림 대상에서 뺀다.
@@ -186,20 +225,24 @@ impl<'a> HookEngine<'a> {
                         .map(|seconds| states.allow_notice(&event.session_id, event.name.as_str(), now, seconds))
                         .unwrap_or(true);
                     let label = self.configuration.session_label.then(|| states.label_for(&event.session_id, now));
-                    (long_turn_elapsed, label.flatten(), allowed)
+                    (long_turn_elapsed, label.flatten(), allowed, false)
                 })
                 .ok()
         });
         // 상태 저장소를 쓸 수 없으면 쿨다운이 필요한 알림은 조용히 건너뛴다.
-        let (long_turn_elapsed, label, allowed) = tracked.unwrap_or((None, None, cooldown.is_none()));
+        let (long_turn_elapsed, label, allowed, remind) = tracked.unwrap_or((None, None, cooldown.is_none(), false));
+        if remind {
+            return (None, true);
+        }
         if !wants_notice || !allowed {
-            return None;
+            return (None, false);
         }
 
         let (body, emotion) = match event.name {
             HookEventName::PermissionRequest => ("권한 승인을 기다리고 있습니다.".to_string(), SpeechEmotion::Concerned),
             HookEventName::Stop => {
-                let minutes = ((long_turn_elapsed? + 30) / 60).max(1);
+                let Some(elapsed) = long_turn_elapsed else { return (None, false) };
+                let minutes = ((elapsed + 30) / 60).max(1);
                 (format!("{minutes}분 걸린 작업이 끝났습니다."), SpeechEmotion::Neutral)
             }
             HookEventName::StopFailure => (Self::failure_text(event.subtype.as_deref()).to_string(), SpeechEmotion::Concerned),
@@ -213,7 +256,7 @@ impl<'a> HookEngine<'a> {
             HookEventName::PreCompact => ("컨텍스트를 정리하고 있습니다.".to_string(), SpeechEmotion::Neutral),
             // 압축이 끝나면 말 대신 완료음만 낸다.
             HookEventName::PostCompact => (String::new(), SpeechEmotion::Neutral),
-            _ => return None,
+            _ => return (None, false),
         };
         let text = match label {
             Some(label) if !body.is_empty() => format!("{label}. {body}"),
@@ -223,7 +266,7 @@ impl<'a> HookEngine<'a> {
             .session_voices
             .and_then(|store| store.claim(&event.session_id).ok())
             .unwrap_or_else(|| "F1".to_string());
-        Some(SpeechRequest {
+        let notice = SpeechRequest {
             envelope: SpeechEnvelope { v: 1, text, voice, speed: Self::NOTICE_SPEED, volume: Self::NOTICE_VOLUME },
             priority: SpeechPriority::Main,
             lane: SpeechLane::Work,
@@ -233,7 +276,8 @@ impl<'a> HookEngine<'a> {
             cue: Self::cue_for(event.name),
             replayed: false,
             session: None,
-        })
+        };
+        (Some(notice), false)
     }
 }
 
@@ -257,6 +301,7 @@ mod tests {
             last_assistant_message: last_assistant_message.map(|s| s.to_string()),
             cwd: None,
             subtype: None,
+            stop_hook_active: false,
         }
     }
 
@@ -462,6 +507,60 @@ mod tests {
         off_engine.handle_at(&event_in(HookEventName::UserPromptSubmit, "s", "/w/p"), HostSource::Claude, 600);
         let off_stop = off_engine.handle_at(&event_in(HookEventName::Stop, "s", "/w/p"), HostSource::Claude, 9000);
         assert!(off_stop.notice.is_none(), "0이면 끈다");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn briefing_reminder_sends_a_long_silent_turn_back_once_then_falls_back_to_the_notice() {
+        let dir = state_dir("reminder");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let configuration = DebriefConfiguration { briefing_reminder: true, ..DebriefConfiguration::default() };
+        let engine = engine_with(&state, configuration);
+        let stop = |active: bool, at: u64, source: HostSource| {
+            let event = HookEvent { stop_hook_active: active, ..event_in(HookEventName::Stop, "s", "/w/p") };
+            engine.handle_at(&event, source, at)
+        };
+        let begin = |at: u64| engine.handle_at(&event_in(HookEventName::UserPromptSubmit, "s", "/w/p"), HostSource::Claude, at);
+
+        begin(0);
+        let first = stop(false, 100, HostSource::Claude);
+        assert!(first.notice.is_none());
+        let output: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+        assert_eq!(output["hookSpecificOutput"]["hookEventName"], "Stop");
+        assert!(output["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("speak"));
+        let second = stop(true, 130, HostSource::Claude);
+        assert_eq!(second.stdout, b"{}");
+        assert_eq!(second.notice.unwrap().envelope.text, "2분 걸린 작업이 끝났습니다.", "되돌린 뒤에도 말없으면 완료 알림");
+
+        begin(200);
+        let codex: serde_json::Value = serde_json::from_slice(&stop(false, 300, HostSource::Codex).stdout).unwrap();
+        assert_eq!(codex["decision"], "block");
+        assert!(codex["reason"].as_str().unwrap().contains("speak"));
+
+        begin(400);
+        state.update(400, |states| states.mark_spoken("s")).unwrap();
+        let spoken = stop(false, 500, HostSource::Claude);
+        assert_eq!(spoken.stdout, b"{}");
+        assert!(spoken.notice.is_none());
+
+        begin(600);
+        assert_eq!(stop(false, 620, HostSource::Claude).stdout, b"{}", "짧은 턴은 되돌리지 않는다");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn briefing_reminder_respects_silence_modes_and_its_default() {
+        use crate::configuration::DebriefMode;
+        let dir = state_dir("reminder-modes");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let on = |mode, muted| DebriefConfiguration { briefing_reminder: true, mode, muted, ..DebriefConfiguration::default() };
+        for configuration in [on(DebriefMode::Quiet, false), on(DebriefMode::Night, false), on(DebriefMode::Normal, true), DebriefConfiguration::default()] {
+            let engine = engine_with(&state, configuration);
+            engine.handle_at(&event_in(HookEventName::UserPromptSubmit, "s", "/w/p"), HostSource::Claude, 0);
+            let stop = engine.handle_at(&event_in(HookEventName::Stop, "s", "/w/p"), HostSource::Claude, 100);
+            assert_eq!(stop.stdout, b"{}");
+            assert!(stop.notice.is_some(), "기존 완료 알림 그대로");
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 

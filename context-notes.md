@@ -84,3 +84,4 @@
 - 1번 작업 중 발견한 버그: 클라이언트가 데몬 accept 전에 닫히면 `setsockopt(SO_NOSIGPIPE)`가 EINVAL(22)을 내고 `SystemCall`로 분류돼 회복 불가 → 데몬 accept 루프 종료. 훅이 타임아웃으로 죽는 경우에도 날 수 있었다. 소켓 설정을 클라이언트별 실패(InvalidFrame)로 옮겨 고쳤다(4859392).
 - 1번 프로브(`UnixSocketClient::is_reachable`)는 연결 후 쓰기만 닫고 NAK/EOF를 최대 300ms 기다린다. 바로 닫으면 위 버그가 있는 구버전 데몬(≤0.3.2)을 멈추게 하므로 이 방식을 쓴다. UserPromptSubmit은 이미 보내는 SkipSession 제어의 성공 여부를 그대로 쓴다(`SystemCall` 오류만 끊김으로 본다, `Rejected`는 구버전 데몬이 살아 있다는 뜻).
 - 1번 경고는 세션당 10분 쿨다운(`daemon_unreachable` 알림 키 재사용), 음소거면 내지 않는다(침묵이 의도). Gemini는 `systemMessage` 지원을 확인하지 않아 제외.
+- 3번 판정: "말했다"는 MCP speak가 `session` 인자와 함께 와서 `mark_spoken`된 경우뿐이다. 에이전트가 session 없이 말하면 말했는데도 한 번 되돌려진다(훅 context가 session을 안내하므로 드묾). 되돌릴 때는 턴을 닫지 않아 다음 Stop(`stop_hook_active=true`)이 같은 턴으로 다시 판정한다.
