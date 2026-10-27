@@ -15,6 +15,15 @@ impl HookCommandRunner {
     const UNREACHABLE_MESSAGE: &'static str =
         "debrief 데몬에 연결할 수 없어 음성 브리핑이 나오지 않습니다. `debrief restart`로 다시 띄우세요.";
 
+    /// Ghostty·Warp는 OSC 777, 그 밖(iTerm2·WezTerm 등)은 OSC 9. 본문의 제어 문자와 `;`는 걸러 시퀀스를 깨지 않는다.
+    pub fn terminal_notification(text: &str, term_program: Option<&str>) -> String {
+        let body: String = text.chars().filter(|c| !c.is_control()).map(|c| if c == ';' { ',' } else { c }).collect();
+        match term_program {
+            Some("ghostty" | "WarpTerminal") => format!("\u{1b}]777;notify;debrief;{body}\u{7}"),
+            _ => format!("\u{1b}]9;debrief: {body}\u{7}"),
+        }
+    }
+
     pub fn run(input: &[u8], source: HostSource, home: &std::path::Path) -> Vec<u8> {
         let Ok(event) = HookAdapter::decode(input, source) else {
             return b"{}".to_vec();
@@ -54,6 +63,13 @@ impl HookCommandRunner {
             match UnixSocketClient::new(paths.socket_url.clone()).submit(&notice) {
                 Ok(()) => result.submitted = true,
                 Err(error) => result.delivery_error = Some(format!("{error:?}")),
+            }
+            // 소리로 못 전하는 알림은 Claude Code가 대신 쓰는 터미널 데스크톱 알림으로 남긴다.
+            let silent = muted || result.delivery_error.is_some();
+            if silent && source == HostSource::Claude && !notice.envelope.text.is_empty() {
+                let sequence =
+                    Self::terminal_notification(&notice.envelope.text, std::env::var("TERM_PROGRAM").ok().as_deref());
+                result.stdout = HookAdapter::with_output_field(&result.stdout, "terminalSequence", &sequence);
             }
         }
         let diagnostics = crate::diagnostics::Diagnostics::new(home);
@@ -201,6 +217,41 @@ mod tests {
         let probed = probe.join().unwrap().unwrap_err();
         assert!(crate::unix_socket::is_recoverable_accept_error(&probed), "빈 연결은 데몬을 멈추지 않는다: {probed:?}");
 
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn terminal_notification_picks_the_osc_the_terminal_reads_and_strips_control_text() {
+        assert_eq!(HookCommandRunner::terminal_notification("권한 승인", Some("ghostty")), "\u{1b}]777;notify;debrief;권한 승인\u{7}");
+        assert_eq!(HookCommandRunner::terminal_notification("a;b\u{1b}c", Some("WarpTerminal")), "\u{1b}]777;notify;debrief;a,bc\u{7}");
+        assert_eq!(HookCommandRunner::terminal_notification("끝", Some("iTerm.app")), "\u{1b}]9;debrief: 끝\u{7}");
+        assert_eq!(HookCommandRunner::terminal_notification("끝", None), "\u{1b}]9;debrief: 끝\u{7}");
+    }
+
+    #[test]
+    fn muted_or_undelivered_claude_notice_falls_back_to_a_desktop_notification() {
+        let terminal_sequence = |output: &[u8]| -> Option<String> {
+            let value: serde_json::Value = serde_json::from_slice(output).unwrap();
+            value["terminalSequence"].as_str().map(str::to_string)
+        };
+        let home = temporary_home();
+        let paths = DebriefPaths::for_home(&home);
+        let permission = br#"{"hook_event_name":"PermissionRequest","session_id":"s"}"#;
+
+        let undelivered = HookCommandRunner::run(permission, HostSource::Claude, &home);
+        assert!(terminal_sequence(&undelivered).unwrap().contains("권한 승인을 기다리고 있습니다."));
+        assert!(terminal_sequence(&HookCommandRunner::run(permission, HostSource::Codex, &home)).is_none(), "Claude 전용 필드");
+
+        DebriefConfiguration { muted: true, ..DebriefConfiguration::default() }.save(&paths.config_url).unwrap();
+        let server = std::sync::Arc::new(crate::unix_socket::UnixSocketServer::new(paths.socket_url).unwrap());
+        let accepting = server.clone();
+        let received = std::thread::spawn(move || accepting.accept());
+        let muted = HookCommandRunner::run(permission, HostSource::Claude, &home);
+        assert!(received.join().unwrap().is_ok());
+        assert!(terminal_sequence(&muted).is_some(), "음소거면 소리 대신 화면 알림");
+
+        let start = br#"{"hook_event_name":"SessionStart","session_id":"s"}"#;
+        assert!(terminal_sequence(&HookCommandRunner::run(start, HostSource::Claude, &home)).is_none(), "알림 없는 이벤트");
         fs::remove_dir_all(&home).ok();
     }
 
