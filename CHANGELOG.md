@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 적용합니다. Grok은 `/mcps`로 도구를 갱신하고, 집 밖 폴더는 `/hooks-trust`가 필요합니다. Codex는 `debrief doctor`가 안내할 때만 `/hooks`에서 다시 신뢰합니다.
+
 ### 추가
 
 - Grok 부작용 훅 `~/.grok/hooks/debrief.json`: SessionStart, UserPromptSubmit, Stop, StopFailure, Notification, PermissionDenied, PreCompact, PostCompact, StopCancelled, SessionEnd. 턴 브리핑 문단은 넣지 않습니다. UserPromptSubmit은 그 세션의 지난 도우미 브리핑만 끊습니다. `StopCancelled`의 `user_interrupt`만 브리핑을 끊습니다. 데몬이 없으면 SessionStart의 `systemMessage`가 `debrief restart`를 안내합니다. 집 밖 폴더는 `/hooks-trust`가 필요하고, 아니면 `debrief doctor`가 `hooks.grok.folder_untrusted`를 냅니다. `GROK_HOOK_EVENT`가 있으면 Claude 출처 훅은 같은 이벤트를 다시 처리하지 않습니다.
