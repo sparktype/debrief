@@ -32,6 +32,12 @@ impl HookAdapter {
             .filter(|value| !value.is_empty())
             .ok_or(HookAdapterError::MissingSessionId)?;
 
+        // SessionEnd의 `reason`은 세션 종료 사유라 알림 종류로 쓰지 않는다. StopCancelled만 취소 사유다.
+        let mut subtype = string_in(payload, &["notification_type", "error_type", "trigger"]);
+        if event_name == HookEventName::StopCancelled {
+            subtype = string_in(payload, &["reason"]).or(subtype);
+        }
+
         Ok(HookEvent {
             name: event_name,
             session_id,
@@ -42,7 +48,7 @@ impl HookAdapter {
             ),
             last_assistant_message: string_in(payload, &["last_assistant_message", "lastAssistantMessage"]),
             cwd: string_in(payload, &["cwd"]),
-            subtype: string_in(payload, &["notification_type", "error_type", "trigger"]),
+            subtype,
             stop_hook_active: ["stop_hook_active", "stopHookActive"]
                 .iter()
                 .any(|key| payload.get(*key).and_then(Value::as_bool) == Some(true)),

@@ -69,6 +69,34 @@ pub struct Diagnostics<'a> {
     process_exists: Box<dyn Fn(i32) -> bool + 'a>,
 }
 
+/// `~/.grok/trusted_folders.toml`의 `[folders."/abs"] trusted = true`. 파일이 없으면 None.
+fn folder_is_trusted(trusted_folders: &Path, cwd: &Path) -> Option<bool> {
+    let text = std::fs::read_to_string(trusted_folders).ok()?;
+    let cwd = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let mut current: Option<String> = None;
+    let mut trusted = false;
+    let mut saw = false;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if let Some(rest) = line.strip_prefix("[folders.") {
+            if let Some(body) = rest.strip_suffix(']') {
+                current = Some(body.trim().trim_matches('"').to_string());
+            }
+            continue;
+        }
+        if line.starts_with("trusted") {
+            let Some(folder) = current.as_deref() else { continue };
+            let folder_path = Path::new(folder);
+            let folder_canon = folder_path.canonicalize().unwrap_or_else(|_| folder_path.to_path_buf());
+            if folder_canon == cwd || folder_path == cwd {
+                saw = true;
+                trusted = line.split_once('=').is_some_and(|(_, value)| value.trim() == "true");
+            }
+        }
+    }
+    Some(saw && trusted)
+}
+
 impl<'a> Diagnostics<'a> {
     pub fn new(home: &Path) -> Self {
         Self::with_process_check(home, Self::live_process_exists)
@@ -129,12 +157,14 @@ impl<'a> Diagnostics<'a> {
             None => "없음".to_string(),
         };
         let configuration = DebriefConfiguration::load(&self.paths.config_url);
-        // 방해금지·마이크 연동으로 지금 올라가 있는 모드는 저장된 모드 옆에 함께 보인다.
-        let effective = DebriefConfiguration::load_effective(&self.paths.config_url, &self.paths.home).mode;
-        let mode = if effective == snapshot.mode {
-            snapshot.mode.as_str().to_string()
-        } else {
-            format!("{} (지금 {})", snapshot.mode.as_str(), effective.as_str())
+        // 방해금지·마이크 연동으로 지금 올라가 있는 모드는 이유와 함께 보인다.
+        let (effective_configuration, restriction) =
+            DebriefConfiguration::load_effective_detail(&self.paths.config_url, &self.paths.home);
+        let effective = effective_configuration.mode;
+        let mode = match restriction {
+            Some(reason) => format!("{} (지금 {}입니다. {})", snapshot.mode.as_str(), effective.as_str(), reason.sentence()),
+            None if effective == snapshot.mode => snapshot.mode.as_str().to_string(),
+            None => format!("{} (지금 {})", snapshot.mode.as_str(), effective.as_str()),
         };
         let on_off = |on: bool| if on { "켜짐" } else { "꺼짐" };
         let long_turn = match configuration.long_turn_seconds {
@@ -240,6 +270,12 @@ impl<'a> Diagnostics<'a> {
         });
 
         findings.extend(self.hook_findings());
+        if let Some(finding) = self.codex_trust_finding() {
+            findings.push(finding);
+        }
+        if let Some(finding) = self.grok_folder_finding() {
+            findings.push(finding);
+        }
 
         if DebriefConfiguration::load(&self.paths.config_url).dnd_sync {
             let readable = crate::macos_dnd::MacosDnd::is_active(&self.paths.home).is_some();
@@ -380,6 +416,7 @@ impl<'a> Diagnostics<'a> {
         for (host, settings) in [
             (HostSource::Codex, self.paths.home.join(".codex/hooks.json")),
             (HostSource::Claude, self.paths.home.join(".claude/settings.json")),
+            (HostSource::Grok, self.paths.home.join(".grok/hooks/debrief.json")),
             (HostSource::Gemini, self.paths.home.join(".gemini/settings.json")),
         ] {
             let Some(hooks) = std::fs::read(&settings)
@@ -413,6 +450,60 @@ impl<'a> Diagnostics<'a> {
             });
         }
         findings
+    }
+
+    fn codex_trust_finding(&self) -> Option<DiagnosticFinding> {
+        use crate::codex_trust::{CodexHookTrust, CodexTrust};
+        let hooks = self.paths.home.join(".codex/hooks.json");
+        let config = self.paths.home.join(".codex/config.toml");
+        let finding = match CodexTrust::assess(&hooks, &config) {
+            CodexHookTrust::Silent | CodexHookTrust::Trusted => return None,
+            CodexHookTrust::Untrusted => DiagnosticFinding {
+                code: "hooks.codex.untrusted".to_string(),
+                ok: false,
+                recovery: Some("Codex에서 /hooks를 열어 debrief hook을 검토하고 신뢰하세요.".to_string()),
+            },
+            CodexHookTrust::Disabled => DiagnosticFinding {
+                code: "hooks.codex.disabled".to_string(),
+                ok: false,
+                recovery: Some("Codex 훅이 꺼져 있습니다. config.toml의 hooks.state에서 enabled를 켜 주세요.".to_string()),
+            },
+            CodexHookTrust::FeatureDisabled => DiagnosticFinding {
+                code: "hooks.codex.feature_disabled".to_string(),
+                ok: false,
+                recovery: Some("Codex 훅 기능이 꺼져 있습니다. config.toml의 [features] hooks를 켜 주세요.".to_string()),
+            },
+            CodexHookTrust::ConfigUnreadable => DiagnosticFinding {
+                code: "hooks.codex.config_unreadable".to_string(),
+                ok: false,
+                recovery: Some("Codex config.toml을 읽지 못해 훅 신뢰를 확인하지 못했습니다.".to_string()),
+            },
+        };
+        Some(finding)
+    }
+
+    /// 집 밖 폴더는 `/hooks-trust` 전까지 `~/.grok/hooks`가 실행되지 않는다. 홈과 루트는 신뢰된 것으로 본다.
+    fn grok_folder_finding(&self) -> Option<DiagnosticFinding> {
+        let hooks = self.paths.home.join(".grok/hooks/debrief.json");
+        if !hooks.exists() {
+            return None;
+        }
+        let Ok(cwd) = std::env::current_dir() else {
+            return None;
+        };
+        let cwd = cwd.canonicalize().unwrap_or(cwd);
+        let home = self.paths.home.canonicalize().unwrap_or_else(|_| self.paths.home.clone());
+        if cwd == home || cwd.parent().is_none() {
+            return None;
+        }
+        if folder_is_trusted(&self.paths.home.join(".grok/trusted_folders.toml"), &cwd) == Some(true) {
+            return None;
+        }
+        Some(DiagnosticFinding {
+            code: "hooks.grok.folder_untrusted".to_string(),
+            ok: false,
+            recovery: Some("이 폴더에서 /hooks-trust로 신뢰해야 개인 훅이 실행됩니다.".to_string()),
+        })
     }
 
     fn has_debrief_command(groups: &serde_json::Value) -> bool {

@@ -25,18 +25,24 @@ impl HookCommandRunner {
     }
 
     pub fn run(input: &[u8], source: HostSource, home: &std::path::Path) -> Vec<u8> {
+        Self::run_with(input, source, home, false)
+    }
+
+    /// `running_inside_grok`는 프로세스가 `GROK_HOOK_EVENT`를 봤을 때다. 테스트가 환경을 건드리지 않게 인자로 받는다.
+    /// Grok은 `~/.claude/settings.json` 훅도 실행하므로, Claude 출처가 그 안에서 돌면 알림이 두 번 나가지 않게 비운다.
+    pub fn run_with(input: &[u8], source: HostSource, home: &std::path::Path, running_inside_grok: bool) -> Vec<u8> {
+        if running_inside_grok && source == HostSource::Claude {
+            return b"{}".to_vec();
+        }
         let Ok(event) = HookAdapter::decode(input, source) else {
             return b"{}".to_vec();
         };
         let paths = DebriefPaths::for_home(home);
         let session_voices = SessionVoiceStore::new(paths.session_voices_url.clone());
-        // 방해금지로 올라간 유효 모드를 쓰고, 올라갔는지는 저장된 모드와 비교해 안다.
-        let stored = DebriefConfiguration::load(&paths.config_url);
-        let configuration = DebriefConfiguration::load_effective(&paths.config_url, home);
-        let dnd_raised = configuration.mode != stored.mode;
+        let (configuration, restriction) = DebriefConfiguration::load_effective_detail(&paths.config_url, home);
         let session_state = SessionStateStore::new(paths.session_state_url.clone());
         let muted = configuration.muted;
-        let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_dnd_raised(dnd_raised);
+        let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_restriction(restriction);
         let mut result = engine.handle(&event, source);
         let mut daemon_reachable = None;
         if let Some(control) = result.control.take() {
@@ -44,8 +50,16 @@ impl HookCommandRunner {
             let sent = UnixSocketClient::new(paths.socket_url.clone()).send_control(&control);
             daemon_reachable = Some(!matches!(sent, Err(crate::unix_socket::UnixSocketError::SystemCall(..))));
         }
-        let prompt_event = matches!(event.name, HookEventName::SessionStart | HookEventName::UserPromptSubmit);
-        if prompt_event && matches!(source, HostSource::Claude | HostSource::Codex) && !muted {
+        // Grok UserPromptSubmit의 stdout은 버려지므로 데몬 다운 안내는 SessionStart의 systemMessage만 쓴다.
+        let warn_daemon_down = !muted
+            && match source {
+                HostSource::Claude | HostSource::Codex => {
+                    matches!(event.name, HookEventName::SessionStart | HookEventName::UserPromptSubmit)
+                }
+                HostSource::Grok => event.name == HookEventName::SessionStart,
+                HostSource::Gemini => false,
+            };
+        if warn_daemon_down {
             let reachable =
                 daemon_reachable.unwrap_or_else(|| UnixSocketClient::new(paths.socket_url.clone()).is_reachable());
             let now = crate::session_state::now_seconds();
@@ -194,7 +208,30 @@ mod tests {
         assert!(system_message(&HookCommandRunner::run(other, HostSource::Codex, &home)).is_some(), "세션마다 따로");
         let gemini = br#"{"hook_event_name":"SessionStart","session_id":"g"}"#;
         assert!(system_message(&HookCommandRunner::run(gemini, HostSource::Gemini, &home)).is_none());
+        let grok_start = br#"{"hook_event_name":"SessionStart","session_id":"grok"}"#;
+        assert!(system_message(&HookCommandRunner::run(grok_start, HostSource::Grok, &home)).unwrap().contains("debrief restart"));
+        let grok_prompt = br#"{"hook_event_name":"UserPromptSubmit","session_id":"grok-prompt"}"#;
+        assert!(system_message(&HookCommandRunner::run(grok_prompt, HostSource::Grok, &home)).is_none(), "Grok 프롬프트 stdout은 안내에 쓰지 않는다");
 
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn claude_hooks_running_inside_grok_do_not_enqueue_a_second_notice() {
+        let home = temporary_home();
+        let payload = br#"{"hook_event_name":"StopFailure","session_id":"s","error_type":"server_error"}"#;
+        let skipped = HookCommandRunner::run_with(payload, HostSource::Claude, &home, true);
+        assert_eq!(skipped, b"{}");
+        assert!(crate::diagnostics::Diagnostics::new(&home).current_error().is_none(), "빈 성공은 전송을 시도하지 않는다");
+
+        let socket_url = DebriefPaths::for_home(&home).socket_url;
+        let server = std::sync::Arc::new(crate::unix_socket::UnixSocketServer::new(socket_url).unwrap());
+        let accepting = server.clone();
+        let received = std::thread::spawn(move || accepting.accept());
+        let output = HookCommandRunner::run_with(payload, HostSource::Grok, &home, true);
+        assert_eq!(String::from_utf8(output).unwrap(), "{}");
+        let crate::daemon_control::Inbound::Speech(request) = received.join().unwrap().unwrap() else { panic!("발화가 아님") };
+        assert_eq!(request.envelope.text, "API 오류로 작업이 멈췄습니다.");
         fs::remove_dir_all(&home).ok();
     }
 

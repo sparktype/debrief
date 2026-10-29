@@ -32,8 +32,8 @@ After `debrief install`:
 2. LaunchAgent starts `debrief daemon` (or run `debrief start`).
 3. Confirm MCP server `debrief` is registered for your host(s).
 4. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{setup,install,speak}`.
-5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it.
-6. **Codex:** review start-family hooks in `/hooks`; MCP lives in `~/.codex/config.toml`.
+5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it. Side-effect hooks live in `~/.grok/hooks/debrief.json` (skip a stale briefing, fixed notices, a SessionStart `debrief restart` line when the daemon is down). They do not inject the turn-briefing paragraph — Grok discards an allowing hook’s stdout, so the contract stays on the skill and MCP. Outside your home directory, run `/hooks-trust` or those hooks stay off.
+6. **Codex:** MCP lives in `~/.codex/config.toml`. If install or `debrief doctor` says the hook hash is missing, open `/hooks` and trust the debrief hooks. A matching hash prints no review line.
 7. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
 
 Repair without wiping unrelated host settings:
@@ -63,7 +63,7 @@ debrief restart
 - **Mode** — `normal` (default); `focus` / `quiet` / `night` suppress `priority=subagent`; quiet/night also lower volume ceilings; `verbose` includes subagent speech
 - **Mute** — pause or restore speech
 - **도우미 음성** — `debrief companion` turns companion-lane speech on or off (work lane still plays when mute is off)
-- **skip / replay** — `skip` stops the current utterance (`--all` also clears the queue); submitting a new prompt in Claude or Codex automatically drops that session’s earlier companion briefing (decision waits, notices, and other sessions stay); `replay [n]` replays the last n played utterances (1–10, oldest first; memory only)
+- **skip / replay** — `skip` stops the current utterance (`--all` also clears the queue); submitting a new prompt in Claude, Codex, or Grok automatically drops that session’s earlier companion briefing (decision waits, notices, and other sessions stay); a Grok `StopCancelled` with `user_interrupt` does the same; `replay [n]` replays the last n played utterances (1–10, oldest first; memory only)
 - **Earcons** — short tones before decision, attention, failure, and done notices. Set `"earcons": false` in `config.json` to turn them off; mute silences them too
 - **doctor** — findings, including MCP wiring. The first matching recovery is `debrief install --repair` or `debrief start`
 - **start / stop** — bootstrap an existing LaunchAgent, or disable and bootout it. Stop keeps the binary and the plist
@@ -95,9 +95,10 @@ Host wiring is separate. `debrief install` writes absolute paths. `debrief insta
 | Claude Code | `~/.claude.json` | `mcpServers.debrief`. Restart Claude. |
 | Claude Code | `~/.claude/settings.json` | start-family hooks |
 | Claude Code | `~/.claude/skills/debrief-*` | setup, install, speak |
-| Codex | `~/.codex/config.toml` and `~/.codex/hooks.json` | MCP plus hooks. Trust them in `/hooks`. |
+| Codex | `~/.codex/config.toml` and `~/.codex/hooks.json` | MCP plus hooks. Trust them in `/hooks` only when the current hash is missing. |
 | Codex | `~/.agents/skills/` | the same three skills |
-| Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. No hooks. Run `/mcps`. |
+| Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. Run `/mcps`. |
+| Grok | `~/.grok/hooks/debrief.json` | Side-effect hooks only. No turn-briefing paragraph. `/hooks-trust` outside home. |
 | Grok | `~/.grok/skills/` | the same three skills |
 
 Limit a repair to one host with `--claude`, `--codex`, or `--grok`. When MCP already works, call `install` with `{ "hosts": ["claude"], "repair": true }`.
@@ -108,7 +109,7 @@ Limit a repair to one host with `--claude`, `--codex`, or `--grok`. When MCP alr
 - After writing, changing, or analyzing code, the next action names what you must verify yourself (behavior change, deletion, security or data path, an assumption, how to check or undo), so you keep code ownership and cognitive debt stays low. Trivial changes and subagents skip this.
 - **Silence only** if nothing new and no next action. No file lists or checklists.
 - Always pass `voice`, `speed`, and `volume`. Optional: `priority` (`main` default / `subagent`), `lane` (`companion` default / `work`), `emotion` (closed enum: sentence pauses, a softer volume for tired, and a soft cue — relieved laugh, warm breath, tired sigh; speed is never changed), `session` (host session id; keeps the companion voice), `intent` (`decision` only: the user must decide or approve; plays through quiet/night/companion-off, not mute).
-- Follow the mode guidance hooks append (focus: one sentence; quiet: short or silent; night: decisions only; muted: do not call speak). Grok reads `mode`/`muted` from the speak reply.
+- Follow the mode guidance Claude and Codex hooks append (focus: one sentence; quiet: short or silent, tagged `(mic)`, `(dnd)`, or `(dnd, mic)` when a restriction raised quiet; night: decisions only; muted: do not call speak). Grok hooks do not deliver that paragraph. Grok reads `mode`, `muted`, and `reason` (only when the microphone or Do Not Disturb raised the mode) from the speak reply.
 - Companion voice rotates across F1–M5, one voice per session. Pass `session` with the host session id so that chat keeps its voice. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. Subagents do not brief the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.
 - Do not put speech JSON or HTML comments in the chat body.
 - Mute, mode, companion, replay, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief skip`, `debrief replay`, `debrief doctor`.

@@ -101,6 +101,33 @@ fn default_earcons() -> bool {
     true
 }
 
+/// 저장된 모드보다 유효 모드가 올라간 이유. night은 올리지 않는다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModeRestriction {
+    Microphone,
+    DoNotDisturb,
+    Both,
+}
+
+impl ModeRestriction {
+    pub fn sentence(&self) -> &'static str {
+        match self {
+            ModeRestriction::Microphone => "다른 앱이 마이크를 사용 중입니다.",
+            ModeRestriction::DoNotDisturb => "방해금지가 켜져 있습니다.",
+            ModeRestriction::Both => "다른 앱이 마이크를 사용 중이고 방해금지가 켜져 있습니다.",
+        }
+    }
+
+    /// 훅 지침에 붙이는 짧은 표기.
+    pub fn guidance_tag(&self) -> &'static str {
+        match self {
+            ModeRestriction::Microphone => " (mic)",
+            ModeRestriction::DoNotDisturb => " (dnd)",
+            ModeRestriction::Both => " (dnd, mic)",
+        }
+    }
+}
+
 impl Default for DebriefConfiguration {
     fn default() -> Self {
         DebriefConfiguration {
@@ -153,16 +180,35 @@ impl DebriefConfiguration {
         effective
     }
 
+    /// 방해금지를 먼저, 그다음 마이크를 반영한다. 모드가 실제로 올라갔을 때만 이유를 돌려준다.
+    pub fn effective_with_reason(&self, dnd_active: bool, mic_in_use: bool) -> (Self, Option<ModeRestriction>) {
+        let stored = self.mode;
+        let effective = self.with_dnd(dnd_active).with_mic_in_use(mic_in_use);
+        if effective.mode == stored {
+            return (effective, None);
+        }
+        let dnd = self.dnd_sync && dnd_active && stored != DebriefMode::Night;
+        let mic = self.mic_sync && mic_in_use && stored != DebriefMode::Night;
+        let reason = match (dnd, mic) {
+            (true, true) => Some(ModeRestriction::Both),
+            (true, false) => Some(ModeRestriction::DoNotDisturb),
+            (false, true) => Some(ModeRestriction::Microphone),
+            (false, false) => None,
+        };
+        (effective, reason)
+    }
+
     /// 데몬이 발화마다 쓰는 설정 — 저장된 설정에 방해금지·마이크 사용 상태를 반영한다.
     pub fn load_effective(url: &Path, home: &Path) -> Self {
-        let mut effective = Self::load(url);
-        if effective.dnd_sync {
-            effective = effective.with_dnd(crate::macos_dnd::MacosDnd::is_active(home).unwrap_or(false));
-        }
-        if effective.mic_sync {
-            effective = effective.with_mic_in_use(crate::macos_mic::MacosMic::is_in_use().unwrap_or(false));
-        }
-        effective
+        Self::load_effective_detail(url, home).0
+    }
+
+    /// 유효 설정과, 모드가 올라갔다면 그 이유. status와 speak가 같은 문장을 쓴다.
+    pub fn load_effective_detail(url: &Path, home: &Path) -> (Self, Option<ModeRestriction>) {
+        let stored = Self::load(url);
+        let dnd_active = stored.dnd_sync && crate::macos_dnd::MacosDnd::is_active(home).unwrap_or(false);
+        let mic_in_use = stored.mic_sync && crate::macos_mic::MacosMic::is_in_use().unwrap_or(false);
+        stored.effective_with_reason(dnd_active, mic_in_use)
     }
 
     pub fn load(url: &Path) -> Self {
@@ -468,7 +514,25 @@ mod tests {
 
         // 저장된 설정 자체는 바뀌지 않는다.
         assert_eq!(DebriefConfiguration::load(&paths.config_url).mode, DebriefMode::Normal);
+        let (_, reason) = DebriefConfiguration::load_effective_detail(&paths.config_url, &home);
+        assert_eq!(reason, Some(ModeRestriction::DoNotDisturb));
         fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn restriction_reason_is_absent_when_the_mode_did_not_rise() {
+        let focus = DebriefConfiguration { mode: DebriefMode::Focus, dnd_sync: true, mic_sync: true, ..Default::default() };
+        let (effective, reason) = focus.effective_with_reason(true, true);
+        assert_eq!(effective.mode, DebriefMode::Quiet);
+        assert_eq!(reason, Some(ModeRestriction::Both));
+        assert_eq!(reason.unwrap().sentence(), "다른 앱이 마이크를 사용 중이고 방해금지가 켜져 있습니다.");
+
+        let already = DebriefConfiguration { mode: DebriefMode::Quiet, mic_sync: true, ..Default::default() };
+        assert_eq!(already.effective_with_reason(false, true).1, None);
+        let night = DebriefConfiguration { mode: DebriefMode::Night, dnd_sync: true, mic_sync: true, ..Default::default() };
+        assert_eq!(night.effective_with_reason(true, true).1, None);
+        let mic_only = DebriefConfiguration { mic_sync: true, ..Default::default() };
+        assert_eq!(mic_only.effective_with_reason(false, true).1, Some(ModeRestriction::Microphone));
     }
 
     #[test]

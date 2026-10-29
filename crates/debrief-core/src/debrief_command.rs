@@ -55,7 +55,7 @@ impl DebriefCommand {
                 "  debrief allow [id] / debrief deny [id]   (answer a relayed Claude Code permission prompt; permissionRelay)\n\n",
                 "Agents:\n",
                 "  debrief mcp\n",
-                "  debrief hook --source <codex|claude|gemini>\n",
+                "  debrief hook --source <codex|claude|grok|gemini>\n",
                 "  debrief help",
             )
         )
@@ -156,8 +156,8 @@ impl DebriefCommand {
             }
             "hook" => {
                 let source = Self::required_value("--source", tail)?;
-                if !["codex", "claude", "gemini"].contains(&source.as_str()) {
-                    return Err(CommandError::Usage("--source must be codex, claude, or gemini".to_string()));
+                if !["codex", "claude", "grok", "gemini"].contains(&source.as_str()) {
+                    return Err(CommandError::Usage("--source must be codex, claude, grok, or gemini".to_string()));
                 }
                 Self::require_flag_pairs(tail, &["--source"])?;
                 Ok(DebriefCommand::Hook { source })
@@ -271,12 +271,20 @@ impl CliMessages {
         format!("모드를 {mode}로 설정했습니다.")
     }
 
-    pub fn start_failed(reason: &str) -> String {
-        format!("서비스를 시작하지 못했습니다. {reason}")
+    pub fn start_failed(code: &str) -> String {
+        format!("서비스를 시작하지 못했습니다. `debrief doctor`로 확인해 주세요. ({code})")
     }
 
-    pub fn stop_failed(reason: &str) -> String {
-        format!("서비스를 중지하지 못했습니다. {reason}")
+    pub fn stop_failed(code: &str) -> String {
+        format!("서비스를 중지하지 못했습니다. `debrief doctor`로 확인해 주세요. ({code})")
+    }
+
+    pub fn command_failed(code: &str) -> String {
+        format!("명령을 끝내지 못했습니다. `debrief doctor`로 확인해 주세요. ({code})")
+    }
+
+    pub fn daemon_run_failed(code: &str) -> String {
+        format!("데몬이 실행 중 멈췄습니다. `debrief doctor`로 확인해 주세요. ({code})")
     }
 
     pub fn config_save_failed(reason: &str) -> String {
@@ -363,8 +371,16 @@ mod tests {
         assert_eq!(CliMessages::RESTARTED, "서비스를 다시 시작했습니다.");
         assert_eq!(CliMessages::ALREADY_RUNNING, "이미 실행 중입니다.");
         assert_eq!(CliMessages::LAUNCH_AGENT_MISSING, "LaunchAgent가 없습니다. debrief install을 실행하세요.");
-        assert_eq!(CliMessages::start_failed("boom"), "서비스를 시작하지 못했습니다. boom");
-        assert_eq!(CliMessages::stop_failed("boom"), "서비스를 중지하지 못했습니다. boom");
+        assert_eq!(
+            CliMessages::start_failed("daemon/start_failed"),
+            "서비스를 시작하지 못했습니다. `debrief doctor`로 확인해 주세요. (daemon/start_failed)"
+        );
+        assert_eq!(
+            CliMessages::stop_failed("daemon/stop_failed"),
+            "서비스를 중지하지 못했습니다. `debrief doctor`로 확인해 주세요. (daemon/stop_failed)"
+        );
+        assert!(CliMessages::command_failed("app/command_failed").contains("app/command_failed"));
+        assert!(!CliMessages::command_failed("app/command_failed").contains("Debug"));
         assert_eq!(CliMessages::config_save_failed("boom"), "설정을 저장하지 못했습니다. boom");
         assert_eq!(CliMessages::EXECUTABLE_PATH_IS_DIRECTORY, "실행 파일 경로가 디렉터리입니다. ~/.local/bin/debrief 를 비운 뒤 다시 설치하세요.");
         assert!(!DebriefCommand::usage_text().to_lowercase().contains("menu bar"));

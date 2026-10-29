@@ -4,8 +4,25 @@ use std::collections::HashMap;
 pub struct Pronunciation;
 
 impl Pronunciation {
+    /// 사용자가 같은 단어를 지우거나 바꾸기 전까지 쓰는 기본 표기. 사용자 사전이 있으면 그것이 이긴다.
+    pub fn defaults() -> HashMap<String, String> {
+        [("debrief", "디브리프"), ("Codex", "코덱스"), ("Grok", "그록"), ("MCP", "엠씨피")]
+            .into_iter()
+            .map(|(term, spoken)| (term.to_string(), spoken.to_string()))
+            .collect()
+    }
+
     /// 단어 경계(앞뒤가 ASCII 영숫자가 아님)에서 대소문자를 무시하고 바꾼다. 긴 항목이 먼저다.
     pub fn apply(text: &str, lexicon: &HashMap<String, String>) -> String {
+        let mut merged = Self::defaults();
+        for (term, spoken) in lexicon {
+            if term.is_empty() {
+                continue;
+            }
+            merged.retain(|existing, _| !existing.eq_ignore_ascii_case(term));
+            merged.insert(term.clone(), spoken.clone());
+        }
+        let lexicon = merged;
         let mut entries: Vec<(&str, &str)> =
             lexicon.iter().filter(|(term, _)| !term.is_empty()).map(|(t, s)| (t.as_str(), s.as_str())).collect();
         entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(b.0)));
@@ -62,5 +79,16 @@ mod tests {
     fn empty_lexicon_or_empty_term_keeps_text() {
         assert_eq!(Pronunciation::apply("그대로입니다.", &HashMap::new()), "그대로입니다.");
         assert_eq!(Pronunciation::apply("abc", &lexicon(&[("", "x")])), "abc");
+    }
+
+    #[test]
+    fn defaults_cover_product_names_until_the_user_overrides_them() {
+        assert_eq!(
+            Pronunciation::apply("debrief와 Codex, grok, MCP.", &HashMap::new()),
+            "디브리프와 코덱스, 그록, 엠씨피."
+        );
+        assert_eq!(Pronunciation::apply("MCP를 바꿨습니다.", &lexicon(&[("MCP", "엠시피")])), "엠시피를 바꿨습니다.");
+        assert_eq!(Pronunciation::apply("Codex", &lexicon(&[("MCP", "엠시피")])), "코덱스");
+        assert_eq!(Pronunciation::apply("MCP", &lexicon(&[("MCP", "MCP")])), "MCP", "같은 표기로 기본값을 끈다");
     }
 }

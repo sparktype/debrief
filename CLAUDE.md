@@ -55,24 +55,25 @@ cargo build --release
 **포함**
 
 - Supertonic 3 + ONNX Runtime (`ort` crate) + 오디오 재생 (`cpal`)
-- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`/`intent`). `intent: "decision"`(main 전용)은 결정 효과음과 함께 quiet·night·도우미 꺼짐을 뚫고 mute만 막습니다. 응답은 `{"ok":true,"mode":…}`(+`muted`) + MCP `install` (`hosts`, `repair`)
+- MCP `speak` (`text`, `voice`, `speed`, `volume`, 선택 `priority`/`lane`/`emotion`/`session`/`intent`). `intent: "decision"`(main 전용)은 결정 효과음과 함께 quiet·night·도우미 꺼짐을 뚫고 mute만 막습니다. 응답은 `{"ok":true,"mode":…}`(+`muted`, 모드가 올라갔을 때만 `reason`) + MCP `install` (`hosts`, `repair`)
 - Unix domain socket + `debrief daemon`의 `ResidentService` (LaunchAgent `com.debrief.tts`, `gui/<uid>`)
-- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `restart` / `status [--line]` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `mic` / `skip [--all]` / `replay [n]` / `allow|deny [id]` / `hook` / `mcp` (`speak` CLI 없음). `skip`·`replay`는 데몬 소켓 제어 명령이며, Claude·Codex의 UserPromptSubmit은 같은 세션의 지난 companion 브리핑(결정 대기 제외)을 자동으로 끊고, replay 기록은 재생된 발화 최대 10개(데몬 메모리)
-- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래). SessionEnd — 세션 상태 정리. Claude 전용 StopFailure · Notification · Elicitation · PermissionDenied · TeammateIdle · TaskCompleted — 고정 문구 알림. Claude·Codex PreCompact · PostCompact — 자동 압축만(시작 고정 문구, 끝 완료음). Codex 전용 Interrupt — 그 세션 브리핑 끊기. 설계는 `docs/superpowers/specs/2026-10-04-hook-notices-design.md`
+- CLI: `install` / `uninstall` / `daemon` / `start` / `stop` / `restart` / `status [--line]` / `doctor` / `mute` / `mode` / `companion` / `dnd` / `mic` / `skip [--all]` / `replay [n]` / `allow|deny [id]` / `hook` / `mcp` (`speak` CLI 없음). `skip`·`replay`는 데몬 소켓 제어 명령이며, Claude·Codex·Grok의 UserPromptSubmit은 같은 세션의 지난 companion 브리핑(결정 대기 제외)을 자동으로 끊고, replay 기록은 재생된 발화 최대 10개(데몬 메모리). 설치 성공 뒤 작업 레인으로 “설치가 끝났습니다. 이제 에이전트가 말하면 들려 드립니다.”를 한 번 말합니다. 재생에 실패해도 설치는 성공이고 `install/chime_unavailable`을 남깁니다. 화면의 설치·시작·중지 실패는 경어와 코드(`app/command_failed`, `daemon/start_failed`, `daemon/stop_failed`, `daemon/run_failed`)이고 Debug는 `last-error.json`에만 둡니다
+- Hooks (Claude/Codex): SessionStart, UserPromptSubmit, SubagentStart — speak 규약 context. PermissionRequest · Stop — 고정 문구 알림(아래). SessionEnd — 세션 상태 정리. Claude 전용 StopFailure · Notification · Elicitation · PermissionDenied · TeammateIdle · TaskCompleted — 고정 문구 알림. Claude·Codex PreCompact · PostCompact — 자동 압축만(시작 고정 문구, 끝 완료음). Codex 전용 Interrupt — 그 세션 브리핑 끊기. 설계는 `docs/superpowers/specs/2026-10-04-hook-notices-design.md`. Codex는 지금 `hooks.json` 인덱스의 `trusted_hash`가 맞을 때만 신뢰로 보고, 없거나 다르면 `/hooks` 검토를 안내합니다(`hooks.codex.untrusted`). `enabled = false`·`[features] hooks = false`·읽기 실패는 각각 `disabled`·`feature_disabled`·`config_unreadable`이며 미신뢰로 부르지 않습니다
+- Grok 훅(`~/.grok/hooks/debrief.json`, `--source grok`): SessionStart·UserPromptSubmit·Stop·StopFailure·Notification·PermissionDenied·PreCompact·PostCompact·StopCancelled·SessionEnd. 부작용만 합니다. UserPromptSubmit은 그 세션의 지난 도우미 브리핑을 끊고 stdout은 `{}`입니다. Grok은 허용 훅의 출력을 버리므로 브리핑 계약은 스킬과 MCP에 둡니다. StopCancelled는 `user_interrupt`일 때만 브리핑을 끊습니다. `permission_prompt`는 알림이 아닙니다. PermissionRequest·SubagentStart·Elicitation·TeammateIdle·TaskCompleted·Interrupt는 설치하지 않습니다. `GROK_HOOK_EVENT`가 있으면 `--source claude`는 알림·끊기 없이 `{}`만 돌려 같은 이벤트가 두 번 나가지 않게 합니다. 집 밖 폴더는 `/hooks-trust` 전까지 훅이 돌지 않고, 훅 파일이 있을 때만 `hooks.grok.folder_untrusted`를 냅니다
 - 훅 알림(에이전트가 말할 수 없는 순간): 권한 요청, API 오류로 중단(StopFailure), 입력 대기(Notification idle_prompt·agent_needs_input / Elicitation), 자동 모드 거부(PermissionDenied), 에이전트가 말하지 않은 `longTurnSeconds`(기본 60) 이상 턴의 완료. 팀 이벤트(TeammateIdle·TaskCompleted)는 `teamNotices`를 켠 경우만. 잦은 유형은 쿨다운(2~5분). LLM 생성 없는 고정 문구(`lane=work`)이며 `mute`로만 꺼집니다. 알림 앞에 효과음(주의·실패·완료)이 붙고 `earcons: false`로 끌 수 있습니다
-- 화면 대체 출력: 데몬 소켓이 응답하지 않으면 SessionStart·UserPromptSubmit이 `systemMessage`로 `debrief restart`를 안내(Claude·Codex, 세션당 10분). 음소거·전송 실패로 소리가 안 나는 훅 알림은 Claude `terminalSequence` 데스크톱 알림(OSC 777/9)
-- 브리핑 리마인더(옵트인 `briefingReminder`): 말없이 `longTurnSeconds` 넘은 턴의 Stop을 한 번 되돌려 speak를 요청(Claude Stop `additionalContext`, Codex `decision: block`, `stop_hook_active`면 기존 완료 알림). quiet·night·음소거 제외
+- 화면 대체 출력: 데몬 소켓이 응답하지 않으면 `systemMessage`로 `debrief restart`를 안내합니다(Claude·Codex는 SessionStart·UserPromptSubmit, Grok은 SessionStart만, 세션당 10분). 음소거·전송 실패로 소리가 안 나는 훅 알림은 Claude `terminalSequence` 데스크톱 알림(OSC 777/9)
+- 브리핑 리마인더(옵트인 `briefingReminder`): 말없이 `longTurnSeconds` 넘은 턴의 Stop을 한 번 되돌려 speak를 요청(Claude·Grok Stop `additionalContext`, Codex `decision: block`, `stop_hook_active`면 기존 완료 알림). quiet·night·음소거 제외. 기본 꺼짐
 - 권한 중계(옵트인 `permissionRelay`): `debrief mcp`가 Claude Code 채널 능력(`claude/channel`·`claude/channel/permission`)을 선언하고, 사용자가 `--dangerously-load-development-channels server:debrief`로 고른 세션의 승인 요청을 `Application Support/debrief/permissions`에 남깁니다. `debrief allow|deny [id]` 판정을 같은 MCP 프로세스가 `notifications/claude/channel/permission`으로 돌려줍니다. 채널 이벤트(세션에 텍스트 주입)는 보내지 않습니다
 - 멀티 세션: 다른 프로젝트 세션이 30분 안에 활성이면 speak 앞에 `"<프로젝트>. "`를 붙입니다(`sessionLabel`, 기본 켜짐)
-- 발음 사전: 설정 `pronunciations`(단어 → 읽을 표기)를 데몬이 합성 직전에 단어 단위·대소문자 무시로 적용합니다
-- 대기열 정리: 45초 넘게 기다린 발화는 재생 차례에 버립니다(결정 대기·다시 듣기 제외). 대기 중인 서브에이전트 완료가 겹치면 "서브에이전트 작업 N개가 끝났습니다." 한 줄로 합칩니다
+- 발음 사전: 설정 `pronunciations`(단어 → 읽을 표기)를 데몬이 합성 직전에 단어 단위·대소문자 무시로 적용합니다. 사용자 항목이 없으면 debrief·Codex·Grok·MCP를 디브리프·코덱스·그록·엠씨피로 읽습니다. 같은 단어의 사용자 표기(단어 그대로 포함)가 이기고 파일은 바꾸지 않습니다
+- 대기열 정리: 45초 넘게 기다린 발화는 재생 차례에 버립니다(결정 대기·다시 듣기 제외). 그때 버린 발화에 도우미 레인이 있으면 완료 효과음을 한 번 냅니다. 작업 레인은 조용합니다. 대기 중인 서브에이전트 완료가 겹치면 "서브에이전트 작업 N개가 끝났습니다." 한 줄로 합칩니다
 - 방해금지 연동(옵트인 `debrief dnd on`): macOS 방해금지가 켜지면 유효 모드를 최소 quiet로 올립니다(저장된 모드는 그대로, night은 유지). `debrief doctor`의 `dnd.readable`로 판독 여부 확인. `doctor`는 호스트별 훅 이벤트 누락도 `hooks.<host>.missing`으로 알려 줍니다
 - 마이크 사용 연동(옵트인 `debrief mic on`): 다른 앱이 마이크 입력을 쓰는 동안(CoreAudio 프로세스 `IsRunningInput`, macOS 14.2+) 유효 모드를 최소 quiet로 올립니다. 오디오를 녹음·분석하지 않습니다. `doctor`의 `mic.readable`·`mic.unreadable`로 판독 여부 확인
 - Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
-- Grok: `~/.grok/config.toml` MCP + 스킬 (훅 없음); 도구 이름 `debrief__speak` · `debrief__install`
+- Grok: `~/.grok/config.toml` MCP + `~/.grok/hooks/debrief.json` 부작용 훅 + 스킬. 턴 브리핑 문단은 훅이 넣지 않습니다. 도구 이름 `debrief__speak` · `debrief__install`
 - Gemini CLI(옵트인 `debrief install --gemini`, 이후 플래그 없는 repair·uninstall에 포함): `~/.gemini/settings.json`에 `mcpServers.debrief` + 훅. 네이티브 이름 매핑 BeforeAgent→UserPromptSubmit, AfterAgent→Stop, Notification(ToolPermission)→PermissionRequest, PreCompress→PreCompact(`HookEventName::native_name`). 훅 timeout은 밀리초(5000). 스킬은 따로 두지 않습니다(Gemini가 `~/.agents/skills` 별칭을 읽음). 도구 이름 `mcp_debrief_speak` · `mcp_debrief_install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`
-- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. 시작 계열 훅 context는 유효 모드 지침(focus·quiet·night·muted)을 덧붙입니다. lane·emotion은 `2026-07-22-reflective-companion-design.md`
+- 턴 브리핑 계약: 사용자에게 보이는 턴마다 바뀐 점 + 다음 행동 한 줄 (`lane=companion`). 도우미 목소리는 세션마다 F1–M5를 돌고, 같은 `session`은 같은 목소리를 유지합니다. 코드를 개발·분석한 턴의 다음 행동은 사용자가 직접 확인할 핵심(동작 변경·삭제·보안/데이터 경로·에이전트의 가정·확인/되돌리기 방법)으로 삼아 코드 오너십을 지키고 인지 부채를 줄입니다(서브에이전트·사소한 변경 제외). 새 사실도 다음 행동도 없을 때만 침묵. Claude·Codex 시작 계열 훅 context는 유효 모드 지침(focus·quiet·night·muted, quiet는 `(mic)`·`(dnd)`·`(dnd, mic)`)을 덧붙입니다. Grok은 그 문단을 훅으로 받지 않습니다. lane·emotion은 `2026-07-22-reflective-companion-design.md`
 
 **제외**
 
@@ -102,8 +103,10 @@ Claude / Codex start hooks
   → SubagentStop 은 설치하지 않음
 
 Grok
-  → 훅 context 없음 → 스킬 + MCP 도구 설명이 계약
+  → ~/.grok/hooks/debrief.json (--source grok): 지난 브리핑 끊기, 고정 알림, SessionStart 데몬 다운 systemMessage
+  → 허용 훅 stdout은 버려지므로 턴 브리핑 문단은 넣지 않음 → 스킬 + MCP 도구 설명이 계약
   → /mcps 로 도구 갱신
+  → 집 밖 폴더는 /hooks-trust
 ```
 
 에이전트는 사용자에게 보이는 턴이 끝나면 MCP tool `speak`를 **한 번** 호출합니다 (한 턴에 0–1회).  

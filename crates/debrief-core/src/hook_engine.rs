@@ -1,7 +1,7 @@
 // 훅 이벤트를 호스트에 돌려줄 stdout(JSON)으로 변환한다. speak 계약은 MCP speak 도구가 맡고,
 // 이 엔진은 에이전트가 말할 수 없는 두 순간(권한 요청, 말없이 끝난 긴 턴)에 한해
 // 고정 문구 알림 요청(`HookResult.notice`)을 돌려준다. 전송은 호출자(러너)가 한다.
-use crate::configuration::DebriefConfiguration;
+use crate::configuration::{DebriefConfiguration, ModeRestriction};
 use crate::hook_adapter::HookAdapter;
 use crate::hook_event::{HookEvent, HookEventName, HostSource};
 use crate::session_state::{now_seconds, project_label, SessionStateStore};
@@ -26,7 +26,7 @@ pub struct HookEngine<'a> {
     session_voices: Option<&'a SessionVoiceStore>,
     state: Option<&'a SessionStateStore>,
     configuration: DebriefConfiguration,
-    dnd_raised: bool,
+    restriction: Option<ModeRestriction>,
 }
 
 impl<'a> HookEngine<'a> {
@@ -34,17 +34,21 @@ impl<'a> HookEngine<'a> {
     const NOTICE_VOLUME: f64 = 0.85;
 
     pub fn new(session_voices: Option<&'a SessionVoiceStore>) -> Self {
-        HookEngine { session_voices, state: None, configuration: DebriefConfiguration::default(), dnd_raised: false }
+        HookEngine { session_voices, state: None, configuration: DebriefConfiguration::default(), restriction: None }
     }
 
-    /// 방해금지 때문에 유효 모드가 올라갔는지 — 모드 지침에 `(dnd)`를 붙인다.
-    pub fn with_dnd_raised(mut self, raised: bool) -> Self {
-        self.dnd_raised = raised;
+    /// 방해금지·마이크 때문에 유효 모드가 올라갔으면 모드 지침에 이유를 붙인다.
+    pub fn with_dnd_raised(self, raised: bool) -> Self {
+        self.with_restriction(raised.then_some(ModeRestriction::DoNotDisturb))
+    }
+
+    pub fn with_restriction(mut self, restriction: Option<ModeRestriction>) -> Self {
+        self.restriction = restriction;
         self
     }
 
     /// 유효 모드별 행동 규칙 한 줄. 에이전트가 말투와 침묵을 스스로 맞추게 한다.
-    pub fn mode_guidance(configuration: &DebriefConfiguration, dnd_raised: bool) -> String {
+    pub fn mode_guidance(configuration: &DebriefConfiguration, restriction: Option<ModeRestriction>) -> String {
         use crate::configuration::DebriefMode;
         if configuration.muted {
             return "debrief muted: do not call speak.".to_string();
@@ -54,7 +58,7 @@ impl<'a> HookEngine<'a> {
             DebriefMode::Normal | DebriefMode::Verbose => return decision.to_string(),
             DebriefMode::Focus => "Mode focus: one sentence.".to_string(),
             DebriefMode::Quiet => {
-                format!("Mode quiet{}: one short sentence, or silence.", if dnd_raised { " (dnd)" } else { "" })
+                format!("Mode quiet{}: one short sentence, or silence.", restriction.map(|reason| reason.guidance_tag()).unwrap_or(""))
             }
             DebriefMode::Night => "Mode night: speak only with intent=decision.".to_string(),
         };
@@ -85,6 +89,13 @@ impl<'a> HookEngine<'a> {
         }
         match event.name {
             HookEventName::SessionStart | HookEventName::UserPromptSubmit | HookEventName::SubagentStart => {
+                // Grok은 허용한 UserPromptSubmit의 stdout을 버린다. 컨텍스트를 늘리지 않고 끊기만 한다.
+                // SessionStart는 systemMessage만 읽으므로 브리핑 문단을 넣지 않는다.
+                if source == HostSource::Grok && !matches!(event.name, HookEventName::SubagentStart) {
+                    let control = matches!(event.name, HookEventName::UserPromptSubmit)
+                        .then(|| crate::daemon_control::Control::SkipSession(event.session_id.clone()));
+                    return HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice, control };
+                }
                 // 서브에이전트는 역할 보이스를 유지하고 세션 로테이션의 슬롯을 차지하지 않는다.
                 let session_voice = if matches!(event.name, HookEventName::SubagentStart) {
                     None
@@ -100,7 +111,7 @@ impl<'a> HookEngine<'a> {
                 let context = if matches!(event.name, HookEventName::SubagentStart) {
                     context
                 } else {
-                    format!("{context} {}", Self::mode_guidance(&self.configuration, self.dnd_raised))
+                    format!("{context} {}", Self::mode_guidance(&self.configuration, self.restriction))
                 };
                 let stdout = HookAdapter::context_output(&context, event, source);
                 let control = matches!(event.name, HookEventName::UserPromptSubmit)
@@ -108,9 +119,11 @@ impl<'a> HookEngine<'a> {
                 HookResult { stdout, submitted: false, delivery_error: None, notice, control }
             }
             _ => {
-                // 중단된 턴의 브리핑은 이미 낡았다(Codex Interrupt).
-                let control = matches!(event.name, HookEventName::Interrupt)
-                    .then(|| crate::daemon_control::Control::SkipSession(event.session_id.clone()));
+                // Codex Interrupt와 Grok StopCancelled(user_interrupt)만 그 세션 브리핑을 끊는다.
+                // 다른 취소 사유는 결정 대기를 자르지 않고, 여기서 말도 하지 않는다.
+                let skip = matches!(event.name, HookEventName::Interrupt)
+                    || (event.name == HookEventName::StopCancelled && event.subtype.as_deref() == Some("user_interrupt"));
+                let control = skip.then(|| crate::daemon_control::Control::SkipSession(event.session_id.clone()));
                 HookResult { stdout: HookAdapter::success_output(), submitted: false, delivery_error: None, notice, control }
             }
         }
@@ -322,6 +335,57 @@ mod tests {
         assert_eq!(result.control, Some(Control::SkipSession("alpha".to_string())));
         assert!(result.notice.is_none());
         assert_eq!(result.stdout, b"{}");
+    }
+
+    #[test]
+    fn grok_prompt_skips_without_lengthening_context_and_stop_cancelled_only_cuts_user_interrupts() {
+        use crate::daemon_control::Control;
+        let engine = HookEngine::new(None);
+        let prompt = engine.handle(&event(HookEventName::UserPromptSubmit, "alpha", Some("t"), None, None), HostSource::Grok);
+        assert_eq!(prompt.control, Some(Control::SkipSession("alpha".to_string())));
+        assert_eq!(prompt.stdout, b"{}");
+        assert!(prompt.notice.is_none());
+        let start = engine.handle(&event(HookEventName::SessionStart, "alpha", None, None, None), HostSource::Grok);
+        assert_eq!(start.stdout, b"{}");
+        assert!(start.control.is_none());
+
+        let mut cancelled = event(HookEventName::StopCancelled, "alpha", None, None, None);
+        cancelled.subtype = Some("user_interrupt".to_string());
+        let cut = engine.handle(&cancelled, HostSource::Grok);
+        assert_eq!(cut.control, Some(Control::SkipSession("alpha".to_string())));
+        assert!(cut.notice.is_none());
+
+        cancelled.subtype = Some("permission_rejected".to_string());
+        let kept = engine.handle(&cancelled, HostSource::Grok);
+        assert!(kept.control.is_none());
+        assert!(kept.notice.is_none());
+    }
+
+    #[test]
+    fn grok_stop_reminder_uses_additional_context_not_a_block() {
+        let dir = state_dir("grok-reminder");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let configuration = DebriefConfiguration { briefing_reminder: true, ..DebriefConfiguration::default() };
+        let engine = engine_with(&state, configuration);
+        engine.handle_at(&event_in(HookEventName::UserPromptSubmit, "s", "/w/p"), HostSource::Grok, 0);
+        let stop = engine.handle_at(&event_in(HookEventName::Stop, "s", "/w/p"), HostSource::Grok, 120);
+        let output: serde_json::Value = serde_json::from_slice(&stop.stdout).unwrap();
+        assert!(output.get("decision").is_none());
+        assert!(output["hookSpecificOutput"]["additionalContext"].as_str().unwrap().contains("speak"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn permission_prompt_notification_is_not_a_notice() {
+        let dir = state_dir("permission-prompt");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let engine = engine_with(&state, DebriefConfiguration::default());
+        let mut idle = event(HookEventName::Notification, "s", None, None, None);
+        idle.subtype = Some("permission_prompt".to_string());
+        assert!(engine.handle(&idle, HostSource::Grok).notice.is_none());
+        idle.subtype = Some("idle_prompt".to_string());
+        assert_eq!(engine.handle(&idle, HostSource::Grok).notice.unwrap().envelope.text, "입력을 기다리고 있습니다.");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -724,14 +788,15 @@ mod tests {
 
     #[test]
     fn mode_guidance_matches_effective_state() {
-        use crate::configuration::DebriefMode;
+        use crate::configuration::{DebriefMode, ModeRestriction};
         let config = |mode, muted| DebriefConfiguration { mode, muted, ..Default::default() };
-        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Normal, false), false), "Needs a user decision? pass intent=decision.");
-        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Verbose, false), false), "Needs a user decision? pass intent=decision.");
-        assert!(HookEngine::mode_guidance(&config(DebriefMode::Focus, false), false).ends_with("Mode focus: one sentence."));
-        assert!(HookEngine::mode_guidance(&config(DebriefMode::Quiet, false), true).contains("Mode quiet (dnd)"));
-        assert!(HookEngine::mode_guidance(&config(DebriefMode::Night, false), false).contains("speak only with intent=decision"));
-        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Night, true), false), "debrief muted: do not call speak.");
+        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Normal, false), None), "Needs a user decision? pass intent=decision.");
+        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Verbose, false), None), "Needs a user decision? pass intent=decision.");
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Focus, false), None).ends_with("Mode focus: one sentence."));
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Quiet, false), Some(ModeRestriction::DoNotDisturb)).contains("Mode quiet (dnd)"));
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Quiet, false), Some(ModeRestriction::Microphone)).contains("Mode quiet (mic)"));
+        assert!(HookEngine::mode_guidance(&config(DebriefMode::Night, false), None).contains("speak only with intent=decision"));
+        assert_eq!(HookEngine::mode_guidance(&config(DebriefMode::Night, true), None), "debrief muted: do not call speak.");
     }
 
     #[test]

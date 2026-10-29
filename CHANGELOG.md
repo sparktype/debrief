@@ -5,6 +5,21 @@
 
 ## [Unreleased]
 
+### 추가
+
+- Grok 부작용 훅 `~/.grok/hooks/debrief.json`: SessionStart, UserPromptSubmit, Stop, StopFailure, Notification, PermissionDenied, PreCompact, PostCompact, StopCancelled, SessionEnd. 턴 브리핑 문단은 넣지 않습니다. UserPromptSubmit은 그 세션의 지난 도우미 브리핑만 끊습니다. `StopCancelled`의 `user_interrupt`만 브리핑을 끊습니다. 데몬이 없으면 SessionStart의 `systemMessage`가 `debrief restart`를 안내합니다. 집 밖 폴더는 `/hooks-trust`가 필요하고, 아니면 `debrief doctor`가 `hooks.grok.folder_untrusted`를 냅니다. `GROK_HOOK_EVENT`가 있으면 Claude 출처 훅은 같은 이벤트를 다시 처리하지 않습니다.
+- Codex 훅 신뢰: 지금 `hooks.json` 인덱스의 해시가 없거나 다르면 설치와 `debrief doctor`(`hooks.codex.untrusted`)가 `/hooks` 검토를 안내합니다. 해시가 맞으면 그 문장은 없습니다. `enabled = false`는 `hooks.codex.disabled`, `[features] hooks = false`는 `hooks.codex.feature_disabled`입니다. config.toml을 읽지 못하면 `hooks.codex.config_unreadable`이며 신뢰했다고 말하지 않습니다.
+- `debrief status`가 모드가 올라간 이유를 말합니다. `speak` 응답에도 그때만 `reason`이 붙습니다. quiet 지침에는 `(mic)`, `(dnd)`, `(dnd, mic)`가 붙습니다.
+- 45초를 넘긴 도우미 발화를 버릴 때 완료 효과음을 한 번 냅니다. 결정 대기·다시 듣기·작업 레인은 그대로 조용합니다.
+- 설치가 끝나면 “설치가 끝났습니다. 이제 에이전트가 말하면 들려 드립니다.”를 한 번 말합니다. 데몬이나 오디오가 없어도 설치는 성공이고, `install/chime_unavailable`이 남습니다.
+- 기본 발음: debrief, Codex, Grok, MCP. 사용자 사전이 있으면 그것이 이기고, 단어 그대로 적으면 기본 읽기를 끕니다. 설정 파일은 바꾸지 않습니다.
+- 설치·시작·중지·데몬 실패의 화면 문구를 경어와 안정된 코드로 바꿉니다(`app/command_failed`, `daemon/start_failed`, `daemon/stop_failed`, `daemon/run_failed`). 자세한 원인은 `last-error.json`에 남습니다.
+
+### 변경
+
+- `debrief status --line`은 Claude Code와 Grok Build 상태 표시줄에 쓸 수 있습니다. 한 줄의 내용은 그대로입니다.
+- 옵트인 `briefingReminder`의 Grok Stop은 `additionalContext`입니다. Codex는 `decision: block`입니다. 기본값은 여전히 꺼짐입니다.
+
 ## [0.4.0] - 2026-10-27
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 적용합니다. 훅이 바뀌었으니 Codex는 `/hooks`에서 debrief 훅을 다시 신뢰하고, Claude Code는 새 세션부터 반영됩니다.

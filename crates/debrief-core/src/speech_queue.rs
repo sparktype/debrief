@@ -2,8 +2,11 @@
 //
 // Swift 원본은 actor + CheckedContinuation으로 대기자를 깨우지만, 이 재작성은 동기(std)
 // 전용이므로(설계 문서의 동시성 모델 참고) Mutex + Condvar로 같은 동작을 구현한다.
+use crate::earcon::Earcon;
+use crate::speech_emotion::SpeechEmotion;
 use crate::speech_envelope::SpeechEnvelope;
-use crate::speech_request::SpeechRequest;
+use crate::speech_lane::SpeechLane;
+use crate::speech_request::{SpeechPriority, SpeechRequest};
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex};
@@ -130,11 +133,23 @@ impl SpeechQueue {
     pub fn next(&self) -> SpeechRequest {
         let mut state = self.state.lock().unwrap();
         loop {
+            let mut dropped_companion = false;
             while let Some(pending) = state.pending.pop_front() {
                 let request = &pending.request;
                 if request.decision || request.replayed || pending.enqueued_at.elapsed() <= self.max_wait {
+                    if dropped_companion {
+                        state.pending.push_front(pending);
+                        return discarded_companion_cue();
+                    }
                     return pending.request;
                 }
+                // 결정 대기·다시 듣기·work 레인은 조용히 버린다. 도우미 문장만 완료음 한 번으로 구분한다.
+                if matches!(request.lane, SpeechLane::Companion) && !request.decision && !request.replayed {
+                    dropped_companion = true;
+                }
+            }
+            if dropped_companion {
+                return discarded_companion_cue();
             }
             state = self.condvar.wait(state).unwrap();
         }
@@ -163,6 +178,21 @@ impl SpeechQueue {
         let mut hasher = Sha256::new();
         hasher.update(&data);
         hasher.finalize().into()
+    }
+}
+
+/// 너무 늦어 버린 도우미 문장과, 고장난 침묵을 구분하는 완료음만 있는 요청.
+fn discarded_companion_cue() -> SpeechRequest {
+    SpeechRequest {
+        envelope: SpeechEnvelope { v: 1, text: String::new(), voice: "F1".to_string(), speed: 1.0, volume: 0.85 },
+        priority: SpeechPriority::Main,
+        lane: SpeechLane::Companion,
+        emotion: SpeechEmotion::Neutral,
+        agent_type: None,
+        decision: false,
+        cue: Some(Earcon::Done),
+        replayed: false,
+        session: None,
     }
 }
 
@@ -289,8 +319,25 @@ mod tests {
         queue.enqueue(decision("old-decision"));
         std::thread::sleep(Duration::from_millis(40));
         queue.enqueue(request(SpeechPriority::Main, "fresh"));
-        let texts: Vec<String> = (0..3).map(|_| queue.next().envelope.text).collect();
-        assert_eq!(texts, vec!["old-decision", "old-replay", "fresh"]);
+        let got: Vec<SpeechRequest> = (0..4).map(|_| queue.next()).collect();
+        assert_eq!(got[0].envelope.text, "old-decision");
+        assert!(got[1].is_cue_only());
+        assert_eq!(got[1].cue, Some(crate::earcon::Earcon::Done));
+        assert_eq!(got[2].envelope.text, "old-replay");
+        assert_eq!(got[3].envelope.text, "fresh");
+    }
+
+    #[test]
+    fn next_does_not_cue_when_only_a_work_line_expires() {
+        let queue = SpeechQueue::new(8, Duration::ZERO).with_max_wait(Duration::from_millis(20));
+        let mut stale = request(SpeechPriority::Main, "work-stale");
+        stale.lane = crate::speech_lane::SpeechLane::Work;
+        queue.enqueue(stale);
+        std::thread::sleep(Duration::from_millis(40));
+        queue.enqueue(request(SpeechPriority::Main, "fresh"));
+        let next = queue.next();
+        assert_eq!(next.envelope.text, "fresh");
+        assert!(!next.is_cue_only());
     }
 
     #[test]

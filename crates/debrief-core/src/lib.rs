@@ -1,4 +1,5 @@
 pub mod audio_player;
+pub mod codex_trust;
 pub mod configuration;
 pub mod daemon_control;
 pub mod debrief_command;
@@ -12,6 +13,7 @@ pub mod hook_command_runner;
 pub mod hook_engine;
 pub mod hook_event;
 pub mod host_installer;
+pub mod install_chime;
 pub mod host_mcp_status;
 pub mod install_manifest;
 pub mod launch_agent_control;

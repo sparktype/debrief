@@ -40,6 +40,8 @@ pub enum HookEventName {
     PostCompact,
     /// Codex 전용: 사용자가 메인 스레드의 진행 중 턴을 중단했다.
     Interrupt,
+    /// Grok: 진행 중 턴이 취소됐다. `user_interrupt`만 그 세션 브리핑을 끊는다.
+    StopCancelled,
 }
 
 impl HookEventName {
@@ -61,6 +63,7 @@ impl HookEventName {
             HookEventName::PreCompact => "PreCompact",
             HookEventName::PostCompact => "PostCompact",
             HookEventName::Interrupt => "Interrupt",
+            HookEventName::StopCancelled => "StopCancelled",
         }
     }
 
@@ -82,6 +85,7 @@ impl HookEventName {
             "PreCompact" => Some(HookEventName::PreCompact),
             "PostCompact" => Some(HookEventName::PostCompact),
             "Interrupt" => Some(HookEventName::Interrupt),
+            "StopCancelled" => Some(HookEventName::StopCancelled),
             _ => None,
         }
     }

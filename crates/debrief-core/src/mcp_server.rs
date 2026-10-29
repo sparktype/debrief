@@ -361,15 +361,18 @@ where
                         &self.diagnostics,
                         companion_voice.as_deref(),
                     );
-                    // 훅이 없는 호스트(Grok)도 다음 턴 말투를 맞추도록 유효 모드를 돌려준다.
+                    // Grok은 훅으로 모드 문단을 받지 않는다. 유효 모드와, 올라갔다면 이유를 돌려준다.
                     if !result.is_error {
-                        let effective = crate::configuration::DebriefConfiguration::load_effective(
+                        let (effective, restriction) = crate::configuration::DebriefConfiguration::load_effective_detail(
                             &crate::paths::DebriefPaths::for_home(&self.home).config_url,
                             &self.home,
                         );
                         let mut reply = json!({"ok": true, "mode": effective.mode.as_str()});
                         if effective.muted {
                             reply["muted"] = json!(true);
+                        }
+                        if let Some(restriction) = restriction {
+                            reply["reason"] = json!(restriction.sentence());
                         }
                         result.message = reply.to_string();
                     }
@@ -383,10 +386,16 @@ where
                 }
                 Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
             },
-            "install" => match crate::mcp_install_tool::McpInstallTool::parse_arguments(arguments) {
-                Ok(parsed) => crate::mcp_install_tool::McpInstallTool::execute(&parsed, &self.install_runner, &self.diagnostics),
-                Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
-            },
+            "install" => {
+                let result = match crate::mcp_install_tool::McpInstallTool::parse_arguments(arguments) {
+                    Ok(parsed) => crate::mcp_install_tool::McpInstallTool::execute(&parsed, &self.install_runner, &self.diagnostics),
+                    Err(error) => McpToolCallResult { is_error: true, message: format!("{error:?}") },
+                };
+                if !result.is_error {
+                    crate::install_chime::InstallChime::try_play(&self.home);
+                }
+                result
+            }
             _ => McpToolCallResult { is_error: true, message: "unknown tool".to_string() },
         }
     }

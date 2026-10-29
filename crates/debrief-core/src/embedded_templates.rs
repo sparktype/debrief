@@ -44,6 +44,21 @@ impl EmbeddedTemplates {
     const CODEX_ONLY_HOOK_EVENTS: [HookEventName; 3] =
         [HookEventName::PreCompact, HookEventName::PostCompact, HookEventName::Interrupt];
 
+    /// Grok은 허용하는 UserPromptSubmit의 stdout을 버린다. 브리핑 계약은 스킬과 MCP에 두고,
+    /// 훅은 모델이 읽지 않아도 되는 부작용만 한다.
+    const GROK_HOOK_EVENTS: [HookEventName; 10] = [
+        HookEventName::SessionStart,
+        HookEventName::UserPromptSubmit,
+        HookEventName::Stop,
+        HookEventName::StopFailure,
+        HookEventName::Notification,
+        HookEventName::PermissionDenied,
+        HookEventName::PreCompact,
+        HookEventName::PostCompact,
+        HookEventName::StopCancelled,
+        HookEventName::SessionEnd,
+    ];
+
     /// Gemini CLI가 지원하는 순간(서브에이전트 시작·압축 끝은 없다). 키는 설치기가 `native_name`으로 바꾼다.
     const GEMINI_HOOK_EVENTS: [HookEventName; 6] = [
         HookEventName::SessionStart,
@@ -55,16 +70,20 @@ impl EmbeddedTemplates {
     ];
 
     pub fn hook_events(host: HostSource) -> Vec<HookEventName> {
-        if host == HostSource::Gemini {
-            return Self::GEMINI_HOOK_EVENTS.to_vec();
-        }
-        let mut events = Self::COMMON_HOOK_EVENTS.to_vec();
         match host {
-            HostSource::Claude => events.extend(Self::CLAUDE_ONLY_HOOK_EVENTS),
-            HostSource::Codex => events.extend(Self::CODEX_ONLY_HOOK_EVENTS),
-            HostSource::Grok | HostSource::Gemini => {}
+            HostSource::Gemini => Self::GEMINI_HOOK_EVENTS.to_vec(),
+            HostSource::Grok => Self::GROK_HOOK_EVENTS.to_vec(),
+            HostSource::Claude => {
+                let mut events = Self::COMMON_HOOK_EVENTS.to_vec();
+                events.extend(Self::CLAUDE_ONLY_HOOK_EVENTS);
+                events
+            }
+            HostSource::Codex => {
+                let mut events = Self::COMMON_HOOK_EVENTS.to_vec();
+                events.extend(Self::CODEX_ONLY_HOOK_EVENTS);
+                events
+            }
         }
-        events
     }
     /// setup = 안내, install = MCP/셸 설치 동작, speak = MCP speak 계약.
     pub const SKILL_NAMES: [&'static str; 3] = ["setup", "install", "speak"];
@@ -92,7 +111,7 @@ impl EmbeddedTemplates {
         )
     }
 
-    /// Grok 스킬은 `~/.grok/skills`에 있다 (SessionStart 컨텍스트 주입 없음).
+    /// Grok 스킬은 `~/.grok/skills`에 있다. 훅은 부작용만 하고 턴 브리핑 문단은 넣지 않는다.
     pub fn grok_skills(executable: &Path) -> Vec<(&'static str, String)> {
         let command = Self::shell_quote(&executable.to_string_lossy());
         vec![
@@ -102,11 +121,11 @@ impl EmbeddedTemplates {
                     "debrief-setup",
                     "Guide local debrief TTS setup for Grok Build. Prefer skill debrief-install / MCP debrief__install; then debrief-speak at turn end.",
                     &format!(
-                        "Grok does **not** use SessionStart hook context for speech — durable skills + MCP tools carry the contract.\n\n\
+                        "Grok does **not** use SessionStart hook context for speech — durable skills + MCP tools carry the contract. Side-effect hooks in `~/.grok/hooks/debrief.json` only skip a stale briefing, speak fixed notices, and show a daemon-down `systemMessage` on SessionStart. They do not inject this briefing. Outside your home directory, run `/hooks-trust` or those hooks stay off.\n\n\
 1. Run skill **debrief-install** (or shell `{command} install --grok --repair`).\n\
 2. Refresh MCP with `/mcps` until `debrief__speak` and `debrief__install` appear.\n\
 3. At turn end, use skill **debrief-speak** → MCP `debrief__speak` once: what changed, then one next action.\n\
-4. Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`.\n\n\
+4. Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. `debrief status --line` is one line for a Grok Build status line.\n\n\
 Config: `~/.grok/config.toml` section `[mcp_servers.debrief]`.\n\
 Skills dir: `~/.grok/skills/debrief-{{setup,install,speak}}/`."
                     ),
@@ -144,7 +163,7 @@ Or the installed executable:\n\n\
     pub fn grok_speak_skill_markdown(executable: &Path) -> String {
         Self::companion_speak_skill_markdown(
             "debrief speak (Grok)",
-            "Grok has **no SessionStart speech context** — this skill is the durable contract.\n\n\
+            "Grok has **no SessionStart speech context** — this skill is the durable contract. Hook stdout is not the briefing.\n\n\
 1. `search_tool` query `debrief speak` if needed\n\
 2. `use_tool` **`debrief__speak`** with JSON below",
             executable,
@@ -191,7 +210,7 @@ The server rotates the companion voice across F1–M5, one voice per session, an
 | lane | no | `companion` (default) / `work` |\n\
 | emotion | no | `neutral` `warm` (long work done) `focused` (mid-task) `concerned` (blocked or failing) `relieved` (a blocker clears) `tired` (rarely). Sets sentence pauses, a softer volume for tired, and a soft cue: relieved laugh, warm breath, tired sigh. Speed is never changed |\n\
 | intent | no | `decision` only: the user must decide or approve before work can continue. Plays through quiet/night/companion-off with a chime; mute still silences it. Main priority only. |\n\n\
-Hooks append the effective mode: focus = one sentence, quiet = one short sentence or silence, night = speak only with intent=decision, muted = do not call speak. Grok has no hooks: the speak reply includes `mode` (and `muted`) — follow it next turn.\n\n\
+Hooks append the effective mode: focus = one sentence, quiet = one short sentence or silence, night = speak only with intent=decision, muted = do not call speak. Grok hooks do not deliver this paragraph (an allowing UserPromptSubmit discards stdout). The speak reply includes `mode` (and `muted`, plus `reason` when the microphone or Do Not Disturb raised quiet) — follow it next turn.\n\n\
 Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
 Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief skip [--all]`, `debrief replay [n]`, `debrief doctor`. Binary: `{executable}`.",
             title = title,
@@ -302,6 +321,19 @@ mod tests {
         let claude_only =
             ["StopFailure", "Notification", "Elicitation", "PermissionDenied", "TeammateIdle", "TaskCompleted", "PreCompact", "PostCompact"];
         assert_eq!(names(HostSource::Claude), common.into_iter().chain(claude_only).collect());
+        let grok = [
+            "SessionStart",
+            "UserPromptSubmit",
+            "Stop",
+            "StopFailure",
+            "Notification",
+            "PermissionDenied",
+            "PreCompact",
+            "PostCompact",
+            "StopCancelled",
+            "SessionEnd",
+        ];
+        assert_eq!(names(HostSource::Grok), grok.into_iter().collect());
         let skill_keys: std::collections::HashSet<_> =
             EmbeddedTemplates::skills(executable).into_iter().map(|(k, _)| k).collect();
         assert_eq!(skill_keys, ["setup", "install", "speak"].into_iter().collect());

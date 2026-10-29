@@ -87,7 +87,7 @@ debrief mcp
 | --- | --- | --- | --- |
 | Codex | `~/.codex/config.toml` → `[mcp_servers.debrief]` | `~/.agents/skills/debrief-*` | start-family in `~/.codex/hooks.json` |
 | Claude | `~/.claude.json` → `mcpServers["debrief"]` | `~/.claude/skills/debrief-*` | start-family in `~/.claude/settings.json` |
-| Grok | `~/.grok/config.toml` → `[mcp_servers.debrief]` | `~/.grok/skills/debrief-*` | **none** (SessionStart stdout ignored) |
+| Grok | `~/.grok/config.toml` → `[mcp_servers.debrief]` | `~/.grok/skills/debrief-*` | `~/.grok/hooks/debrief.json`, ten side-effect events. UserPromptSubmit stdout, including `additionalContext`, is discarded, so the briefing contract stays in skills and MCP. SessionStart may set `systemMessage` when the daemon is down. |
 
 Skills installed for every host: **`debrief-setup`**, **`debrief-install`**, **`debrief-speak`**. Grok skill bodies use Grok tool names (`debrief__speak` / `debrief__install`) and `/mcps`.
 
@@ -108,7 +108,7 @@ MCP registration points at `~/.local/bin/debrief` with `args: ["mcp"]`. TOML hos
 | emotion | optional: `neutral` · `warm` · `focused` · `concerned` · `relieved` · `tired` (default `neutral`); keeps the requested speed; sets volume (tired ×0.75, concerned ×1.05), sentence pauses (focused 0.1s … tired 1.1s), and a Supertonic expression tag (relieved `<laugh>`, warm `<breath>`, tired `<sigh>`). Agent `<` `>` are stripped |
 | session | optional: host session id; keeps the companion voice |
 
-No HTML comments or speech JSON in the chat body. Each user-visible turn is one spoken line: what changed, then one next action. After code work the next action names what the user must verify to keep code ownership (cognitive-debt reduction); wording only, not enforced in code. Silence only if nothing new and no next action. The agent writes the line. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
+No HTML comments or speech JSON in the chat body. Each user-visible turn is one spoken line: what changed, then one next action. After code work the next action names what the user must verify to keep code ownership (cognitive-debt reduction); wording only, not enforced in code. Silence only if nothing new and no next action. The agent writes the line. The speak reply is `{"ok":true,"mode":...}` plus `muted` when muted and `reason` only when microphone or Do Not Disturb raised the effective mode. Internal `SpeechEnvelope` validation backs UDS frames after MCP parse.
 
 Policy (`ModePolicy::admit`):
 
@@ -139,7 +139,7 @@ Uses the MCP process executable as the source binary for `RuntimeInstaller` (sam
 
 ## Runtime lifecycle
 
-`debrief install` copies the executable to `~/.local/bin/debrief` (atomic write via `renameatx_np`, mode 0755; a directory at that path is refused), installs the pinned model, host MCP, skills, Claude/Codex start-family hooks, and LaunchAgent `com.debrief.tts`. Bootstrap is `enable`, `bootout`, `bootstrap`, with one retry. Owned-file digests prevent uninstall from removing a binary whose contents differ from the manifest.
+`debrief install` copies the executable to `~/.local/bin/debrief` (atomic write via `renameatx_np`, mode 0755; a directory at that path is refused), installs the pinned model, host MCP, skills, Claude/Codex/Grok hooks, and LaunchAgent `com.debrief.tts`. A successful install then asks the daemon to speak one work-lane confirmation. If the daemon or audio is unavailable, install still exits 0 and records `install/chime_unavailable`. Bootstrap is `enable`, `bootout`, `bootstrap`, with one retry. Owned-file digests prevent uninstall from removing a binary whose contents differ from the manifest.
 
 `debrief start` bootstraps the existing plist and does not rewrite it. A live pid prints `이미 실행 중입니다.` and does not bootout. `debrief stop` disables and bootouts the job, keeps the plist and the binary, and prints `서비스를 중지했습니다.` `debrief daemon` parks until SIGTERM or SIGINT. A second live daemon exits 0. A missing model records `last-error.json`, skips the socket, and stays running so KeepAlive does not spin.
 
@@ -163,7 +163,8 @@ Release verification should also inspect architecture (`arm64`) and run install 
 
 - Add a focused failing test before behavior changes.
 - Run impact analysis before editing an existing symbol (`graft`/GitNexus when available).
-- Keep the hook set exact (start-family only on Claude/Codex). Skills are `setup` + `install` + `speak` (Grok via `grok_skills`). MCP tools are `speak` + `install`.
+- Keep each host’s hook set exact. Claude and Codex keep start-family plus their host-only events. Grok’s owned file is `GROK_HOOK_EVENTS` (side effects only; do not put the turn-briefing paragraph there). Skills are `setup` + `install` + `speak` (Grok via `grok_skills`). MCP tools are `speak` + `install`.
+- Codex hook trust (`codex_trust.rs`) hashes the normalized command identity the way Codex main did in 2026-10, including `async: false`. SessionEnd and Interrupt clamp timeout to 1–3. Look up the current group and handler index only. Do not recommend `--dangerously-bypass-hook-trust`.
 - Do not persist hook payload text or synthesized audio.
 - Preserve unrelated host settings and modified installed files.
 - Do not reintroduce Python, Node, HTTP TTS servers, STT, or HTML speech envelopes.

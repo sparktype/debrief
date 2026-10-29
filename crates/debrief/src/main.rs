@@ -63,14 +63,14 @@ fn run_daemon(home: &std::path::Path) -> ! {
             Err(error) => {
                 let message = format!("{error:?}");
                 let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &message);
-                eprintln!("error: {message}");
+                eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
                 std::process::exit(1);
             }
         },
         Err(error) => {
             let message = format!("{error:?}");
             let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &message);
-            eprintln!("error: {message}");
+            eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
             std::process::exit(1);
         }
     }
@@ -91,6 +91,7 @@ fn run_daemon(home: &std::path::Path) -> ! {
     if let Some(failure) = service.consume_run_failure() {
         let message = format!("{failure:?}");
         let _ = Diagnostics::new(home).record_error("daemon", "run_failed", &message);
+        eprintln!("{}", CliMessages::daemon_run_failed("daemon/run_failed"));
     }
     std::process::exit(0);
 }
@@ -186,12 +187,13 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                         println!("Codex에서 /hooks를 열어 debrief hook을 검토하고 신뢰하세요.");
                     }
                     print_preserved_files(&result.preserved_modified_files);
+                    debrief_core::install_chime::InstallChime::try_play(home);
                     0
                 }
                 Err(error) => {
                     let detail = format!("{error:?}");
                     let _ = Diagnostics::new(home).record_error("app", "command_failed", &detail);
-                    eprintln!("error: {detail}");
+                    eprintln!("{}", CliMessages::command_failed("app/command_failed"));
                     1
                 }
             }
@@ -212,7 +214,7 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                 Err(error) => {
                     let detail = format!("{error:?}");
                     let _ = Diagnostics::new(home).record_error("app", "command_failed", &detail);
-                    eprintln!("error: {detail}");
+                    eprintln!("{}", CliMessages::command_failed("app/command_failed"));
                     1
                 }
             }
@@ -275,17 +277,19 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             let Some(host) = (match source.as_str() {
                 "codex" => Some(HostSource::Codex),
                 "claude" => Some(HostSource::Claude),
+                "grok" => Some(HostSource::Grok),
                 "gemini" => Some(HostSource::Gemini),
                 _ => None,
             }) else {
-                eprintln!("error: --source must be codex, claude, or gemini");
+                eprintln!("error: --source는 codex, claude, grok, gemini 중 하나여야 합니다.");
                 return 64;
             };
             let mut input = Vec::new();
             if std::io::Read::read_to_end(&mut std::io::stdin(), &mut input).is_err() {
                 return 1;
             }
-            let output = HookCommandRunner::run(&input, host, home);
+            let running_inside_grok = std::env::var_os("GROK_HOOK_EVENT").is_some();
+            let output = HookCommandRunner::run_with(&input, host, home, running_inside_grok);
             let _ = std::io::stdout().write_all(&output);
             0
         }
@@ -333,7 +337,8 @@ fn run_start(home: &std::path::Path) -> i32 {
             1
         }
         Err(error) => {
-            eprintln!("{}", CliMessages::start_failed(&format!("{error:?}")));
+            let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &format!("{error:?}"));
+            eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
             1
         }
     }
@@ -352,7 +357,8 @@ fn run_restart(home: &std::path::Path) -> i32 {
             1
         }
         Err(error) => {
-            eprintln!("{}", CliMessages::start_failed(&format!("{error:?}")));
+            let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &format!("{error:?}"));
+            eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
             1
         }
     }
@@ -368,7 +374,8 @@ fn run_stop(home: &std::path::Path) -> i32 {
             0
         }
         Err(error) => {
-            eprintln!("{}", CliMessages::stop_failed(&format!("{error:?}")));
+            let _ = Diagnostics::new(home).record_error("daemon", "stop_failed", &format!("{error:?}"));
+            eprintln!("{}", CliMessages::stop_failed("daemon/stop_failed"));
             1
         }
     }

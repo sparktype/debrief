@@ -69,7 +69,7 @@ impl HostInstaller {
                     self.install_json_mcp(host, &self.claude_user_config_url(), &previous_files, &mut owned_files, &mut preserved)?;
                 }
                 HostSource::Grok => {
-                    self.install_grok_host(&previous_files, &mut owned_files, &mut preserved)?;
+                    self.install_grok_host(&previous_files, &previous_hooks, &mut owned_hooks, &mut owned_files, &mut preserved)?;
                 }
                 HostSource::Gemini => {
                     self.install_json_host(host, &previous_files, &previous_hooks, &mut owned_hooks, &mut owned_files, &mut preserved)?;
@@ -84,7 +84,9 @@ impl HostInstaller {
         }
         manifest.save(&self.manifest_url).map_err(|_| HostInstallerError::Io)?;
         preserved.sort();
-        Ok(HostInstallResult { codex_review_required: hosts.contains(&HostSource::Codex), preserved_modified_files: preserved })
+        // 해시가 이미 맞으면 Codex /hooks 검토 문장을 다시 내지 않는다. 파일이 없으면 검토가 필요하다.
+        let codex_review_required = hosts.contains(&HostSource::Codex) && crate::codex_trust::CodexTrust::review_required(&self.home);
+        Ok(HostInstallResult { codex_review_required, preserved_modified_files: preserved })
     }
 
     pub fn uninstall(&self, hosts: &HashSet<HostSource>) -> Result<HostInstallResult, HostInstallerError> {
@@ -416,12 +418,16 @@ impl HostInstaller {
     fn install_grok_host(
         &self,
         previous_files: &[OwnedInstalledFile],
+        previous_hooks: &[OwnedHook],
+        owned_hooks: &mut Vec<OwnedHook>,
         owned_files: &mut Vec<OwnedInstalledFile>,
         preserved: &mut Vec<String>,
     ) -> Result<(), HostInstallerError> {
         self.install_toml_mcp(HostSource::Grok, previous_files, owned_files, preserved)?;
+        // Claude settings와 분리된 파일이다. Grok이 Claude 훅도 실행하므로 여기 복사본을 두면 알림이 두 번 나간다.
+        self.install_owned_hooks(HostSource::Grok, &self.grok_hooks_url(), previous_hooks, owned_hooks)?;
 
-        // Grok SessionStart는 컨텍스트를 주입할 수 없다 — setup/install/speak 스킬이 계약을 담당한다.
+        // 턴 브리핑 문단은 훅이 아니라 스킬이 담당한다. UserPromptSubmit stdout은 Grok이 버린다.
         let templates: std::collections::HashMap<_, _> =
             EmbeddedTemplates::grok_skills(&self.executable).into_iter().collect();
         for name in EmbeddedTemplates::SKILL_NAMES {
@@ -438,6 +444,7 @@ impl HostInstaller {
         preserved: &mut Vec<String>,
     ) -> Result<(), HostInstallerError> {
         self.uninstall_toml_mcp(HostSource::Grok, manifest, preserved)?;
+        self.uninstall_owned_hooks(HostSource::Grok, &self.grok_hooks_url(), manifest, true)?;
 
         for owned in manifest.files.iter().filter(|f| f.host == HostSource::Grok) {
             if owned.path.starts_with("mcp:") {
@@ -446,6 +453,77 @@ impl HostInstaller {
             Self::remove_owned_file(owned, preserved)?;
         }
         Ok(())
+    }
+
+    /// 한 호스트의 훅 JSON을 병합한다. Grok은 `~/.grok/hooks/debrief.json` 한 파일이다.
+    fn install_owned_hooks(
+        &self,
+        host: HostSource,
+        settings_url: &Path,
+        previous_hooks: &[OwnedHook],
+        owned_hooks: &mut Vec<OwnedHook>,
+    ) -> Result<(), HostInstallerError> {
+        let mut root = Self::read_settings(settings_url)?;
+        let mut hooks = Self::hooks_object(&root)?;
+        let host_events = EmbeddedTemplates::hook_events(host);
+        let active_events: HashSet<HookEventName> = host_events.iter().copied().collect();
+        for owned in previous_hooks.iter().filter(|owned| !active_events.contains(&owned.event)) {
+            let mut entries = Self::event_entries(host, owned.event, &hooks)?;
+            entries.retain(|entry| InstallerDigest::json(entry).ok().as_deref() != Some(owned.sha256.as_str()));
+            if entries.is_empty() {
+                hooks.remove(Self::event_key(host, owned.event));
+            } else {
+                hooks.insert(Self::event_key(host, owned.event).to_string(), Value::Array(entries));
+            }
+        }
+        for event in host_events {
+            let entry = EmbeddedTemplates::hook_entry(&self.executable, host);
+            let object = Self::hook_entry_json(&entry);
+            let digest = InstallerDigest::json(&object).map_err(|_| HostInstallerError::Io)?;
+            let mut entries = Self::event_entries(host, event, &hooks)?;
+            let already_present = entries.iter().any(|existing| InstallerDigest::json(existing).ok().as_deref() == Some(digest.as_str()));
+            if !already_present {
+                entries.push(object);
+            }
+            hooks.insert(Self::event_key(host, event).to_string(), Value::Array(entries));
+            owned_hooks.push(OwnedHook { host, event, sha256: digest });
+        }
+        root.insert("hooks".to_string(), Value::Object(hooks));
+        Self::backup_if_needed(settings_url)?;
+        Self::write_settings(&root, settings_url)
+    }
+
+    fn uninstall_owned_hooks(
+        &self,
+        host: HostSource,
+        settings_url: &Path,
+        manifest: &InstallManifest,
+        delete_when_empty: bool,
+    ) -> Result<(), HostInstallerError> {
+        if !settings_url.exists() {
+            return Ok(());
+        }
+        let mut root = Self::read_settings(settings_url)?;
+        let mut hooks = Self::hooks_object(&root)?;
+        for owned in manifest.hooks.iter().filter(|owned| owned.host == host) {
+            let mut entries = Self::event_entries(host, owned.event, &hooks)?;
+            entries.retain(|entry| InstallerDigest::json(entry).ok().as_deref() != Some(owned.sha256.as_str()));
+            if entries.is_empty() {
+                hooks.remove(Self::event_key(host, owned.event));
+            } else {
+                hooks.insert(Self::event_key(host, owned.event).to_string(), Value::Array(entries));
+            }
+        }
+        if delete_when_empty && hooks.is_empty() {
+            fs::remove_file(settings_url)?;
+            return Ok(());
+        }
+        root.insert("hooks".to_string(), Value::Object(hooks));
+        Self::write_settings(&root, settings_url)
+    }
+
+    fn grok_hooks_url(&self) -> PathBuf {
+        self.home.join(".grok/hooks/debrief.json")
     }
 
     // MARK: - Shared helpers
@@ -1052,6 +1130,58 @@ mod tests {
         for name in EmbeddedTemplates::SKILL_NAMES {
             assert!(home.join(format!(".grok/skills/debrief-{name}/SKILL.md")).exists());
         }
+        let hooks_url = home.join(".grok/hooks/debrief.json");
+        let hooks = json_at(&hooks_url);
+        let keys: HashSet<_> = hooks["hooks"].as_object().unwrap().keys().cloned().collect();
+        let expected: HashSet<_> = EmbeddedTemplates::hook_events(HostSource::Grok).iter().map(|event| event.as_str().to_string()).collect();
+        assert_eq!(keys, expected);
+        assert!(hooks["hooks"].get("PermissionRequest").is_none());
+        assert!(hooks["hooks"].get("SubagentStart").is_none());
+        assert!(hooks["hooks"]["StopCancelled"][0]["hooks"][0]["command"].as_str().unwrap().contains("hook --source grok"));
+        assert!(!home.join(".claude/settings.json").exists());
+
+        HostInstaller::new(home.clone(), PathBuf::from("/tmp/debrief-bin"), None)
+            .install(&[HostSource::Grok].into_iter().collect())
+            .unwrap();
+        assert_eq!(json_at(&hooks_url)["hooks"]["Stop"].as_array().unwrap().len(), 1);
+
+        HostInstaller::new(home.clone(), PathBuf::from("/tmp/debrief-bin"), None)
+            .uninstall(&[HostSource::Grok].into_iter().collect())
+            .unwrap();
+        assert!(!hooks_url.exists());
+
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn codex_review_is_required_only_when_the_current_hash_is_missing() {
+        let home = temporary_home();
+        let installer = HostInstaller::new(home.clone(), PathBuf::from("/tmp/debrief-bin"), None);
+        let first = installer.install(&[HostSource::Codex].into_iter().collect()).unwrap();
+        assert!(first.codex_review_required);
+
+        let hooks_url = home.join(".codex/hooks.json");
+        let canonical = hooks_url.canonicalize().unwrap();
+        let hooks = json_at(&hooks_url);
+        let mut lines = String::new();
+        for event in EmbeddedTemplates::hook_events(HostSource::Codex) {
+            let command = hooks["hooks"][event.as_str()][0]["hooks"][0]["command"].as_str().unwrap();
+            let timeout = crate::codex_trust::CodexTrust::normalized_timeout(event, Some(5));
+            let hash = crate::codex_trust::CodexTrust::identity_hash(
+                crate::codex_trust::CodexTrust::event_name(event),
+                command,
+                timeout,
+                false,
+            );
+            lines.push_str(&format!(
+                "[hooks.state.\"{}:{}:0:0\"]\ntrusted_hash = \"{hash}\"\nenabled = true\n\n",
+                canonical.display(),
+                crate::codex_trust::CodexTrust::event_name(event)
+            ));
+        }
+        fs::write(home.join(".codex/config.toml"), lines).unwrap();
+        let second = installer.install(&[HostSource::Codex].into_iter().collect()).unwrap();
+        assert!(!second.codex_review_required);
 
         fs::remove_dir_all(&home).ok();
     }

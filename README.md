@@ -58,7 +58,7 @@ debrief status
 
 1. 실행 파일을 `~/.local/bin/debrief`에 복사합니다 (원자적 교체, 모드 `0755`). 그 경로가 디렉터리면 설치를 멈추고 지우지 않습니다.
 2. Supertonic 3을 `~/Library/Application Support/debrief/models/`에 두고 체크섬을 확인합니다.
-3. 선택한 호스트에 MCP, 스킬, Claude/Codex 시작 훅을 절대 경로로 넣습니다.
+3. 선택한 호스트에 MCP, 스킬, 훅을 절대 경로로 넣습니다. Grok 훅은 `~/.grok/hooks/debrief.json` 한 파일이고, 턴마다 읽을 브리핑 문단은 넣지 않습니다.
 4. `~/Library/LaunchAgents/com.debrief.tts.plist`를 쓰고 `debrief daemon`을 부트스트랩합니다.
 
 호스트를 제한하려면 `--codex`, `--claude`, `--grok`를 조합합니다. 플래그가 없으면 세 호스트 모두입니다. `--repair`는 소유한 파일을 다시 맞추고, 사용자가 고친 파일은 다이제스트가 다르면 덮어쓰지 않습니다.
@@ -66,8 +66,8 @@ debrief status
 | 호스트 | 설치 후 |
 | --- | --- |
 | Claude Code | `~/.claude.json`의 `mcpServers["debrief"]`. 스킬은 `~/.claude/skills`. Claude를 재시작하면 `mcp__debrief__speak`, `mcp__debrief__install`이 보입니다. |
-| Codex | MCP는 `~/.codex/config.toml`. 훅은 `~/.codex/hooks.json`. `/hooks`에서 훅을 신뢰합니다. 스킬은 `~/.agents/skills`. |
-| Grok | MCP는 `~/.grok/config.toml`의 `[mcp_servers.debrief]`. 훅은 없습니다. `/mcps`로 `debrief__speak`, `debrief__install`을 갱신합니다. 스킬은 `~/.grok/skills`. |
+| Codex | MCP는 `~/.codex/config.toml`. 훅은 `~/.codex/hooks.json`. 지금 파일의 해시가 신뢰 기록과 다르거나 없으면 설치와 `debrief doctor`가 `/hooks` 검토를 안내합니다. 이미 맞으면 그 문장은 나오지 않습니다. 스킬은 `~/.agents/skills`. |
+| Grok | MCP는 `~/.grok/config.toml`의 `[mcp_servers.debrief]`. 부작용 훅은 `~/.grok/hooks/debrief.json`입니다. 지난 브리핑을 끊고 고정 알림만 말하며, 턴 브리핑 문단은 넣지 않습니다. 집 밖 폴더는 `/hooks-trust`가 필요합니다. `/mcps`로 `debrief__speak`, `debrief__install`을 갱신합니다. 스킬은 `~/.grok/skills`. |
 
 로그인하면 LaunchAgent가 `debrief daemon`을 띄웁니다. 오디오는 GUI 세션에서 재생됩니다.
 
@@ -116,16 +116,16 @@ debrief 0.4.0
   • 브리핑 리마인더: 꺼짐
 ```
 
-`debrief status --line`은 상태 표시줄용 한 줄입니다. `debrief 꺼짐`(데몬 소켓 응답 없음), `debrief 음소거`, `debrief normal`, `debrief quiet · 도우미 꺼짐`처럼 지금 가장 중요한 상태 하나를 보여 줍니다. Claude Code `statusLine` 명령이나 claude-hud에 넣어 씁니다.
+`debrief status --line`은 상태 표시줄용 한 줄입니다. `debrief 꺼짐`(데몬 소켓 응답 없음), `debrief 음소거`, `debrief normal`, `debrief quiet · 도우미 꺼짐`처럼 지금 가장 중요한 상태 하나를 보여 줍니다. Claude Code `statusLine`이나 claude-hud, Grok Build 상태 표시줄에 넣어 씁니다.
 
-모델을 쓸 수 없으면 `revision (사용할 수 없음)`입니다. 방해금지·마이크 연동으로 모드가 올라가 있으면 `모드: normal (지금 quiet)`처럼 저장된 모드 옆에 지금 적용 중인 모드가 붙습니다.
+모델을 쓸 수 없으면 `revision (사용할 수 없음)`입니다. 방해금지·마이크 연동으로 모드가 올라가 있으면 `모드: normal (지금 quiet입니다. 다른 앱이 마이크를 사용 중입니다.)`처럼 저장된 모드와 이유가 함께 붙습니다. 방해금지뿐이면 `방해금지가 켜져 있습니다.`, 둘 다면 `다른 앱이 마이크를 사용 중이고 방해금지가 켜져 있습니다.`입니다. night은 올리지 않습니다.
 
 | 명령 | 동작 |
 | --- | --- |
 | `debrief mute` | 인자가 없으면 토글합니다. `on` / `off`는 지정입니다. 다음 발화부터 적용됩니다. |
 | `debrief mode` | 인자가 없으면 `현재 모드는 <mode>입니다.` 값이 있으면 `모드를 <mode>로 설정했습니다.` |
 | `debrief companion` | 도우미 음성(companion lane)을 켜거나 끕니다. 꺼도 work lane은 음소거가 아니면 재생됩니다. |
-| `debrief skip` | 지금 재생 중인 발화만 끊고 다음 발화는 이어서 재생합니다. `--all`이면 대기열도 비웁니다. Claude·Codex에서 새 프롬프트를 보내면 그 세션의 지난 도우미 브리핑은 자동으로 끊깁니다(결정 대기·알림·다른 세션 발화는 그대로). |
+| `debrief skip` | 지금 재생 중인 발화만 끊고 다음 발화는 이어서 재생합니다. `--all`이면 대기열도 비웁니다. Claude·Codex·Grok에서 새 프롬프트를 보내면 그 세션의 지난 도우미 브리핑은 자동으로 끊깁니다(결정 대기·알림·다른 세션 발화는 그대로). Grok에서 사용자가 턴을 끊으면(`StopCancelled`의 `user_interrupt`) 그 세션 브리핑도 끊습니다. |
 | `debrief replay` | 최근 재생한 발화 n개(1–10, 기본 1)를 오래된 순서로 다시 들려줍니다. 기록은 데몬 메모리에만 있어 재시작하면 비워집니다. |
 | `debrief allow` / `debrief deny` | `permissionRelay`로 중계된 Claude Code 권한 요청에 답합니다. id 없이 실행하면 대기 요청이 하나일 때 도구·설명·입력 미리보기를 보여 주고 한 번 더 묻습니다. 여럿이면 id 목록을 보여 줍니다. 10분 넘은 요청은 버립니다. |
 | `debrief doctor` | 진단입니다. 정상이 아닌 항목이 있으면 종료 코드 1입니다. |
@@ -156,7 +156,9 @@ debrief 0.4.0
 
 모델이 없으면 데몬은 `last-error.json`만 남기고 소켓을 열지 않은 채 대기합니다. 이때 `debrief start`는 이미 실행 중이라 프로세스를 바꾸지 않습니다. 모델을 둔 뒤 `debrief install --repair`로 교체합니다.
 
-전송이나 합성 실패는 `~/Library/Caches/debrief/last-error.json`에 기록되고 `debrief doctor`에 나옵니다. 에이전트 턴은 막지 않습니다.
+전송이나 합성 실패는 `~/Library/Caches/debrief/last-error.json`에 기록되고 `debrief doctor`에 나옵니다. 에이전트 턴은 막지 않습니다. 설치·시작·중지에 실패하면 화면에는 경어와 안정된 코드(`app/command_failed`, `daemon/start_failed`, `daemon/stop_failed`, `daemon/run_failed`)만 나오고, 자세한 원인은 같은 파일에 남습니다.
+
+Codex 훅은 지금 `hooks.json` 인덱스(빈 그룹을 포함한 배열 위치)의 해시가 `[hooks.state]`와 같을 때만 신뢰된 것으로 봅니다. 없거나 다르면 `hooks.codex.untrusted`와 함께 “Codex에서 /hooks를 열어 debrief hook을 검토하고 신뢰하세요.”가 나옵니다. 예전 인덱스에만 같은 해시가 있어도 미신뢰입니다. `enabled = false`는 `hooks.codex.disabled`, `[features] hooks = false`는 `hooks.codex.feature_disabled`이고, 둘 다 미신뢰로 부르지 않습니다. config.toml을 읽지 못하면 `hooks.codex.config_unreadable`이며 신뢰했다고 말하지 않습니다. Grok 훅 파일이 있고 지금 폴더가 집 밖이며 `~/.grok/trusted_folders.toml`에 없으면 `hooks.grok.folder_untrusted`와 `/hooks-trust` 안내가 나옵니다. 집과 파일 시스템 루트는 신뢰된 것으로 봅니다.
 
 ## 설정
 
@@ -196,11 +198,11 @@ debrief status
 | `volumeCeilings` | 모드별 볼륨 상한. 위 표의 기본값 | CLI는 이 맵을 바꾸지 않습니다 |
 | `categoryVoices` | 역할 이름 → 목소리(`F1`–`M5`). 훅이 서브에이전트·작업 레인에 안내하는 역할 목소리를 덮어씁니다. 비어 있거나 알 수 없는 역할·목소리는 아래 역할 기본값 | 설정 파일을 직접 고칩니다 |
 | `voiceSpeeds` | 역할별 속도. 비어 있으면 요청의 `speed` | 설치가 비워 둡니다 |
-| `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다 | 설정 파일에서 `"earcons": false` |
+| `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다. 45초를 넘긴 도우미 발화를 버릴 때도 완료음을 한 번 냅니다. 결정 대기·다시 듣기·작업 레인은 내지 않습니다 | 설정 파일에서 `"earcons": false` |
 | `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
-| `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude는 Stop 피드백, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |
+| `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude와 Grok은 `additionalContext`, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |
 | `permissionRelay` | Claude Code 채널 권한 중계. 켜고 `claude --dangerously-load-development-channels server:debrief`로 실행하면 도구 승인 요청이 debrief로 중계되고 `debrief allow`·`debrief deny`로 답할 수 있습니다(터미널 대화상자도 그대로 열려 있고 먼저 온 답이 쓰입니다). Channels는 research preview이고, Team·Enterprise는 관리자가 `channelsEnabled`를 켜야 합니다. 기본 꺼짐 | 설정 파일에서 `"permissionRelay": true` |
-| `pronunciations` | 단어 → 읽을 표기. 합성 직전에 단어 단위로 대소문자를 무시하고 바꿉니다(예: `{"MCP": "엠씨피", "cargo": "카고"}`). 다시 듣기 기록은 원문을 유지합니다 | 설정 파일을 직접 고칩니다 |
+| `pronunciations` | 단어 → 읽을 표기. 합성 직전에 단어 단위로 대소문자를 무시하고 바꿉니다. 사용자 항목이 없으면 debrief·Codex·Grok·MCP를 디브리프·코덱스·그록·엠씨피로 읽습니다. 같은 단어를 적으면 그 표기가 이기고, 단어 그대로 적으면 기본 읽기를 끕니다. 파일의 기본 항목은 설치가 넣지 않습니다. 다시 듣기 기록은 원문을 유지합니다 | 설정 파일을 직접 고칩니다 |
 
 호스트 배선은 설정 파일과 별개입니다. `debrief install`이 절대 경로로 넣고, `debrief install --repair`가 소유한 파일만 다시 맞춥니다. 직접 고친 파일은 다이제스트가 다르면 남습니다.
 
@@ -210,9 +212,10 @@ debrief status
 | Claude Code | `~/.claude/settings.json` | 시작 훅 |
 | Claude Code | `~/.claude/skills/debrief-setup` `debrief-install` `debrief-speak` | 스킬 |
 | Codex | `~/.codex/config.toml` | MCP 서버 `debrief` |
-| Codex | `~/.codex/hooks.json` | 시작 훅 + PermissionRequest·Stop·SessionEnd·PreCompact·PostCompact·Interrupt. `/hooks`에서 신뢰 |
+| Codex | `~/.codex/hooks.json` | 시작 훅 + PermissionRequest·Stop·SessionEnd·PreCompact·PostCompact·Interrupt. 해시가 없을 때만 `/hooks`에서 신뢰 |
 | Codex | `~/.agents/skills/` | 같은 세 스킬 |
-| Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. 훅은 없음. `/mcps` |
+| Grok | `~/.grok/config.toml` | `[mcp_servers.debrief]`. `/mcps` |
+| Grok | `~/.grok/hooks/debrief.json` | SessionStart·UserPromptSubmit·Stop·StopFailure·Notification·PermissionDenied·PreCompact·PostCompact·StopCancelled·SessionEnd. 브리핑 문단은 넣지 않습니다. 집 밖은 `/hooks-trust` |
 | Grok | `~/.grok/skills/` | 같은 세 스킬 |
 | Gemini CLI (옵트인 `--gemini`) | `~/.gemini/settings.json` | `mcpServers.debrief`(도구 이름 `mcp_debrief_speak`) + 훅 SessionStart·BeforeAgent·AfterAgent·Notification(권한)·SessionEnd·PreCompress. 스킬은 Gemini가 읽는 `~/.agents/skills/`를 공유합니다. 매 호출 확인이 번거로우면 Gemini에서 이 도구를 항상 허용으로 고르세요 |
 
@@ -247,9 +250,11 @@ tool_timeout_sec = 120
 | `session` | 아니오 | 호스트 세션 아이디. 같으면 도우미 목소리가 유지됩니다. 없으면 이 MCP 프로세스가 받은 목소리를 씁니다 |
 | `intent` | 아니오 | `decision`만 허용. 사용자가 결정·승인해야 작업이 이어질 때. 효과음과 함께 quiet·night·도우미 꺼짐에서도 들리고, 음소거만 막습니다. main에서만 적용됩니다 |
 
-데몬 소켓이 응답하지 않으면 Claude·Codex의 SessionStart·UserPromptSubmit 훅이 화면에 `debrief restart` 안내(`systemMessage`)를 세션당 10분에 한 번 띄웁니다. 음소거 중이거나 데몬에 전하지 못한 훅 알림(권한 요청·입력 대기·실패 등)은 Claude Code가 터미널 데스크톱 알림(`terminalSequence`, Ghostty·Warp는 OSC 777, 그 밖은 OSC 9)으로 대신 띄웁니다.
+데몬 소켓이 응답하지 않으면 Claude·Codex의 SessionStart·UserPromptSubmit과 Grok의 SessionStart가 화면에 `debrief restart` 안내(`systemMessage`)를 세션당 10분에 한 번 띄웁니다. Grok은 그 안내를 UserPromptSubmit·StopFailure·압축·SessionEnd에 남기지 않습니다. 음소거 중이거나 데몬에 전하지 못한 훅 알림(권한 요청·입력 대기·실패 등)은 Claude Code가 터미널 데스크톱 알림(`terminalSequence`, Ghostty·Warp는 OSC 777, 그 밖은 OSC 9)으로 대신 띄웁니다.
 
-성공 응답은 `{"ok":true,"mode":"<유효 모드>"}`이고 음소거면 `"muted":true`가 붙습니다. 훅이 있는 호스트는 시작 계열 context에도 모드 지침(focus 한 문장, quiet 짧게 또는 침묵, night 결정 대기만, 음소거면 호출 생략)이 붙습니다.
+성공 응답은 `{"ok":true,"mode":"<유효 모드>"}`이고 음소거면 `"muted":true`가 붙습니다. 마이크나 방해금지 때문에 모드가 올라갔을 때만 `"reason"`이 붙습니다. Claude·Codex 시작 계열 context에는 모드 지침(focus 한 문장, quiet 짧게 또는 침묵, night 결정 대기만, 음소거면 호출 생략)이 붙고, quiet가 올라간 이유에 따라 `(mic)`, `(dnd)`, `(dnd, mic)`가 붙습니다. Grok 훅은 이 문단을 넣지 않습니다. 같은 계약은 스킬과 `speak` 응답이 맡습니다.
+
+설치가 성공하면 “설치가 끝났습니다. 이제 에이전트가 말하면 들려 드립니다.”를 한 번 말합니다(작업 레인, 완료음). 데몬이나 스피커가 없어도 설치는 성공이고, `debrief doctor`에 `install/chime_unavailable`이 남습니다. `debrief speak` 명령은 없습니다.
 
 서브에이전트는 사용자를 브리핑하지 않지만, 작업이 끝나면 `priority=subagent`, `lane=work`, 사실 한 줄을 한 번 말합니다.
 
