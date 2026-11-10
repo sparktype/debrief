@@ -187,9 +187,13 @@ impl<'a> HookEngine<'a> {
     /// 두 번째 값이 참이면 알림 대신 Stop을 되돌려 브리핑을 요청한다(이때 턴은 닫지 않는다).
     fn notice_for(&self, event: &HookEvent, now: u64) -> (Option<SpeechRequest>, bool) {
         let remindable = self.reminder_applies(event);
+        let background_completed =
+            event.name == HookEventName::Notification && event.subtype.as_deref() == Some("agent_completed");
         // 알림을 내는 이벤트인지 먼저 정한다(쿨다운은 실제로 말할 때만 소모한다).
         let wants_notice = match event.name {
-            HookEventName::Notification => matches!(event.subtype.as_deref(), Some("idle_prompt" | "agent_needs_input")),
+            HookEventName::Notification => {
+                matches!(event.subtype.as_deref(), Some("idle_prompt" | "agent_needs_input" | "agent_completed"))
+            }
             HookEventName::TeammateIdle | HookEventName::TaskCompleted => self.configuration.team_notices,
             // 수동 `/compact`는 사용자가 직접 한 것이라 알리지 않는다.
             HookEventName::PreCompact | HookEventName::PostCompact => event.subtype.as_deref() == Some("auto"),
@@ -235,7 +239,11 @@ impl<'a> HookEngine<'a> {
                         _ => {}
                     }
                     let allowed = cooldown
-                        .map(|seconds| states.allow_notice(&event.session_id, event.name.as_str(), now, seconds))
+                        .map(|seconds| {
+                            // 입력 대기 알림이 최근에 나갔다고 백그라운드 완료까지 가리지 않게 따로 센다.
+                            let kind = if background_completed { "Notification:agent_completed" } else { event.name.as_str() };
+                            states.allow_notice(&event.session_id, kind, now, seconds)
+                        })
                         .unwrap_or(true);
                     let label = self.configuration.session_label.then(|| states.label_for(&event.session_id, now));
                     (long_turn_elapsed, label.flatten(), allowed, false)
@@ -259,6 +267,9 @@ impl<'a> HookEngine<'a> {
                 (format!("{minutes}분 걸린 작업이 끝났습니다."), SpeechEmotion::Neutral)
             }
             HookEventName::StopFailure => (Self::failure_text(event.subtype.as_deref()).to_string(), SpeechEmotion::Concerned),
+            HookEventName::Notification if background_completed => {
+                ("백그라운드 작업이 끝났거나 멈췄습니다.".to_string(), SpeechEmotion::Neutral)
+            }
             HookEventName::Notification => ("입력을 기다리고 있습니다.".to_string(), SpeechEmotion::Neutral),
             HookEventName::Elicitation => ("추가 입력이 필요합니다.".to_string(), SpeechEmotion::Concerned),
             HookEventName::PermissionDenied => {
@@ -720,6 +731,23 @@ mod tests {
 
         let missing = HookEvent { subtype: None, ..event_in(HookEventName::Notification, "s", "/w/p") };
         assert!(engine.handle_at(&missing, HostSource::Claude, 9000).notice.is_none(), "유형을 모르면 침묵");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn background_completion_notice_has_its_own_text_and_cooldown() {
+        let dir = state_dir("agent-completed");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let engine = engine_with(&state, DebriefConfiguration::default());
+        let notify = |subtype: &str, at: u64| {
+            engine.handle_at(&with_subtype(HookEventName::Notification, subtype), HostSource::Claude, at).notice
+        };
+
+        assert!(notify("idle_prompt", 1000).is_some());
+        let completed = notify("agent_completed", 1010).expect("입력 대기 쿨다운이 백그라운드 완료를 가리면 안 된다");
+        assert_eq!(completed.envelope.text, "백그라운드 작업이 끝났거나 멈췄습니다.");
+        assert!(notify("agent_completed", 1100).is_none(), "완료 알림끼리는 5분 쿨다운");
+        assert!(notify("agent_completed", 1400).is_some());
         std::fs::remove_dir_all(&dir).ok();
     }
 

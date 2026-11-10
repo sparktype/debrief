@@ -26,3 +26,9 @@
 - 이전 결정은 "원본이 사라지면 매니페스트를 미러로 교체"였다. 사용자가 이번에 자동 폴백까지 승인(6개 전부 진행)했고, 신뢰 경계는 sha256 고정이 지킨다.
 - 사용자 개인 HF 계정이 배포 바이너리에 박힌다는 점은 사용자에게 알릴 것. 미러가 사라지면 두 번째 후보만 실패하고 원본 경로는 영향 없음.
 - 실네트워크 테스트(`DEBRIEF_TEST_NETWORK=1`)로 원본 404 → 미러 성공 확인.
+
+## 5. agent_completed
+- 공식 훅 문서(code.claude.com/docs/en/hooks) 매처 표로 확인: `agent_completed` = "A background session finishes or fails. Fires only while agent view is open in a terminal."
+- 문서에서 확인하지 못한 것: 같은 백그라운드 세션의 Stop과 겹쳐 발생하는지, payload의 session_id가 어느 세션인지. 겹치면 완료 알림이 두 번 나갈 수 있다 → 실사용 확인 필요.
+- 쿨다운 키를 `Notification:agent_completed`로 분리(idle_prompt가 최근에 나가도 완료 알림이 묻히지 않게). 기존 idle_prompt·agent_needs_input 동작은 그대로.
+- 훅 배선에 매처가 없어 설치 변경 불필요(모든 Notification 유형이 이미 도달).
