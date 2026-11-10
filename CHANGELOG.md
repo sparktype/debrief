@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### 추가
+
+- `debrief doctor`가 `~/.local/bin/debrief` 설치본과 지금 실행한 바이너리의 내용이 다르면 `install.binary_stale`로 알리고 `debrief install --repair`를 안내합니다. brew upgrade 뒤 `install`을 잊으면 LaunchAgent·훅·MCP가 옛 설치본을 계속 쓰던 문제를 드러냅니다. 같으면 `install.binary_current`입니다.
+
 ### 수정
 
 - 재생 중 출력 장치가 사라지거나 콜백이 멈춰도 재생 스레드가 영원히 기다리지 않습니다. 스트림 오류(`DeviceNotAvailable`·`StreamInvalidated`·`HostUnavailable`)나 클립 길이 + 3초 초과를 실패로 보고, 기존 규칙대로 재생기를 다시 만들어 한 번 재시도합니다.

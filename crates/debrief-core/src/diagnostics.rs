@@ -97,6 +97,23 @@ fn folder_is_trusted(trusted_folders: &Path, cwd: &Path) -> Option<bool> {
     Some(saw && trusted)
 }
 
+/// `~/.local/bin`의 설치본이 지금 실행 중인 바이너리와 같은 내용인지 본다. brew upgrade 뒤 `install`을
+/// 잊으면 LaunchAgent·훅·MCP는 옛 설치본을 계속 쓴다. 설치본이 없으면 None(다른 진단이 다룬다).
+fn installed_binary_finding(installed: &Path, running: &Path) -> Option<DiagnosticFinding> {
+    let installed_bytes = std::fs::read(installed).ok()?;
+    let same = running.canonicalize().ok() == installed.canonicalize().ok()
+        || std::fs::read(running).is_ok_and(|bytes| bytes == installed_bytes);
+    Some(if same {
+        DiagnosticFinding { code: "install.binary_current".to_string(), ok: true, recovery: None }
+    } else {
+        DiagnosticFinding {
+            code: "install.binary_stale".to_string(),
+            ok: false,
+            recovery: Some("설치본(~/.local/bin/debrief)이 지금 실행한 debrief와 다릅니다. 이 실행 파일로 `debrief install --repair`를 실행하세요".to_string()),
+        }
+    })
+}
+
 impl<'a> Diagnostics<'a> {
     pub fn new(home: &Path) -> Self {
         Self::with_process_check(home, Self::live_process_exists)
@@ -268,6 +285,10 @@ impl<'a> Diagnostics<'a> {
             ok: snapshot.launch_agent_installed,
             recovery: if snapshot.launch_agent_installed { None } else { Some(recovery) },
         });
+
+        if let Some(finding) = installed_binary_finding(&self.paths.executable_url, &crate::paths::current_executable_url()) {
+            findings.push(finding);
+        }
 
         findings.extend(self.hook_findings());
         if let Some(finding) = self.codex_trust_finding() {
@@ -612,6 +633,29 @@ mod tests {
             &serde_json::json!({"revision": manifest.revision, "relativePath": manifest.revision}),
             &paths.models_directory.join("supertonic-3/current.json"),
         );
+    }
+
+    #[test]
+    fn installed_binary_finding_compares_the_running_binary_with_the_installed_copy() {
+        let home = temporary_home();
+        let installed = home.join("installed");
+        let running = home.join("running");
+        fs::write(&running, b"new build").unwrap();
+
+        assert!(installed_binary_finding(&installed, &running).is_none(), "설치본이 없으면 다른 진단이 다룬다");
+
+        fs::write(&installed, b"old build").unwrap();
+        let stale = installed_binary_finding(&installed, &running).unwrap();
+        assert_eq!((stale.code.as_str(), stale.ok), ("install.binary_stale", false));
+        assert!(stale.recovery.unwrap().contains("debrief install --repair"));
+
+        fs::write(&installed, b"new build").unwrap();
+        let current = installed_binary_finding(&installed, &running).unwrap();
+        assert_eq!((current.code.as_str(), current.ok), ("install.binary_current", true));
+
+        let same_file = installed_binary_finding(&installed, &installed).unwrap();
+        assert!(same_file.ok);
+        fs::remove_dir_all(&home).ok();
     }
 
     #[test]

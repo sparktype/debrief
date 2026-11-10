@@ -15,3 +15,8 @@
 - cpal 0.18 `ErrorKind` 중 DeviceNotAvailable·StreamInvalidated·HostUnavailable만 치명으로 본다. DeviceChanged는 cpal이 기본 장치로 스트림을 옮기니 계속 재생.
 - 오류 없이 조용히 멈추는 경우를 위해 클립 길이 + 3초 상한. 실패는 기존 AudioPlayer의 rebuild 후 1회 재시도 경로를 탄다.
 - 실장치 분리 재현은 하지 못함. 대기 로직만 단위 테스트(하드웨어 없이).
+
+## 3. doctor 설치본 불일치
+- 버전 문자열 대신 내용(바이트) 비교: `--version` 플래그가 없고 프로세스를 띄우지 않아도 되며, 같은 버전의 개발 빌드 차이도 잡는다. 단점은 버전 번호를 안내하지 못하는 것.
+- 같은 파일(canonical 동일)이면 current. 설치본이 없으면 finding 없음.
+- 스모크: 개발 빌드로 `doctor`를 돌리면 stale과 함께 `socket.missing`이 나온다(실행 중 0.5.0 데몬은 옛 Caches 소켓). 업그레이드 직후 보게 될 실제 증상이며 복구는 `install --repair`. 사용자의 실제 데몬을 건드리지 않으려고 install은 돌리지 않았다.
