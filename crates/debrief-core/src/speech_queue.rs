@@ -64,7 +64,7 @@ impl SpeechQueue {
         let now = Instant::now();
         state.recent_digests.retain(|(_, accepted_at)| now.duration_since(*accepted_at) < self.duplicate_window);
 
-        let digest = Self::digest(&request.envelope);
+        let digest = Self::digest(&request);
         if state.recent_digests.iter().any(|(value, _)| *value == digest) {
             return QueueDecision::RejectedDuplicate;
         }
@@ -163,7 +163,8 @@ impl SpeechQueue {
         self.state.lock().unwrap().pending.iter().map(|pending| pending.request.envelope.text.clone()).collect()
     }
 
-    fn digest(envelope: &SpeechEnvelope) -> [u8; 32] {
+    fn digest(request: &SpeechRequest) -> [u8; 32] {
+        let envelope = &request.envelope;
         // Swift sorts JSON keys before hashing; serde_json's default Map (no
         // `preserve_order` feature) is a BTreeMap, so round-tripping through
         // `Value` yields the same sorted-key byte representation.
@@ -173,6 +174,8 @@ impl SpeechQueue {
             "voice": envelope.voice,
             "speed": envelope.speed,
             "volume": envelope.volume,
+            // 텍스트 없이 효과음만 다른 요청(완료음·주의음)이 서로 중복으로 묶이지 않게 한다.
+            "cue": request.cue.map(|cue| format!("{cue:?}")),
         });
         let data = serde_json::to_vec(&value).expect("envelope always serializes");
         let mut hasher = Sha256::new();
@@ -219,6 +222,17 @@ mod tests {
             replayed: false,
             session: None,
         }
+    }
+
+    #[test]
+    fn same_speech_with_a_different_cue_is_not_a_duplicate() {
+        use crate::earcon::Earcon;
+        let queue = SpeechQueue::new(8, Duration::from_secs(60));
+        let with_cue = |cue| SpeechRequest { cue: Some(cue), ..request(SpeechPriority::Main, "") };
+
+        assert_eq!(queue.enqueue(with_cue(Earcon::Done)), QueueDecision::Accepted);
+        assert_eq!(queue.enqueue(with_cue(Earcon::Attention)), QueueDecision::Accepted);
+        assert_eq!(queue.enqueue(with_cue(Earcon::Done)), QueueDecision::RejectedDuplicate);
     }
 
     #[test]

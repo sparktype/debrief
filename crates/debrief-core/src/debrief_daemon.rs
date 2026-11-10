@@ -259,7 +259,8 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
 
             if request.is_cue_only() {
                 admit_and_cue();
-            } else {
+            } else if ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration(), request.decision).is_some() {
+                // 대기 중에 mute·mode가 바뀌어 이미 거부될 발화는 합성하지 않는다(재생 직전 판정은 그대로 한 번 더 한다).
                 let spoken = Pronunciation::apply(&request.envelope.text, &configuration().pronunciations);
                 let text = EmotionProsody::spoken_text(request.emotion, &spoken);
                 let pause_seconds = EmotionProsody::pause_seconds(request.emotion);
@@ -946,9 +947,9 @@ mod tests {
         daemon.audio.wait_until_count(1);
         muted.store(true, std::sync::atomic::Ordering::SeqCst);
         daemon.control(Control::Replay(1));
-        daemon.backend.wait_until_count(2);
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(100));
         assert_eq!(daemon.audio.markers(), vec![4]);
+        assert_eq!(daemon.backend.texts.lock().unwrap().len(), 1, "재생 시점에 이미 거부될 발화는 합성하지 않는다");
         daemon.shutdown();
     }
 }

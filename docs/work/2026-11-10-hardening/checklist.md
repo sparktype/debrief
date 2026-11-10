@@ -7,5 +7,5 @@
 - [x] 3. `doctor`에 `~/.local/bin` 설치본과 실행 중 바이너리 버전 불일치 검사
 - [x] 4. 모델 다운로드 실패 시 HF 미러 자동 폴백
 - [x] 5. Claude `Notification`의 `agent_completed` 처리
-- [ ] 6. 미뤄 둔 리뷰 Minor 정리 (코드로 확인된 것만)
+- [x] 6. (부분: 이름이 남은 4건 중 2건 수정, 나머지 사유는 context-notes) 미뤄 둔 리뷰 Minor 정리 (코드로 확인된 것만)
 - [ ] 마무리: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --release`
