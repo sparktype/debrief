@@ -620,6 +620,7 @@ mod tests {
         let paths = DebriefPaths::for_home(&home);
         DebriefConfiguration { mode: DebriefMode::Focus, muted: false, ..Default::default() }.save(&paths.config_url).unwrap();
         fs::create_dir_all(paths.socket_url.parent().unwrap()).unwrap();
+        fs::create_dir_all(paths.pid_url.parent().unwrap()).unwrap();
         fs::write(&paths.socket_url, []).unwrap();
         fs::write(&paths.pid_url, "123").unwrap();
         install_model_marker(&paths, false);

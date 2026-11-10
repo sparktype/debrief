@@ -281,7 +281,7 @@ Codex 도구 이름은 서버 `debrief`의 `speak`와 `install`입니다. Grok�
 ~/Library/Application Support/debrief/models/
 ~/Library/Application Support/debrief/install-manifest.json
 ~/Library/Application Support/debrief/session-voices.json
-~/Library/Caches/debrief/debrief.sock
+~/Library/Application Support/debrief/debrief.sock
 ~/Library/Caches/debrief/daemon.pid
 ~/Library/Caches/debrief/last-error.json
 ~/Library/LaunchAgents/com.debrief.tts.plist

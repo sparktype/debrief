@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### 변경
+
+- 데몬 소켓을 `~/Library/Caches/debrief/debrief.sock`에서 `~/Library/Application Support/debrief/debrief.sock`으로 옮깁니다. 캐시 정리 도구가 소켓을 지워 `speak`가 `connect` 오류로 실패하던 문제(2회)를 막습니다. 이전 버전의 장수 MCP 프로세스를 위해 옛 경로에는 새 소켓으로 향하는 심볼릭 링크를 데몬이 실행되는 동안만 둡니다(0.7에서 제거).
+
 ## [0.5.0] - 2026-10-29
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install`로 적용합니다. Grok은 `/mcps`로 도구를 갱신하고, 집 밖 폴더는 `/hooks-trust`가 필요합니다. Codex는 `debrief doctor`가 안내할 때만 `/hooks`에서 다시 신뢰합니다.

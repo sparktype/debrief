@@ -12,7 +12,11 @@ pub struct DebriefPaths {
     pub cache_directory: PathBuf,
     pub config_url: PathBuf,
     pub models_directory: PathBuf,
+    /// 캐시 정리 도구에 지워지지 않도록 데이터 디렉터리에 둔다.
     pub socket_url: PathBuf,
+    /// 0.5.0 이하가 쓰던 Caches 경로. 이전 버전의 장수 MCP 프로세스가 새 소켓에 닿도록 심볼릭 링크만 둔다.
+    /// shortcut: 한시 호환, 0.7 릴리스에서 제거.
+    pub legacy_socket_url: PathBuf,
     pub pid_url: PathBuf,
     pub executable_url: PathBuf,
     pub launch_agent_url: PathBuf,
@@ -34,7 +38,8 @@ impl DebriefPaths {
             cache_directory: cache_directory.clone(),
             config_url: data_directory.join("config.json"),
             models_directory: data_directory.join("models"),
-            socket_url: cache_directory.join("debrief.sock"),
+            socket_url: data_directory.join("debrief.sock"),
+            legacy_socket_url: cache_directory.join("debrief.sock"),
             pid_url: cache_directory.join("daemon.pid"),
             executable_url: home.join(".local/bin/debrief"),
             launch_agent_url: home.join("Library/LaunchAgents/com.debrief.tts.plist"),
@@ -59,7 +64,8 @@ mod tests {
         assert_eq!(paths.data_directory, PathBuf::from("/Users/example/Library/Application Support/debrief"));
         assert_eq!(paths.cache_directory, PathBuf::from("/Users/example/Library/Caches/debrief"));
         assert_eq!(paths.config_url, PathBuf::from("/Users/example/Library/Application Support/debrief/config.json"));
-        assert_eq!(paths.socket_url, PathBuf::from("/Users/example/Library/Caches/debrief/debrief.sock"));
+        assert_eq!(paths.socket_url, PathBuf::from("/Users/example/Library/Application Support/debrief/debrief.sock"));
+        assert_eq!(paths.legacy_socket_url, PathBuf::from("/Users/example/Library/Caches/debrief/debrief.sock"));
         assert_eq!(paths.launch_agent_url, PathBuf::from("/Users/example/Library/LaunchAgents/com.debrief.tts.plist"));
         assert_eq!(paths.pid_url, PathBuf::from("/Users/example/Library/Caches/debrief/daemon.pid"));
         assert_eq!(paths.last_error_url, PathBuf::from("/Users/example/Library/Caches/debrief/last-error.json"));

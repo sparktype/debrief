@@ -147,6 +147,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
         let backend = (self.backend_factory)(&model_directory).map_err(|_| ResidentServiceError::ModelUnavailable)?;
         let server =
             (self.socket_factory)(&paths.socket_url).map_err(|_| ResidentServiceError::ModelUnavailable)?;
+        Self::link_legacy_socket(&paths);
 
         let home_for_diagnostics = self.home.clone();
         let config_url = paths.config_url.clone();
@@ -292,6 +293,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
         state.run_thread = None;
         state.daemon = None;
         state.server = None;
+        Self::unlink_legacy_socket(&paths);
         if state.remove_pid_on_clear {
             if let Some(owned_pid) = &state.owned_pid {
                 if std::fs::read_to_string(&paths.pid_url).ok().as_deref() == Some(owned_pid.as_str()) {
@@ -304,6 +306,22 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
         state.owned_pid = None;
         state.running = false;
         state.remove_pid_on_clear = true;
+    }
+
+    /// 옛 Caches 경로에 새 소켓으로 향하는 심볼릭 링크를 둔다. 실패해도 새 경로는 동작하므로 무시한다.
+    fn link_legacy_socket(paths: &DebriefPaths) {
+        Self::unlink_legacy_socket(paths);
+        let _ = std::os::unix::fs::symlink(&paths.socket_url, &paths.legacy_socket_url);
+    }
+
+    /// 옛 경로의 링크(또는 이전 데몬이 남긴 소켓)만 지운다. 일반 파일과 디렉터리는 건드리지 않는다.
+    fn unlink_legacy_socket(paths: &DebriefPaths) {
+        use std::os::unix::fs::FileTypeExt;
+        let Ok(metadata) = std::fs::symlink_metadata(&paths.legacy_socket_url) else { return };
+        let kind = metadata.file_type();
+        if kind.is_symlink() || kind.is_socket() {
+            let _ = std::fs::remove_file(&paths.legacy_socket_url);
+        }
     }
 
     /// accept 루프가 끝난 뒤 이 유저가 소유한 잔여 UDS 경로를 unlink한다.
@@ -383,6 +401,25 @@ mod tests {
         assert!(!service.is_running());
         assert!(!paths.socket_url.exists());
         assert!(!paths.pid_url.exists());
+
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn legacy_cache_socket_path_links_to_the_new_socket_only_while_running() {
+        let home = temporary_home();
+        let paths = DebriefPaths::for_home(&home);
+        std::fs::create_dir_all(&paths.models_directory).unwrap();
+        std::fs::create_dir_all(&paths.cache_directory).unwrap();
+        // 이전 데몬이 비정상 종료하며 남긴 소켓 파일이 있어도 링크로 교체된다.
+        drop(std::os::unix::net::UnixListener::bind(&paths.legacy_socket_url).unwrap());
+
+        let service = service_with_home_provider(home.clone());
+        service.start().unwrap();
+        assert_eq!(std::fs::read_link(&paths.legacy_socket_url).unwrap(), paths.socket_url);
+
+        service.stop(true);
+        assert!(std::fs::symlink_metadata(&paths.legacy_socket_url).is_err());
 
         std::fs::remove_dir_all(&home).ok();
     }
