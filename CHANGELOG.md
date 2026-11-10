@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### 수정
+
+- 재생 중 출력 장치가 사라지거나 콜백이 멈춰도 재생 스레드가 영원히 기다리지 않습니다. 스트림 오류(`DeviceNotAvailable`·`StreamInvalidated`·`HostUnavailable`)나 클립 길이 + 3초 초과를 실패로 보고, 기존 규칙대로 재생기를 다시 만들어 한 번 재시도합니다.
+
 ### 변경
 
 - 데몬 소켓을 `~/Library/Caches/debrief/debrief.sock`에서 `~/Library/Application Support/debrief/debrief.sock`으로 옮깁니다. 캐시 정리 도구가 소켓을 지워 `speak`가 `connect` 오류로 실패하던 문제(2회)를 막습니다. 이전 버전의 장수 MCP 프로세스를 위해 옛 경로에는 새 소켓으로 향하는 심볼릭 링크를 데몬이 실행되는 동안만 둡니다(0.7에서 제거).
