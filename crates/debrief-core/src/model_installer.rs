@@ -36,26 +36,56 @@ fn mirrored_url(url: &str, endpoint: Option<&str>) -> String {
     }
 }
 
+const ORIGIN_REPO_PREFIX: &str = "https://huggingface.co/Supertone/supertonic-3/resolve/";
+/// 원본과 같은 파일을 담은 공개 미러(원본 리비전 3cadd1ee 그대로). 바이트는 매니페스트 sha256이 다시 검증한다.
+const MIRROR_REPO_PREFIX: &str =
+    "https://huggingface.co/codeguru76/supertonic-3/resolve/f26b6b0ac3583e5fc3706cb21d70c3c6cfc3f316/";
+
+/// 원본 URL을 먼저, 원본이 Supertone 저장소를 가리키면 고정된 미러 URL을 그다음에 시도한다.
+fn candidate_urls(url: &str, endpoint: Option<&str>) -> Vec<String> {
+    let mut urls = vec![mirrored_url(url, endpoint)];
+    // `<리비전>/<자산 경로>`에서 리비전을 건너뛴 자산 경로만 미러에 붙인다.
+    if let Some((_, path)) = url.strip_prefix(ORIGIN_REPO_PREFIX).and_then(|rest| rest.split_once('/')) {
+        urls.push(mirrored_url(&format!("{MIRROR_REPO_PREFIX}{path}"), endpoint));
+    }
+    urls
+}
+
+/// 첫 성공에서 멈춘다. 모두 실패하면 후보별 원인을 `; `로 이어서 돌려준다.
+fn try_each(urls: &[String], mut fetch: impl FnMut(&str) -> Result<(), String>) -> Result<(), String> {
+    let mut causes = Vec::new();
+    for url in urls {
+        match fetch(url) {
+            Ok(()) => return Ok(()),
+            Err(cause) => causes.push(cause),
+        }
+    }
+    Err(causes.join("; "))
+}
+
 impl ModelDownloading for UreqModelDownloader {
     fn download(&self, asset: &ModelAsset, destination: &Path) -> Result<(), ModelInstallerError> {
         use ureq::tls::{TlsConfig, TlsProvider};
 
-        let url = mirrored_url(&asset.url, self.endpoint.as_deref());
-        let failed = |cause: String| ModelInstallerError::DownloadFailed(format!("{} ({url}): {cause}", asset.relative_path));
         let tls_config = TlsConfig::builder().provider(TlsProvider::NativeTls).build();
         let config = ureq::Agent::config_builder().tls_config(tls_config).build();
         let agent = ureq::Agent::new_with_config(config);
 
-        let mut response = agent.get(&url).call().map_err(|error| failed(error.to_string()))?;
+        let urls = candidate_urls(&asset.url, self.endpoint.as_deref());
+        try_each(&urls, |url| {
+            let failed = |cause: String| format!("{} ({url}): {cause}", asset.relative_path);
+            let mut response = agent.get(url).call().map_err(|error| failed(error.to_string()))?;
 
-        let mut file = std::fs::File::create(destination).map_err(|error| failed(error.to_string()))?;
-        std::io::copy(&mut response.body_mut().as_reader(), &mut file).map_err(|error| failed(error.to_string()))?;
+            let mut file = std::fs::File::create(destination).map_err(|error| failed(error.to_string()))?;
+            std::io::copy(&mut response.body_mut().as_reader(), &mut file).map_err(|error| failed(error.to_string()))?;
 
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o600))
-            .map_err(|error| failed(error.to_string()))?;
-        file.sync_all().map_err(|error| failed(error.to_string()))?;
-        Ok(())
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(destination, std::fs::Permissions::from_mode(0o600))
+                .map_err(|error| failed(error.to_string()))?;
+            file.sync_all().map_err(|error| failed(error.to_string()))?;
+            Ok(())
+        })
+        .map_err(ModelInstallerError::DownloadFailed)
     }
 }
 
@@ -299,6 +329,52 @@ mod tests {
         }
     }
 
+    const ORIGIN_URL: &str =
+        "https://huggingface.co/Supertone/supertonic-3/resolve/3cadd1ee6394adea1bd021217a0e650ede09a323/onnx/tts.json";
+    const MIRROR_URL: &str =
+        "https://huggingface.co/codeguru76/supertonic-3/resolve/f26b6b0ac3583e5fc3706cb21d70c3c6cfc3f316/onnx/tts.json";
+
+    #[test]
+    fn candidate_urls_append_the_pinned_mirror_after_the_origin() {
+        assert_eq!(candidate_urls(ORIGIN_URL, None), vec![ORIGIN_URL.to_string(), MIRROR_URL.to_string()]);
+    }
+
+    #[test]
+    fn candidate_urls_follow_hf_endpoint_for_both_origin_and_mirror() {
+        let urls = candidate_urls(ORIGIN_URL, Some("https://hf.example/"));
+
+        assert_eq!(urls[0], ORIGIN_URL.replace("https://huggingface.co", "https://hf.example"));
+        assert_eq!(urls[1], MIRROR_URL.replace("https://huggingface.co", "https://hf.example"));
+    }
+
+    #[test]
+    fn candidate_urls_leave_foreign_urls_alone() {
+        assert_eq!(candidate_urls("https://example.invalid/resolve/abc/x", None), vec!["https://example.invalid/resolve/abc/x".to_string()]);
+    }
+
+    #[test]
+    fn try_each_stops_at_the_first_success() {
+        let urls = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let mut tried = Vec::new();
+
+        let result = try_each(&urls, |url| {
+            tried.push(url.to_string());
+            if url == "a" { Err("a 실패".to_string()) } else { Ok(()) }
+        });
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(tried, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn try_each_reports_every_failure_when_all_candidates_fail() {
+        let urls = vec!["a".to_string(), "b".to_string()];
+
+        let result = try_each(&urls, |url| Err(format!("{url} 실패")));
+
+        assert_eq!(result, Err("a 실패; b 실패".to_string()));
+    }
+
     fn sha256_hex(data: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(data);
@@ -439,6 +515,25 @@ mod tests {
         let digest: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
         assert_eq!(digest, asset.sha256);
 
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ureq_downloader_falls_back_to_the_mirror_when_the_origin_fails() {
+        if std::env::var("DEBRIEF_TEST_NETWORK").is_err() {
+            eprintln!("skipping: set DEBRIEF_TEST_NETWORK=1 to run a real network download test");
+            return;
+        }
+        let manifest = ModelManifest::supertonic3();
+        let mut asset = manifest.assets.iter().find(|a| a.relative_path == "onnx/tts.json").unwrap().clone();
+        // 존재하지 않는 리비전이면 원본은 404이고 미러가 같은 바이트를 준다.
+        asset.url = asset.url.replace(&manifest.revision, "0000000000000000000000000000000000000000");
+        let dir = temporary_directory();
+        let destination = dir.join("tts.json");
+
+        UreqModelDownloader::new().download(&asset, &destination).expect("mirror fallback must succeed");
+
+        assert_eq!(sha256_hex(&fs::read(&destination).unwrap()), asset.sha256);
         fs::remove_dir_all(&dir).ok();
     }
 }

@@ -9,6 +9,8 @@
 
 - `debrief doctor`가 `~/.local/bin/debrief` 설치본과 지금 실행한 바이너리의 내용이 다르면 `install.binary_stale`로 알리고 `debrief install --repair`를 안내합니다. brew upgrade 뒤 `install`을 잊으면 LaunchAgent·훅·MCP가 옛 설치본을 계속 쓰던 문제를 드러냅니다. 같으면 `install.binary_current`입니다.
 
+- 모델 다운로드가 원본(`Supertone/supertonic-3`)에서 실패하면 같은 파일을 담은 공개 미러(`codeguru76/supertonic-3`, 고정 리비전)에서 자동으로 한 번 더 받습니다. `HF_ENDPOINT`는 두 곳 모두에 적용되고, 자산별 sha256·바이트 수 검증은 그대로입니다. 모두 실패하면 후보별 URL과 원인을 함께 보여 줍니다.
+
 ### 수정
 
 - 재생 중 출력 장치가 사라지거나 콜백이 멈춰도 재생 스레드가 영원히 기다리지 않습니다. 스트림 오류(`DeviceNotAvailable`·`StreamInvalidated`·`HostUnavailable`)나 클립 길이 + 3초 초과를 실패로 보고, 기존 규칙대로 재생기를 다시 만들어 한 번 재시도합니다.

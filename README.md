@@ -52,7 +52,7 @@ export PATH="$HOME/.local/bin:$PATH"
 debrief status
 ```
 
-`HF_HUB_OFFLINE`이 켜져 있으면 모델 다운로드 전에 해제합니다. huggingface.co에 닿지 않는 망이면 `HF_ENDPOINT=https://<미러> debrief install`로 미러에서 받습니다(sha256 검증은 그대로). 이미 검증된 모델이 있으면 `debrief install --repair`로 다시 받지 않습니다. 설치가 끝나면 `debrief doctor`로 확인합니다.
+`HF_HUB_OFFLINE`이 켜져 있으면 모델 다운로드 전에 해제합니다. huggingface.co에 닿지 않는 망이면 `HF_ENDPOINT=https://<미러> debrief install`로 미러에서 받습니다(sha256 검증은 그대로). 원본 저장소(`Supertone/supertonic-3`)에서 받지 못하면 같은 파일을 담은 공개 미러(`codeguru76/supertonic-3`)로 한 번 더 시도합니다. 어느 쪽이든 sha256이 맞지 않으면 설치하지 않습니다. 이미 검증된 모델이 있으면 `debrief install --repair`로 다시 받지 않습니다. 설치가 끝나면 `debrief doctor`로 확인합니다.
 
 `debrief install`은 다음 순서로 진행합니다.
 
