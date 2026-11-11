@@ -186,7 +186,7 @@ Or the installed executable:\n\n\
         format!(
             "---\n\
 name: debrief-speak\n\
-description: Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Grok: debrief__speak). Use when a user-visible turn ends.\n\
+description: 'Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Grok: debrief__speak). Use when a user-visible turn ends.'\n\
 ---\n\n\
 # {title}\n\n\
 {tool_intro}\n\n\
@@ -288,7 +288,9 @@ Grok: refresh with `/mcps`. Mute, mode, companion, and diagnostics: `debrief mut
     }
 
     fn skill(name: &str, description: &str, body: &str) -> String {
-        format!("---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n\n{body}")
+        // YAML 단일 인용으로 감싸 설명 속 ": " 가 매핑으로 읽히지 않게 한다.
+        let description = description.replace('\'', "''");
+        format!("---\nname: {name}\ndescription: '{description}'\n---\n\n# {name}\n\n{body}")
     }
 
     fn shell_quote(value: &str) -> String {
@@ -447,5 +449,15 @@ mod tests {
         assert!(!plist.contains("AssociatedBundleIdentifiers"));
         assert!(!plist.contains("/bin/sh"));
         assert!(!plist.contains("menubar"));
+    }
+
+    #[test]
+    fn skill_descriptions_are_yaml_quoted() {
+        let executable = Path::new("/Applications/debrief.app/Contents/MacOS/debrief");
+        let all = EmbeddedTemplates::skills(executable).into_iter().chain(EmbeddedTemplates::grok_skills(executable));
+        for (name, markdown) in all {
+            let line = markdown.lines().find(|l| l.starts_with("description: ")).unwrap();
+            assert!(line.starts_with("description: '") && line.ends_with('\''), "{name}: {line}");
+        }
     }
 }

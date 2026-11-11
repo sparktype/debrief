@@ -1,6 +1,6 @@
 ---
 name: debrief-speak
-description: Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Grok: debrief__speak). Use when a user-visible turn ends.
+description: 'Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Grok: debrief__speak). Use when a user-visible turn ends.'
 ---
 
 # debrief speak

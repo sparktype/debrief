@@ -1,6 +1,6 @@
 ---
 name: debrief-install
-description: Install or repair the debrief daemon and host MCP registration. Prefer MCP install (Claude: mcp__debrief__install; Grok: debrief__install).
+description: 'Install or repair the debrief daemon and host MCP registration. Prefer MCP install (Claude: mcp__debrief__install; Grok: debrief__install).'
 ---
 
 # debrief-install
