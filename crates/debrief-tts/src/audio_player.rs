@@ -59,6 +59,8 @@ struct PlaybackState {
     samples: Vec<f32>,
     position: AtomicUsize,
     stopped: AtomicBool,
+    /// `stopped` 이후 페이드아웃에 이미 내보낸 샘플 수.
+    fade_pos: AtomicUsize,
     /// 장치가 사라지는 등 스트림이 죽어 끝난 경우. 정상 종료·`stop`과 구분한다.
     failed: AtomicBool,
     finished: Mutex<bool>,
@@ -74,9 +76,41 @@ impl PlaybackState {
             samples,
             position: AtomicUsize::new(0),
             stopped: AtomicBool::new(false),
+            fade_pos: AtomicUsize::new(0),
             failed: AtomicBool::new(false),
             finished: Mutex::new(false),
             finished_signal: Condvar::new(),
+        }
+    }
+
+    /// 중단 시 페이드아웃 길이(44.1kHz 기준 60ms). 뚝 끊기는 클릭을 없앤다.
+    const FADE_SAMPLES: usize = 2_646;
+    /// 페이드가 끝나길 기다리는 상한. 콜백이 안 돌아도 `stop`이 묶이지 않게 한다.
+    const FADE_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
+
+    /// 출력 버퍼를 채운다. 중단 요청이 있으면 남은 소리를 선형으로 줄여 0으로 만든다.
+    fn fill(&self, data: &mut [f32]) {
+        let start = self.position.load(Ordering::SeqCst);
+        let remaining = self.samples.len().saturating_sub(start);
+        let to_copy = remaining.min(data.len());
+        data[..to_copy].copy_from_slice(&self.samples[start..start + to_copy]);
+        data[to_copy..].fill(0.0);
+        self.position.store(start + to_copy, Ordering::SeqCst);
+
+        if self.stopped.load(Ordering::SeqCst) {
+            let faded = self.fade_pos.load(Ordering::SeqCst);
+            for (i, sample) in data.iter_mut().enumerate() {
+                let n = faded + i;
+                *sample *= if n >= Self::FADE_SAMPLES { 0.0 } else { 1.0 - n as f32 / Self::FADE_SAMPLES as f32 };
+            }
+            self.fade_pos.store(faded + data.len(), Ordering::SeqCst);
+            if faded + data.len() >= Self::FADE_SAMPLES {
+                self.signal_finished();
+                return;
+            }
+        }
+        if start + to_copy >= self.samples.len() {
+            self.signal_finished();
         }
     }
 
@@ -137,22 +171,7 @@ impl AudioEngineDriving for CpalAudioDriver {
             .build_output_stream(
                 config,
                 move |data: &mut [f32], _info: &cpal::OutputCallbackInfo| {
-                    if callback_state.stopped.load(Ordering::SeqCst) {
-                        data.fill(0.0);
-                        callback_state.signal_finished();
-                        return;
-                    }
-                    let start = callback_state.position.load(Ordering::SeqCst);
-                    let remaining = callback_state.samples.len().saturating_sub(start);
-                    let to_copy = remaining.min(data.len());
-                    data[..to_copy].copy_from_slice(&callback_state.samples[start..start + to_copy]);
-                    for sample in &mut data[to_copy..] {
-                        *sample = 0.0;
-                    }
-                    callback_state.position.store(start + to_copy, Ordering::SeqCst);
-                    if start + to_copy >= callback_state.samples.len() {
-                        callback_state.signal_finished();
-                    }
+                    callback_state.fill(data);
                 },
                 move |error: cpal::Error| {
                     // DeviceChanged는 cpal이 스트림을 새 기본 장치로 옮기므로 계속 재생한다.
@@ -185,6 +204,8 @@ impl AudioEngineDriving for CpalAudioDriver {
     fn stop(&self) {
         if let Some((state, _stream)) = self.state.lock().unwrap().take() {
             state.stopped.store(true, Ordering::SeqCst);
+            // 스트림을 놓기 전에 페이드아웃이 끝나길 기다린다. 콜백이 완료를 알리면 재생 스레드도 함께 깬다.
+            let _ = state.wait(PlaybackState::FADE_WAIT);
             state.signal_finished();
         }
     }
@@ -283,6 +304,21 @@ mod tests {
         let state = PlaybackState::new(vec![0.0; 4]);
 
         assert_eq!(state.wait(std::time::Duration::from_millis(30)), Err(AudioPlayerError::PlaybackFailed));
+    }
+
+    #[test]
+    fn stop_fades_out_to_silence_then_signals_finished() {
+        let state = PlaybackState::new(vec![1.0; PlaybackState::FADE_SAMPLES * 2]);
+        state.stopped.store(true, Ordering::SeqCst);
+        let mut first = vec![0.0; 1000];
+        state.fill(&mut first);
+        assert!(first[0] > 0.99 && first.windows(2).all(|w| w[1] < w[0]), "점점 줄어든다");
+        assert!(!*state.finished.lock().unwrap());
+
+        let mut rest = vec![0.0; PlaybackState::FADE_SAMPLES];
+        state.fill(&mut rest);
+        assert!(rest[rest.len() - 1000..].iter().all(|s| *s == 0.0), "끝은 무음");
+        assert!(*state.finished.lock().unwrap());
     }
 
     #[test]
