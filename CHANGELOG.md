@@ -5,6 +5,18 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-11
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install --repair`로 적용합니다. 이미 설치한 스킬 파일의 `description` 오류도 이 단계에서 다시 써집니다.
+
+### 수정
+
+- 설치되는 스킬(`debrief-speak`·`debrief-install`·`debrief-setup`)의 `description`을 YAML 작은따옴표로 감쌉니다. `(Claude: mcp__...)`의 `: `가 매핑으로 읽혀 Claude Code·Codex·Grok이 스킬을 YAML 파싱 오류로 건너뛰던 문제를 막습니다.
+
+### 변경
+
+- 발화를 중단할 때(새 발화로 교체, 인터럽트, 종료) 소리를 뚝 끊지 않고 60ms 동안 줄여 0으로 만든 뒤 스트림을 놓습니다. 장치가 멈춰 있어도 `stop`은 최대 200ms까지만 기다립니다.
+
 ## [0.6.0] - 2026-11-10
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install --repair`로 적용합니다. 데몬 소켓 경로가 바뀌므로 이 단계를 건너뛰면 `speak`가 닿지 않습니다. 이미 떠 있는 에이전트 세션의 MCP는 옛 경로에 심볼릭 링크로 이어지지만, 새 세션부터 새 경로를 씁니다.
