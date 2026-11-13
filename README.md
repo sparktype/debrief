@@ -200,6 +200,7 @@ debrief status
 | `voiceSpeeds` | 역할별 속도. 비어 있으면 요청의 `speed` | 설치가 비워 둡니다 |
 | `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다. 45초를 넘긴 도우미 발화를 버릴 때도 완료음을 한 번 냅니다. 결정 대기·다시 듣기·작업 레인은 내지 않습니다 | 설정 파일에서 `"earcons": false` |
 | `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
+| `english` · `englishSpeed` | 영어 듣기 모드. 브리핑·고정 알림을 영어로 내고 모든 발화를 `englishSpeed`(0.7–2.0, 기본 0.9)로 재생합니다. 기본 꺼짐 | `debrief english on` · `debrief english speed 0.8` |
 | `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude와 Grok은 `additionalContext`, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |
 | `permissionRelay` | Claude Code 채널 권한 중계. 켜고 `claude --dangerously-load-development-channels server:debrief`로 실행하면 도구 승인 요청이 debrief로 중계되고 `debrief allow`·`debrief deny`로 답할 수 있습니다(터미널 대화상자도 그대로 열려 있고 먼저 온 답이 쓰입니다). Channels는 research preview이고, Team·Enterprise는 관리자가 `channelsEnabled`를 켜야 합니다. 기본 꺼짐 | 설정 파일에서 `"permissionRelay": true` |
 | `pronunciations` | 단어 → 읽을 표기. 합성 직전에 단어 단위로 대소문자를 무시하고 바꿉니다. 사용자 항목이 없으면 debrief·Codex·Grok·MCP를 디브리프·코덱스·그록·엠씨피로 읽습니다. 같은 단어를 적으면 그 표기가 이기고, 단어 그대로 적으면 기본 읽기를 끕니다. 파일의 기본 항목은 설치가 넣지 않습니다. 다시 듣기 기록은 원문을 유지합니다 | 설정 파일을 직접 고칩니다 |
