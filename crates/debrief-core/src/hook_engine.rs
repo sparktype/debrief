@@ -49,6 +49,15 @@ impl<'a> HookEngine<'a> {
 
     /// 유효 모드별 행동 규칙 한 줄. 에이전트가 말투와 침묵을 스스로 맞추게 한다.
     pub fn mode_guidance(configuration: &DebriefConfiguration, restriction: Option<ModeRestriction>) -> String {
+        let guidance = Self::base_guidance(configuration, restriction);
+        if configuration.english && !configuration.muted {
+            // speak 규약의 "사용자 언어" 규칙을 덮어쓴다.
+            return format!("{guidance} English listening mode: write the speak text in plain, natural spoken English (short sentences, everyday words), even if the user writes in Korean.");
+        }
+        guidance
+    }
+
+    fn base_guidance(configuration: &DebriefConfiguration, restriction: Option<ModeRestriction>) -> String {
         use crate::configuration::DebriefMode;
         if configuration.muted {
             return "debrief muted: do not call speak.".to_string();
@@ -159,13 +168,20 @@ impl<'a> HookEngine<'a> {
         }
     }
 
-    fn failure_text(error_type: Option<&str>) -> &'static str {
+    /// 고정 알림 문구. 영어 듣기 모드면 영어, 아니면 한국어.
+    fn pick(&self, ko: &str, en: &str) -> String {
+        (if self.configuration.english { en } else { ko }).to_string()
+    }
+
+    fn failure_text(&self, error_type: Option<&str>) -> String {
         match error_type {
-            Some("rate_limit" | "overloaded") => "사용 한도나 서버 과부하로 작업이 멈췄습니다.",
-            Some("authentication_failed" | "oauth_org_not_allowed" | "account_on_hold" | "billing_error") => {
-                "계정 문제로 작업이 멈췄습니다."
+            Some("rate_limit" | "overloaded") => {
+                self.pick("사용 한도나 서버 과부하로 작업이 멈췄습니다.", "Stopped: usage limit or server overload.")
             }
-            _ => "API 오류로 작업이 멈췄습니다.",
+            Some("authentication_failed" | "oauth_org_not_allowed" | "account_on_hold" | "billing_error") => {
+                self.pick("계정 문제로 작업이 멈췄습니다.", "Stopped: account problem.")
+            }
+            _ => self.pick("API 오류로 작업이 멈췄습니다.", "Stopped: API error."),
         }
     }
 
@@ -260,24 +276,29 @@ impl<'a> HookEngine<'a> {
         }
 
         let (body, emotion) = match event.name {
-            HookEventName::PermissionRequest => ("권한 승인을 기다리고 있습니다.".to_string(), SpeechEmotion::Concerned),
+            HookEventName::PermissionRequest => (self.pick("권한 승인을 기다리고 있습니다.", "Waiting for your permission."), SpeechEmotion::Concerned),
             HookEventName::Stop => {
                 let Some(elapsed) = long_turn_elapsed else { return (None, false) };
                 let minutes = ((elapsed + 30) / 60).max(1);
-                (format!("{minutes}분 걸린 작업이 끝났습니다."), SpeechEmotion::Neutral)
+                let body = if self.configuration.english {
+                    format!("That task took {minutes} minute{} and is done.", if minutes == 1 { "" } else { "s" })
+                } else {
+                    format!("{minutes}분 걸린 작업이 끝났습니다.")
+                };
+                (body, SpeechEmotion::Neutral)
             }
-            HookEventName::StopFailure => (Self::failure_text(event.subtype.as_deref()).to_string(), SpeechEmotion::Concerned),
+            HookEventName::StopFailure => (self.failure_text(event.subtype.as_deref()), SpeechEmotion::Concerned),
             HookEventName::Notification if background_completed => {
-                ("백그라운드 작업이 끝났거나 멈췄습니다.".to_string(), SpeechEmotion::Neutral)
+                (self.pick("백그라운드 작업이 끝났거나 멈췄습니다.", "Background task finished or stopped."), SpeechEmotion::Neutral)
             }
-            HookEventName::Notification => ("입력을 기다리고 있습니다.".to_string(), SpeechEmotion::Neutral),
-            HookEventName::Elicitation => ("추가 입력이 필요합니다.".to_string(), SpeechEmotion::Concerned),
+            HookEventName::Notification => (self.pick("입력을 기다리고 있습니다.", "Waiting for your input."), SpeechEmotion::Neutral),
+            HookEventName::Elicitation => (self.pick("추가 입력이 필요합니다.", "More input is needed."), SpeechEmotion::Concerned),
             HookEventName::PermissionDenied => {
-                ("자동 모드가 도구 호출을 거부했습니다.".to_string(), SpeechEmotion::Concerned)
+                (self.pick("자동 모드가 도구 호출을 거부했습니다.", "Auto mode denied a tool call."), SpeechEmotion::Concerned)
             }
-            HookEventName::TeammateIdle => ("팀원이 대기 중입니다.".to_string(), SpeechEmotion::Neutral),
-            HookEventName::TaskCompleted => ("작업 항목이 하나 끝났습니다.".to_string(), SpeechEmotion::Neutral),
-            HookEventName::PreCompact => ("컨텍스트를 정리하고 있습니다.".to_string(), SpeechEmotion::Neutral),
+            HookEventName::TeammateIdle => (self.pick("팀원이 대기 중입니다.", "A teammate is idle."), SpeechEmotion::Neutral),
+            HookEventName::TaskCompleted => (self.pick("작업 항목이 하나 끝났습니다.", "A task item is done."), SpeechEmotion::Neutral),
+            HookEventName::PreCompact => (self.pick("컨텍스트를 정리하고 있습니다.", "Compacting the context."), SpeechEmotion::Neutral),
             // 압축이 끝나면 말 대신 완료음만 낸다.
             HookEventName::PostCompact => (String::new(), SpeechEmotion::Neutral),
             _ => return (None, false),
@@ -811,6 +832,52 @@ mod tests {
             "권한 승인을 기다리고 있습니다.",
             "끝난 세션 때문에 접두가 남지 않는다"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn english_mode_appends_guidance_and_leaves_korean_default_alone() {
+        let english = DebriefConfiguration { english: true, ..Default::default() };
+        let text = HookEngine::mode_guidance(&english, None);
+        assert!(text.starts_with("Needs a user decision? pass intent=decision.") && text.contains("English listening mode"), "{text}");
+        let muted = DebriefConfiguration { english: true, muted: true, ..Default::default() };
+        assert_eq!(HookEngine::mode_guidance(&muted, None), "debrief muted: do not call speak.");
+    }
+
+    #[test]
+    fn english_mode_speaks_notices_in_english() {
+        let dir = state_dir("english-notices");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let english = DebriefConfiguration { english: true, ..Default::default() };
+        let engine = engine_with(&state, english);
+        let say = |event: HookEvent, at: u64| engine.handle_at(&event, HostSource::Claude, at).notice.unwrap().envelope.text;
+        assert_eq!(say(event_in(HookEventName::PermissionRequest, "a", "/w/p"), 0), "Waiting for your permission.");
+        assert_eq!(say(with_subtype(HookEventName::StopFailure, "rate_limit"), 0), "Stopped: usage limit or server overload.");
+        assert_eq!(say(with_subtype(HookEventName::StopFailure, "billing_error"), 0), "Stopped: account problem.");
+        assert_eq!(say(with_subtype(HookEventName::StopFailure, "x"), 0), "Stopped: API error.");
+        assert_eq!(say(with_subtype(HookEventName::Notification, "idle_prompt"), 0), "Waiting for your input.");
+        assert_eq!(say(with_subtype(HookEventName::Notification, "agent_completed"), 0), "Background task finished or stopped.");
+        assert_eq!(say(event_in(HookEventName::Elicitation, "a", "/w/p"), 0), "More input is needed.");
+        assert_eq!(say(event_in(HookEventName::PermissionDenied, "a", "/w/p"), 0), "Auto mode denied a tool call.");
+        assert_eq!(say(with_subtype(HookEventName::PreCompact, "auto"), 0), "Compacting the context.");
+        let mut long = event_in(HookEventName::UserPromptSubmit, "l", "/w/p");
+        engine.handle_at(&long, HostSource::Claude, 0);
+        long.name = HookEventName::Stop;
+        assert_eq!(say(long.clone(), 60), "That task took 1 minute and is done.");
+        engine.handle_at(&HookEvent { name: HookEventName::UserPromptSubmit, ..long.clone() }, HostSource::Claude, 100);
+        assert_eq!(say(long, 340), "That task took 4 minutes and is done.");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn english_mode_teammate_notices() {
+        let dir = state_dir("english-team");
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let english = DebriefConfiguration { english: true, team_notices: true, ..Default::default() };
+        let engine = engine_with(&state, english);
+        let say = |name| engine.handle_at(&event_in(name, "a", "/w/p"), HostSource::Claude, 0).notice.unwrap().envelope.text;
+        assert_eq!(say(HookEventName::TeammateIdle), "A teammate is idle.");
+        assert_eq!(say(HookEventName::TaskCompleted), "A task item is done.");
         std::fs::remove_dir_all(&dir).ok();
     }
 
