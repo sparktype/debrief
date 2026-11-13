@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-13
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install --repair`로 적용합니다. 영어 듣기 모드는 `debrief english on`으로 켜고, 새 세션부터 브리핑 지침이 들어갑니다.
+
+### 추가
+
+- 영어 듣기 모드(`debrief english [on|off|toggle]`, 기본 꺼짐): 에이전트를 쓰며 영어 듣기에 익숙해지기 위한 모드입니다. Claude·Codex 시작 계열 훅 지침이 쉬운 영어 브리핑을 요청하고, 고정 알림·서브에이전트 합치기·설치 완료 문구를 영어로 냅니다. 발음 사전은 건너뜁니다. Grok은 훅 지침을 받지 않아 영어로 입력할 때만 영어 브리핑이 됩니다.
+- 영어 듣기 빠르기(`debrief english speed <0.7–2.0>`, 기본 0.9): 켜져 있는 동안 에이전트가 보낸 speed 대신 이 값으로 모든 발화를 재생합니다. `debrief status`에 표시됩니다.
+
+### 변경
+
+- 합성 언어 태그를 문장으로 정합니다. 한글이 있으면 `<ko>`, 없으면 `<en>`이라 영어 모드가 아니어도 영어 문장을 영어 발음으로 읽습니다.
+
 ## [0.6.1] - 2026-11-11
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install --repair`로 적용합니다. 이미 설치한 스킬 파일의 `description` 오류도 이 단계에서 다시 써집니다.
