@@ -130,6 +130,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             }
         }
 
+        self.queue.set_english(configuration.english);
         let decision = self.queue.enqueue(request);
         let mut state = self.state.lock().unwrap();
         if decision == QueueDecision::Accepted {
@@ -261,7 +262,13 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 admit_and_cue();
             } else if ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration(), request.decision).is_some() {
                 // 대기 중에 mute·mode가 바뀌어 이미 거부될 발화는 합성하지 않는다(재생 직전 판정은 그대로 한 번 더 한다).
-                let spoken = Pronunciation::apply(&request.envelope.text, &configuration().pronunciations);
+                // 영어 모드는 한글 기본 발음 사전이 영어 줄을 한국어로 오인시키므로 적용하지 않고, 속도도 english_speed를 쓴다.
+                let current = configuration();
+                let (spoken, speed) = if current.english {
+                    (request.envelope.text.clone(), current.english_speed)
+                } else {
+                    (Pronunciation::apply(&request.envelope.text, &current.pronunciations), request.envelope.speed)
+                };
                 let text = EmotionProsody::spoken_text(request.emotion, &spoken);
                 let pause_seconds = EmotionProsody::pause_seconds(request.emotion);
                 let (sender, receiver) = std::sync::mpsc::channel::<PcmBuffer>();
@@ -282,7 +289,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                         }
                         played
                     });
-                    let result = backend.synthesize_sentences(&text, &request.envelope.voice, request.envelope.speed, &mut |buffer| {
+                    let result = backend.synthesize_sentences(&text, &request.envelope.voice, speed, &mut |buffer| {
                         !discarded() && sender.send(buffer).is_ok()
                     });
                     drop(sender);
@@ -325,10 +332,14 @@ mod tests {
     struct RecordingBackend {
         failing_text: Option<String>,
         texts: Mutex<Vec<String>>,
+        speeds: Mutex<Vec<f64>>,
     }
     impl RecordingBackend {
         fn new(failing_text: Option<&str>) -> Self {
-            RecordingBackend { failing_text: failing_text.map(|s| s.to_string()), texts: Mutex::new(Vec::new()) }
+            RecordingBackend { failing_text: failing_text.map(|s| s.to_string()), texts: Mutex::new(Vec::new()), speeds: Mutex::new(Vec::new()) }
+        }
+        fn speeds(&self) -> Vec<f64> {
+            self.speeds.lock().unwrap().clone()
         }
         fn texts(&self) -> Vec<String> {
             self.texts.lock().unwrap().clone()
@@ -341,8 +352,9 @@ mod tests {
         }
     }
     impl TtsBackend for RecordingBackend {
-        fn synthesize(&self, text: &str, _voice: &str, _speed: f64) -> Result<crate::tts_backend::PcmBuffer, crate::tts_backend::TtsBackendError> {
+        fn synthesize(&self, text: &str, _voice: &str, speed: f64) -> Result<crate::tts_backend::PcmBuffer, crate::tts_backend::TtsBackendError> {
             self.texts.lock().unwrap().push(text.to_string());
+            self.speeds.lock().unwrap().push(speed);
             if self.failing_text.as_deref() == Some(text) {
                 return Err(crate::tts_backend::TtsBackendError::SynthesisFailed);
             }
@@ -580,6 +592,37 @@ mod tests {
         assert_eq!(daemon.audio.markers(), vec![3, 5]);
         assert_eq!(daemon.audio.gains(), vec![0.4, 0.4]);
         assert!(entries.lock().unwrap().iter().any(|(c, code, _)| c == "tts" && code == "synthesis_or_playback"));
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn english_mode_uses_english_speed_and_skips_pronunciation() {
+        let config = DebriefConfiguration {
+            english: true,
+            english_speed: 0.8,
+            pronunciations: HashMap::from([("MCP".to_string(), "엠씨피".to_string())]),
+            ..Default::default()
+        };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), move || config.clone(), None);
+        daemon.submit(request(SpeechPriority::Main, "MCP ready", 0.5));
+        daemon.backend.wait_until_count(1);
+        assert_eq!(daemon.backend.texts(), vec!["MCP ready".to_string()]);
+        assert_eq!(daemon.backend.speeds(), vec![0.8]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn non_english_mode_keeps_request_speed_and_pronunciation() {
+        let config = DebriefConfiguration {
+            english_speed: 0.8,
+            pronunciations: HashMap::from([("MCP".to_string(), "엠씨피".to_string())]),
+            ..Default::default()
+        };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), move || config.clone(), None);
+        daemon.submit(request(SpeechPriority::Main, "MCP ready", 0.5));
+        daemon.backend.wait_until_count(1);
+        assert_eq!(daemon.backend.texts(), vec!["엠씨피 ready".to_string()]);
+        assert_eq!(daemon.backend.speeds(), vec![0.93]);
         daemon.shutdown();
     }
 

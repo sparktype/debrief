@@ -9,6 +9,7 @@ use crate::speech_lane::SpeechLane;
 use crate::speech_request::{SpeechPriority, SpeechRequest};
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -35,6 +36,7 @@ pub struct SpeechQueue {
     capacity: usize,
     duplicate_window: Duration,
     max_wait: Duration,
+    english: AtomicBool,
     state: Mutex<QueueState>,
     condvar: Condvar,
 }
@@ -46,6 +48,7 @@ impl SpeechQueue {
             capacity,
             duplicate_window,
             max_wait: Self::MAXIMUM_WAIT,
+            english: AtomicBool::new(false),
             state: Mutex::new(QueueState { pending: VecDeque::new(), recent_digests: Vec::new() }),
             condvar: Condvar::new(),
         }
@@ -53,6 +56,11 @@ impl SpeechQueue {
 
     /// 이보다 오래 기다린 발화는 재생 차례가 와도 버린다(결정 대기·다시 듣기 제외).
     pub const MAXIMUM_WAIT: Duration = Duration::from_secs(45);
+
+    /// 영어 듣기 모드면 합쳐진 서브에이전트 완료 문구도 영어로 만든다.
+    pub fn set_english(&self, english: bool) {
+        self.english.store(english, Ordering::Relaxed);
+    }
 
     pub fn with_max_wait(mut self, max_wait: Duration) -> Self {
         self.max_wait = max_wait;
@@ -98,7 +106,11 @@ impl SpeechQueue {
         if !request.is_main() && !request.replayed {
             if let Some(waiting) = state.pending.iter_mut().find(|pending| !pending.request.is_main() && !pending.request.replayed) {
                 waiting.merged += 1;
-                waiting.request.envelope.text = format!("서브에이전트 작업 {}개가 끝났습니다.", waiting.merged);
+                waiting.request.envelope.text = if self.english.load(Ordering::Relaxed) {
+                    format!("{} subagent tasks finished.", waiting.merged)
+                } else {
+                    format!("서브에이전트 작업 {}개가 끝났습니다.", waiting.merged)
+                };
                 return QueueDecision::Accepted;
             }
         }
@@ -262,6 +274,15 @@ mod tests {
         assert_eq!(queue.pending_texts(), vec!["main", "서브에이전트 작업 3개가 끝났습니다."]);
         assert_eq!(queue.next().envelope.text, "main");
         assert_eq!(queue.next().envelope.voice, "F1");
+    }
+
+    #[test]
+    fn merged_subagent_line_is_english_in_english_mode() {
+        let queue = SpeechQueue::new(2, Duration::ZERO);
+        queue.set_english(true);
+        queue.enqueue(request(SpeechPriority::Subagent, "first"));
+        queue.enqueue(request(SpeechPriority::Subagent, "second"));
+        assert_eq!(queue.pending_texts(), vec!["2 subagent tasks finished."]);
     }
 
     #[test]
