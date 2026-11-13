@@ -273,6 +273,20 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             println!("{}", if updated.mic_sync { CliMessages::MIC_ON } else { CliMessages::MIC_OFF });
             Ok(())
         }),
+        DebriefCommand::English(action) => print_configuration_result(|| {
+            let updated = ConfigurationCommands::apply_english(action.as_deref(), home)?;
+            if updated.english {
+                println!("{}", CliMessages::english_on(updated.english_speed));
+            } else {
+                println!("{}", CliMessages::ENGLISH_OFF);
+            }
+            Ok(())
+        }),
+        DebriefCommand::EnglishSpeed(value) => print_configuration_result(|| {
+            let updated = ConfigurationCommands::apply_english_speed(&value, home)?;
+            println!("{}", CliMessages::english_speed_set(updated.english_speed));
+            Ok(())
+        }),
         DebriefCommand::Hook { source } => {
             let Some(host) = (match source.as_str() {
                 "codex" => Some(HostSource::Codex),
@@ -312,6 +326,10 @@ fn print_configuration_result(body: impl FnOnce() -> Result<(), debrief_core::Co
     match body() {
         Ok(()) => 0,
         Err(error) => {
+            if let debrief_core::ConfigurationCommandError::InvalidEnglishSpeed(raw) = &error {
+                eprintln!("{}", CliMessages::english_speed_invalid(raw));
+                return 64;
+            }
             let detail = format!("{error:?}");
             eprintln!("{}", CliMessages::config_save_failed(&detail));
             1

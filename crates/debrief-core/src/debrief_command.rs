@@ -18,6 +18,8 @@ pub enum DebriefCommand {
     Companion(Option<String>),
     Dnd(Option<String>),
     Mic(Option<String>),
+    English(Option<String>),
+    EnglishSpeed(String),
     Skip { all: bool },
     Replay(u8),
     Allow(Option<String>),
@@ -50,6 +52,8 @@ impl DebriefCommand {
                 "  debrief companion [on|off|toggle]\n",
                 "  debrief dnd [on|off|toggle]   (follow macOS Do Not Disturb: at least quiet while it is on)\n",
                 "  debrief mic [on|off|toggle]   (at least quiet while another app uses the microphone; never records)\n",
+                "  debrief english [on|off|toggle]   (English listening mode: speak English only)\n",
+                "  debrief english speed <0.7-2.0>   (English listening speed, default 0.9)\n",
                 "  debrief skip [--all]   (stop the current utterance; --all also clears the queue)\n",
                 "  debrief replay [n]     (replay the last n utterances, 1-10, default 1)\n",
                 "  debrief allow [id] / debrief deny [id]   (answer a relayed Claude Code permission prompt; permissionRelay)\n\n",
@@ -123,6 +127,10 @@ impl DebriefCommand {
             "companion" => Ok(DebriefCommand::Companion(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
             "dnd" => Ok(DebriefCommand::Dnd(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
             "mic" => Ok(DebriefCommand::Mic(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
+            "english" => match tail {
+                [word, value] if word == "speed" => Ok(DebriefCommand::EnglishSpeed(value.clone())),
+                _ => Ok(DebriefCommand::English(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
+            },
             "skip" => {
                 Self::require_only(tail, &["--all"])?;
                 if tail.len() > 1 {
@@ -236,6 +244,7 @@ impl CliMessages {
     pub const DND_OFF: &'static str = "방해금지 연동을 껐습니다.";
     pub const MIC_ON: &'static str = "마이크 사용 연동을 켰습니다.";
     pub const MIC_OFF: &'static str = "마이크 사용 연동을 껐습니다.";
+    pub const ENGLISH_OFF: &'static str = "영어 듣기 모드를 껐습니다.";
     pub const STARTED: &'static str = "서비스를 시작했습니다.";
     pub const STOPPED: &'static str = "서비스를 중지했습니다.";
     pub const RESTARTED: &'static str = "서비스를 다시 시작했습니다.";
@@ -285,6 +294,18 @@ impl CliMessages {
 
     pub fn daemon_run_failed(code: &str) -> String {
         format!("데몬이 실행 중 멈췄습니다. `debrief doctor`로 확인해 주세요. ({code})")
+    }
+
+    pub fn english_on(speed: f64) -> String {
+        format!("영어 듣기 모드를 켰습니다. 빠르기 {speed}")
+    }
+
+    pub fn english_speed_set(speed: f64) -> String {
+        format!("영어 듣기 빠르기를 {speed}로 정했습니다.")
+    }
+
+    pub fn english_speed_invalid(raw: &str) -> String {
+        format!("영어 듣기 빠르기는 0.7에서 2.0 사이의 숫자여야 합니다. 입력한 값은 {raw}입니다.")
     }
 
     pub fn config_save_failed(reason: &str) -> String {
@@ -339,6 +360,11 @@ mod tests {
         assert!(parse(&["dnd", "maybe"]).is_err());
         assert_eq!(parse(&["mic", "off"]), Ok(DebriefCommand::Mic(Some("off".to_string()))));
         assert!(parse(&["mic", "maybe"]).is_err());
+        assert_eq!(parse(&["english"]), Ok(DebriefCommand::English(None)));
+        assert_eq!(parse(&["english", "on"]), Ok(DebriefCommand::English(Some("on".to_string()))));
+        assert!(parse(&["english", "maybe"]).is_err());
+        assert_eq!(parse(&["english", "speed", "0.8"]), Ok(DebriefCommand::EnglishSpeed("0.8".to_string())));
+        assert!(parse(&["english", "speed"]).is_err());
         assert_eq!(parse(&["hook", "--source", "claude"]), Ok(DebriefCommand::Hook { source: "claude".to_string() }));
         assert_eq!(parse(&["hook", "--source", "gemini"]), Ok(DebriefCommand::Hook { source: "gemini".to_string() }));
     }

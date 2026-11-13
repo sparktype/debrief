@@ -270,6 +270,8 @@ pub enum ConfigurationCommandError {
     InvalidCompanionAction(String),
     InvalidDndAction(String),
     InvalidMicAction(String),
+    InvalidEnglishAction(String),
+    InvalidEnglishSpeed(String),
 }
 
 pub struct ConfigurationCommands;
@@ -334,6 +336,33 @@ impl ConfigurationCommands {
             "toggle" => configuration.mic_sync = !configuration.mic_sync,
             invalid => return Err(ConfigurationCommandError::InvalidMicAction(invalid.to_string())),
         }
+        configuration.save(&url).expect("save should succeed in this context");
+        Ok(configuration)
+    }
+
+    pub fn apply_english(raw_value: Option<&str>, home: &Path) -> Result<DebriefConfiguration, ConfigurationCommandError> {
+        let url = DebriefPaths::for_home(home).config_url;
+        let mut configuration = DebriefConfiguration::load(&url);
+        match raw_value.unwrap_or("toggle") {
+            "on" => configuration.english = true,
+            "off" => configuration.english = false,
+            "toggle" => configuration.english = !configuration.english,
+            invalid => return Err(ConfigurationCommandError::InvalidEnglishAction(invalid.to_string())),
+        }
+        configuration.save(&url).expect("save should succeed in this context");
+        Ok(configuration)
+    }
+
+    /// TTS 엔진이 받는 범위(0.7..=2.0)만 허용한다.
+    pub fn apply_english_speed(raw_value: &str, home: &Path) -> Result<DebriefConfiguration, ConfigurationCommandError> {
+        let speed = raw_value
+            .parse::<f64>()
+            .ok()
+            .filter(|speed| speed.is_finite() && (0.7..=2.0).contains(speed))
+            .ok_or_else(|| ConfigurationCommandError::InvalidEnglishSpeed(raw_value.to_string()))?;
+        let url = DebriefPaths::for_home(home).config_url;
+        let mut configuration = DebriefConfiguration::load(&url);
+        configuration.english_speed = speed;
         configuration.save(&url).expect("save should succeed in this context");
         Ok(configuration)
     }
@@ -493,6 +522,27 @@ mod tests {
             ConfigurationCommands::apply_mic(Some("maybe"), home),
             Err(ConfigurationCommandError::InvalidMicAction("maybe".to_string()))
         );
+        fs::remove_dir_all(&directory).ok();
+    }
+
+    #[test]
+    fn apply_english_toggles_and_validates_speed() {
+        let directory = temporary_directory();
+        let home = directory.as_path();
+        assert!(ConfigurationCommands::apply_english(Some("on"), home).unwrap().english);
+        assert!(!ConfigurationCommands::apply_english(None, home).unwrap().english, "인자 없으면 toggle");
+        assert_eq!(
+            ConfigurationCommands::apply_english(Some("maybe"), home),
+            Err(ConfigurationCommandError::InvalidEnglishAction("maybe".to_string()))
+        );
+        assert_eq!(ConfigurationCommands::apply_english_speed("0.8", home).unwrap().english_speed, 0.8);
+        assert_eq!(DebriefConfiguration::load(&DebriefPaths::for_home(home).config_url).english_speed, 0.8);
+        for bad in ["0.6", "2.1", "abc", "NaN", "inf"] {
+            assert_eq!(
+                ConfigurationCommands::apply_english_speed(bad, home),
+                Err(ConfigurationCommandError::InvalidEnglishSpeed(bad.to_string()))
+            );
+        }
         fs::remove_dir_all(&directory).ok();
     }
 

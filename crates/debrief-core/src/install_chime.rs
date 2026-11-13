@@ -1,5 +1,6 @@
 // 설치가 끝난 뒤 스피커와 모델이 살아 있는지 한 문장으로 확인한다.
 // 데몬이나 오디오가 없어도 설치 자체는 실패로 만들지 않고 doctor 오류만 남긴다.
+use crate::configuration::DebriefConfiguration;
 use crate::diagnostics::Diagnostics;
 use crate::earcon::Earcon;
 use crate::paths::DebriefPaths;
@@ -17,11 +18,13 @@ pub struct InstallChime;
 impl InstallChime {
     pub const TEXT: &'static str = "설치가 끝났습니다. 이제 에이전트가 말하면 들려 드립니다.";
 
-    pub fn request() -> SpeechRequest {
+    pub const TEXT_ENGLISH: &'static str = "Install complete. You'll now hear your agent speak.";
+
+    pub fn request(english: bool) -> SpeechRequest {
         SpeechRequest {
             envelope: SpeechEnvelope {
                 v: 1,
-                text: Self::TEXT.to_string(),
+                text: if english { Self::TEXT_ENGLISH } else { Self::TEXT }.to_string(),
                 voice: "F1".to_string(),
                 speed: 0.93,
                 volume: 0.85,
@@ -41,7 +44,7 @@ impl InstallChime {
     pub fn try_play(home: &Path) {
         let socket = DebriefPaths::for_home(home).socket_url;
         let client = UnixSocketClient::new(socket);
-        let request = Self::request();
+        let request = Self::request(DebriefConfiguration::load(&DebriefPaths::for_home(home).config_url).english);
         for attempt in 0..4 {
             if client.is_reachable() && client.submit(&request).is_ok() {
                 return;
@@ -76,10 +79,15 @@ mod tests {
 
     #[test]
     fn chime_is_one_polite_sentence_on_the_work_lane() {
-        let request = InstallChime::request();
+        let request = InstallChime::request(false);
         assert_eq!(request.envelope.text, "설치가 끝났습니다. 이제 에이전트가 말하면 들려 드립니다.");
         assert_eq!(request.lane, SpeechLane::Work);
         assert_eq!(request.cue, Some(Earcon::Done));
+    }
+
+    #[test]
+    fn english_mode_uses_the_english_sentence() {
+        assert_eq!(InstallChime::request(true).envelope.text, "Install complete. You'll now hear your agent speak.");
     }
 
     #[test]

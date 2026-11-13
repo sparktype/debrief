@@ -201,6 +201,7 @@ impl<'a> Diagnostics<'a> {
             ("효과음", on_off(configuration.earcons).to_string()),
             ("방해금지 연동", on_off(configuration.dnd_sync).to_string()),
             ("마이크 연동", on_off(configuration.mic_sync).to_string()),
+            ("영어 듣기", if configuration.english { format!("켜짐 (빠르기 {})", configuration.english_speed) } else { on_off(false).to_string() }),
             ("세션 레이블", on_off(configuration.session_label).to_string()),
             ("팀 알림", on_off(configuration.team_notices).to_string()),
             ("긴 턴 완료 알림", long_turn),
