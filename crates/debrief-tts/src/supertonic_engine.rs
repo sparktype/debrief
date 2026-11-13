@@ -139,7 +139,13 @@ impl SupertonicTextProcessor {
         if !ends_with_terminal_punctuation(&text) {
             text.push('.');
         }
-        Ok(format!("<ko>{text}</ko>"))
+        // 한글(자모 포함)이 하나라도 있으면 ko, 아니면 en 태그를 쓴다.
+        let lang = if text.chars().any(|c| matches!(c as u32, 0x1100..=0x11FF | 0x3130..=0x318F | 0xAC00..=0xD7A3)) {
+            "ko"
+        } else {
+            "en"
+        };
+        Ok(format!("<{lang}>{text}</{lang}>"))
     }
 }
 
@@ -460,6 +466,13 @@ mod tests {
     }
 
     #[test]
+    fn preprocess_tags_language_by_hangul_presence() {
+        assert_eq!(SupertonicTextProcessor::preprocess("Hello world.").unwrap(), "<en>Hello world.</en>");
+        assert!(SupertonicTextProcessor::preprocess("안녕하세요.").unwrap().starts_with("<ko>"));
+        assert!(SupertonicTextProcessor::preprocess("Hello 안녕.").unwrap().starts_with("<ko>"));
+    }
+
+    #[test]
     fn synthesizes_korean_with_installed_voice() {
         let Ok(path) = std::env::var("DEBRIEF_TEST_MODEL_DIR") else {
             eprintln!("skipping: set DEBRIEF_TEST_MODEL_DIR to run the real model smoke test.");
@@ -473,5 +486,8 @@ mod tests {
         assert_eq!(buffer.channels, 1);
         assert!(!buffer.samples.is_empty());
         assert!(buffer.samples.iter().all(|s| s.is_finite()));
+
+        let english = engine.synthesize_impl("The tests passed.", "F1", 0.9).expect("english synthesis must succeed");
+        assert!(!english.samples.is_empty());
     }
 }
