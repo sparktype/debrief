@@ -79,10 +79,20 @@ pub struct DebriefConfiguration {
     /// Claude Code 채널 권한 중계(`debrief allow|deny`). 호스트가 `--channels`로 이 서버를 골라야 동작한다. 기본 꺼짐.
     #[serde(default)]
     pub permission_relay: bool,
+    /// 영어 듣기 모드: 브리핑·고정 알림을 영어로, 모든 발화를 `english_speed`로 재생한다. 기본 꺼짐.
+    #[serde(default)]
+    pub english: bool,
+    /// 영어 듣기 모드의 재생 빠르기(엔진 허용 범위 0.7–2.0).
+    #[serde(default = "default_english_speed")]
+    pub english_speed: f64,
 }
 
 fn default_mode() -> DebriefMode {
     DebriefMode::Normal
+}
+
+fn default_english_speed() -> f64 {
+    0.9
 }
 
 fn default_companion_enabled() -> bool {
@@ -146,6 +156,8 @@ impl Default for DebriefConfiguration {
             pronunciations: HashMap::new(),
             briefing_reminder: false,
             permission_relay: false,
+            english: false,
+            english_speed: default_english_speed(),
         }
     }
 }
