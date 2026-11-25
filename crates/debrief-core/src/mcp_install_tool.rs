@@ -48,7 +48,8 @@ impl McpInstallRunning for LiveMcpInstallRunner {
             &launchctl,
             // SAFETY: getuid() takes no arguments and cannot fail.
             unsafe { libc::getuid() },
-        );
+        )
+        .with_codex_paths(crate::CodexPaths::from_environment(&self.home));
         runtime.install(hosts, repair)
     }
 }

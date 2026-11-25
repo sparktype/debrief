@@ -31,6 +31,7 @@ pub struct HostInstallResult {
 
 pub struct HostInstaller {
     home: PathBuf,
+    codex_paths: crate::CodexPaths,
     executable: PathBuf,
     manifest_url: PathBuf,
 }
@@ -38,7 +39,13 @@ pub struct HostInstaller {
 impl HostInstaller {
     pub fn new(home: PathBuf, executable: PathBuf, manifest_url: Option<PathBuf>) -> Self {
         let manifest_url = manifest_url.unwrap_or_else(|| DebriefPaths::for_home(&home).install_manifest_url);
-        HostInstaller { home, executable, manifest_url }
+        let codex_paths = crate::CodexPaths::for_home(&home);
+        HostInstaller { home, codex_paths, executable, manifest_url }
+    }
+
+    pub fn with_codex_paths(mut self, paths: crate::CodexPaths) -> Self {
+        self.codex_paths = paths;
+        self
     }
 
     /// JSON/TOML MCP 등록 다이제스트를 위한 합성 소유권 경로
@@ -85,7 +92,8 @@ impl HostInstaller {
         manifest.save(&self.manifest_url).map_err(|_| HostInstallerError::Io)?;
         preserved.sort();
         // 해시가 이미 맞으면 Codex /hooks 검토 문장을 다시 내지 않는다. 파일이 없으면 검토가 필요하다.
-        let codex_review_required = hosts.contains(&HostSource::Codex) && crate::codex_trust::CodexTrust::review_required(&self.home);
+        let codex_review_required = hosts.contains(&HostSource::Codex)
+            && crate::codex_trust::CodexTrust::review_required_at(&self.codex_paths);
         Ok(HostInstallResult { codex_review_required, preserved_modified_files: preserved })
     }
 
@@ -608,7 +616,7 @@ impl HostInstaller {
     /// 훅/설정 JSON 경로 (Codex hooks, Claude settings). Grok은 TOML만 쓴다.
     fn settings_url(&self, host: HostSource) -> PathBuf {
         match host {
-            HostSource::Codex => self.home.join(".codex/hooks.json"),
+            HostSource::Codex => self.codex_paths.hooks_url.clone(),
             HostSource::Claude => self.home.join(".claude/settings.json"),
             HostSource::Grok => self.home.join(".grok/config.toml"),
             HostSource::Gemini => self.home.join(".gemini/settings.json"),
@@ -618,7 +626,7 @@ impl HostInstaller {
     /// Codex / Grok 네이티브 MCP 설정 경로 (TOML).
     fn mcp_toml_config_url(&self, host: HostSource) -> PathBuf {
         match host {
-            HostSource::Codex => self.home.join(".codex/config.toml"),
+            HostSource::Codex => self.codex_paths.config_url.clone(),
             HostSource::Grok => self.home.join(".grok/config.toml"),
             HostSource::Claude => unreachable!("Claude MCP is JSON in ~/.claude.json"),
             HostSource::Gemini => unreachable!("Gemini MCP is JSON in ~/.gemini/settings.json"),

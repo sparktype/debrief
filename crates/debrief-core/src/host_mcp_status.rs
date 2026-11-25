@@ -98,9 +98,17 @@ pub struct HostMcpProbe;
 
 impl HostMcpProbe {
     pub fn statuses(home: &Path, expected_executable: &Path) -> Vec<HostMcpStatus> {
+        Self::statuses_with_codex_paths(home, expected_executable, &crate::CodexPaths::for_home(home))
+    }
+
+    pub fn statuses_with_codex_paths(
+        home: &Path,
+        expected_executable: &Path,
+        codex: &crate::CodexPaths,
+    ) -> Vec<HostMcpStatus> {
         [HostSource::Codex, HostSource::Claude, HostSource::Grok]
             .into_iter()
-            .map(|host| Self::status(host, home, expected_executable))
+            .map(|host| Self::status_with_codex_paths(host, home, expected_executable, codex))
             .collect()
     }
 
@@ -113,11 +121,20 @@ impl HostMcpProbe {
     }
 
     pub fn status(host: HostSource, home: &Path, expected_executable: &Path) -> HostMcpStatus {
+        Self::status_with_codex_paths(host, home, expected_executable, &crate::CodexPaths::for_home(home))
+    }
+
+    fn status_with_codex_paths(
+        host: HostSource,
+        home: &Path,
+        expected_executable: &Path,
+        codex: &crate::CodexPaths,
+    ) -> HostMcpStatus {
         let state = match host {
             // Claude Code는 사용자 범위 MCP 서버를 ~/.claude.json에서 읽는다, settings.json이 아니다.
             HostSource::Claude => Self::probe_json(&home.join(".claude.json"), expected_executable),
             HostSource::Gemini => Self::probe_json(&home.join(".gemini/settings.json"), expected_executable),
-            HostSource::Codex => Self::probe_toml(&home.join(".codex/config.toml"), expected_executable),
+            HostSource::Codex => Self::probe_toml(&codex.config_url, expected_executable),
             HostSource::Grok => Self::probe_toml(&home.join(".grok/config.toml"), expected_executable),
         };
         HostMcpStatus { host, state }

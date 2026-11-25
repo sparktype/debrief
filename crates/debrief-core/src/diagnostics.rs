@@ -68,6 +68,7 @@ impl CurrentError {
 
 pub struct Diagnostics<'a> {
     paths: DebriefPaths,
+    codex_paths: crate::CodexPaths,
     process_exists: Box<dyn Fn(i32) -> bool + 'a>,
     socket_probe: Box<dyn Fn(&Path) -> bool + 'a>,
 }
@@ -128,7 +129,17 @@ impl<'a> Diagnostics<'a> {
     }
 
     pub fn with_checks(home: &Path, process_exists: impl Fn(i32) -> bool + 'a, socket_probe: impl Fn(&Path) -> bool + 'a) -> Self {
-        Diagnostics { paths: DebriefPaths::for_home(home), process_exists: Box::new(process_exists), socket_probe: Box::new(socket_probe) }
+        Diagnostics {
+            paths: DebriefPaths::for_home(home),
+            codex_paths: crate::CodexPaths::for_home(home),
+            process_exists: Box::new(process_exists),
+            socket_probe: Box::new(socket_probe),
+        }
+    }
+
+    pub fn with_codex_paths(mut self, paths: crate::CodexPaths) -> Self {
+        self.codex_paths = paths;
+        self
     }
 
     /// 데몬 소켓에 실제로 연결해 본다. 연결만 되면 충분하다.
@@ -145,8 +156,8 @@ impl<'a> Diagnostics<'a> {
         let mut host_settings_readable = std::collections::HashMap::new();
         host_settings_readable.insert(
             "codex",
-            Self::settings_readable(&self.paths.home.join(".codex/hooks.json"))
-                && Self::settings_readable_toml(&self.paths.home.join(".codex/config.toml")),
+            Self::settings_readable(&self.codex_paths.hooks_url)
+                && Self::settings_readable_toml(&self.codex_paths.config_url),
         );
         host_settings_readable.insert("claude", Self::settings_readable(&self.paths.home.join(".claude/settings.json")));
         host_settings_readable.insert("grok", Self::settings_readable_toml(&self.paths.home.join(".grok/config.toml")));
@@ -387,7 +398,7 @@ impl<'a> Diagnostics<'a> {
 
     /// 호스트별(Claude/Codex/Grok) debrief MCP 배선 상태.
     pub fn host_mcp_statuses(&self) -> Vec<HostMcpStatus> {
-        HostMcpProbe::statuses(&self.paths.home, &self.paths.executable_url)
+        HostMcpProbe::statuses_with_codex_paths(&self.paths.home, &self.paths.executable_url, &self.codex_paths)
     }
 
     pub fn record_error(&self, component: &str, code: &str, message: &str) -> std::io::Result<()> {
@@ -480,7 +491,7 @@ impl<'a> Diagnostics<'a> {
         let manifest = InstallManifest::load(&self.paths.install_manifest_url).unwrap_or_default();
         let mut findings = Vec::new();
         for (host, settings) in [
-            (HostSource::Codex, self.paths.home.join(".codex/hooks.json")),
+            (HostSource::Codex, self.codex_paths.hooks_url.clone()),
             (HostSource::Claude, self.paths.home.join(".claude/settings.json")),
             (HostSource::Grok, self.paths.home.join(".grok/hooks/debrief.json")),
             (HostSource::Gemini, self.paths.home.join(".gemini/settings.json")),
@@ -520,8 +531,8 @@ impl<'a> Diagnostics<'a> {
 
     fn codex_trust_finding(&self) -> Option<DiagnosticFinding> {
         use crate::codex_trust::{CodexHookTrust, CodexTrust};
-        let hooks = self.paths.home.join(".codex/hooks.json");
-        let config = self.paths.home.join(".codex/config.toml");
+        let hooks = self.codex_paths.hooks_url.clone();
+        let config = self.codex_paths.config_url.clone();
         let finding = match CodexTrust::assess(&hooks, &config) {
             CodexHookTrust::Silent | CodexHookTrust::Trusted => return None,
             CodexHookTrust::Untrusted => DiagnosticFinding {
@@ -609,19 +620,19 @@ impl<'a> Diagnostics<'a> {
                 recovery: Some("repair ~/.grok/config.toml as UTF-8 TOML, then run debrief install --grok --repair".to_string()),
             },
             HostSource::Codex => {
-                let hooks_ok = Self::settings_readable(&self.paths.home.join(".codex/hooks.json"));
+                let hooks_ok = Self::settings_readable(&self.codex_paths.hooks_url);
                 if !hooks_ok {
                     DiagnosticFinding {
                         code: "host.codex.invalid_json".to_string(),
                         ok: false,
-                        recovery: Some("repair ~/.codex/hooks.json, then run debrief install --codex --repair".to_string()),
+                        recovery: Some(format!("repair {}, then run debrief install --codex --repair", self.codex_paths.hooks_url.display())),
                     }
                 } else {
                     DiagnosticFinding {
                         code: "host.codex.invalid_toml".to_string(),
                         ok: false,
                         recovery: Some(
-                            "repair ~/.codex/config.toml as UTF-8 TOML, then run debrief install --codex --repair".to_string(),
+                            format!("repair {} as UTF-8 TOML, then run debrief install --codex --repair", self.codex_paths.config_url.display()),
                         ),
                     }
                 }

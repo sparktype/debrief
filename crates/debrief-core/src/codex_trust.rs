@@ -84,8 +84,12 @@ impl CodexTrust {
     }
 
     pub fn review_required(home: &Path) -> bool {
+        Self::review_required_at(&crate::CodexPaths::for_home(home))
+    }
+
+    pub fn review_required_at(paths: &crate::CodexPaths) -> bool {
         matches!(
-            Self::assess(&home.join(".codex/hooks.json"), &home.join(".codex/config.toml")),
+            Self::assess(&paths.hooks_url, &paths.config_url),
             CodexHookTrust::Untrusted
         )
     }

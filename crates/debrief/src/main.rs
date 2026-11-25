@@ -62,14 +62,14 @@ fn run_daemon(home: &std::path::Path) -> ! {
             }
             Err(error) => {
                 let message = format!("{error:?}");
-                let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &message);
+                let _ = live_diagnostics(home).record_error("daemon", "start_failed", &message);
                 eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
                 std::process::exit(1);
             }
         },
         Err(error) => {
             let message = format!("{error:?}");
-            let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &message);
+            let _ = live_diagnostics(home).record_error("daemon", "start_failed", &message);
             eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
             std::process::exit(1);
         }
@@ -90,7 +90,7 @@ fn run_daemon(home: &std::path::Path) -> ! {
     service.wait_until_stopped();
     if let Some(failure) = service.consume_run_failure() {
         let message = format!("{failure:?}");
-        let _ = Diagnostics::new(home).record_error("daemon", "run_failed", &message);
+        let _ = live_diagnostics(home).record_error("daemon", "run_failed", &message);
         eprintln!("{}", CliMessages::daemon_run_failed("daemon/run_failed"));
     }
     std::process::exit(0);
@@ -153,6 +153,11 @@ fn make_runtime<'a>(
     // SAFETY: getuid() takes no arguments and cannot fail.
     let user_id = unsafe { libc::getuid() };
     RuntimeInstaller::new(home.to_path_buf(), source_executable, model_installer, launchctl, user_id)
+        .with_codex_paths(debrief_core::CodexPaths::from_environment(home))
+}
+
+fn live_diagnostics(home: &std::path::Path) -> Diagnostics<'static> {
+    Diagnostics::new(home).with_codex_paths(debrief_core::CodexPaths::from_environment(home))
 }
 
 fn print_preserved_files(paths: &[String]) {
@@ -178,7 +183,7 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             let runtime = make_runtime(home, source_executable, &launchctl);
             match runtime.install(&hosts, repair) {
                 Ok(result) => {
-                    let _ = Diagnostics::new(home).clear_current_error();
+                    let _ = live_diagnostics(home).clear_current_error();
                     let mut names: Vec<&str> = hosts.iter().map(|h| h.as_str()).collect();
                     names.sort();
                     println!("installed: {}", names.join(","));
@@ -192,7 +197,7 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                 }
                 Err(error) => {
                     let detail = format!("{error:?}");
-                    let _ = Diagnostics::new(home).record_error("app", "command_failed", &detail);
+                    let _ = live_diagnostics(home).record_error("app", "command_failed", &detail);
                     eprintln!("{}", CliMessages::command_failed("app/command_failed"));
                     1
                 }
@@ -213,7 +218,7 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
                 }
                 Err(error) => {
                     let detail = format!("{error:?}");
-                    let _ = Diagnostics::new(home).record_error("app", "command_failed", &detail);
+                    let _ = live_diagnostics(home).record_error("app", "command_failed", &detail);
                     eprintln!("{}", CliMessages::command_failed("app/command_failed"));
                     1
                 }
@@ -227,16 +232,16 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
         DebriefCommand::Stop => run_stop(home),
         DebriefCommand::Restart => run_restart(home),
         DebriefCommand::Status { line: false } => {
-            println!("{}", Diagnostics::new(home).status_text());
+            println!("{}", live_diagnostics(home).status_text());
             0
         }
         DebriefCommand::Status { line: true } => {
             let reachable = UnixSocketClient::new(DebriefPaths::for_home(home).socket_url).is_reachable();
-            println!("{}", Diagnostics::new(home).status_line(reachable));
+            println!("{}", live_diagnostics(home).status_line(reachable));
             0
         }
         DebriefCommand::Doctor => {
-            let diagnostics = Diagnostics::new(home);
+            let diagnostics = live_diagnostics(home);
             println!("{}", diagnostics.doctor_report_text());
             if diagnostics.doctor().iter().any(|f| !f.ok) {
                 1
@@ -357,7 +362,7 @@ fn run_start(home: &std::path::Path) -> i32 {
             1
         }
         Err(error) => {
-            let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &format!("{error:?}"));
+            let _ = live_diagnostics(home).record_error("daemon", "start_failed", &format!("{error:?}"));
             eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
             1
         }
@@ -384,7 +389,7 @@ fn run_restart(home: &std::path::Path) -> i32 {
             1
         }
         Err(error) => {
-            let _ = Diagnostics::new(home).record_error("daemon", "start_failed", &format!("{error:?}"));
+            let _ = live_diagnostics(home).record_error("daemon", "start_failed", &format!("{error:?}"));
             eprintln!("{}", CliMessages::start_failed("daemon/start_failed"));
             1
         }
@@ -401,7 +406,7 @@ fn run_stop(home: &std::path::Path) -> i32 {
             0
         }
         Err(error) => {
-            let _ = Diagnostics::new(home).record_error("daemon", "stop_failed", &format!("{error:?}"));
+            let _ = live_diagnostics(home).record_error("daemon", "stop_failed", &format!("{error:?}"));
             eprintln!("{}", CliMessages::stop_failed("daemon/stop_failed"));
             1
         }
@@ -428,7 +433,7 @@ fn run_session(home: &std::path::Path, action: &str) -> i32 {
     match result {
         Ok(()) => 0,
         Err(error) => {
-            let _ = Diagnostics::new(home).record_error("app", "command_failed", &format!("{error:?}"));
+            let _ = live_diagnostics(home).record_error("app", "command_failed", &format!("{error:?}"));
             eprintln!("{}", CliMessages::command_failed("app/command_failed"));
             1
         }

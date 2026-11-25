@@ -66,6 +66,7 @@ impl From<LaunchctlError> for RuntimeInstallerError {
 
 pub struct RuntimeInstaller<'a, M: RuntimeModelInstalling> {
     home: PathBuf,
+    codex_paths: crate::CodexPaths,
     source_executable: PathBuf,
     model_installer: M,
     launchctl: &'a dyn LaunchctlRunning,
@@ -80,7 +81,13 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
         launchctl: &'a dyn LaunchctlRunning,
         user_id: u32,
     ) -> Self {
-        RuntimeInstaller { home, source_executable, model_installer, launchctl, user_id }
+        let codex_paths = crate::CodexPaths::for_home(&home);
+        RuntimeInstaller { home, codex_paths, source_executable, model_installer, launchctl, user_id }
+    }
+
+    pub fn with_codex_paths(mut self, paths: crate::CodexPaths) -> Self {
+        self.codex_paths = paths;
+        self
     }
 
     pub fn install(&self, hosts: &HashSet<HostSource>, repair: bool) -> Result<HostInstallResult, RuntimeInstallerError> {
@@ -89,6 +96,7 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
         self.install_executable(&self.source_executable, &paths.executable_url)?;
         self.model_installer.install(repair).map_err(|error| RuntimeInstallerError::Io(format!("model: {error:?}")))?;
         let host_result = HostInstaller::new(self.home.clone(), paths.executable_url.clone(), None)
+            .with_codex_paths(self.codex_paths.clone())
             .install(hosts)
             .map_err(|error| RuntimeInstallerError::Io(format!("hosts: {error:?}")))?;
         let launch_agent_data = EmbeddedTemplates::launch_agent(&paths.executable_url);
@@ -110,7 +118,7 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
     }
 
     fn is_agent_healthy(&self) -> bool {
-        let snapshot = Diagnostics::new(&self.home).status();
+        let snapshot = Diagnostics::new(&self.home).with_codex_paths(self.codex_paths.clone()).status();
         matches!(snapshot.process, crate::diagnostics::DaemonProcessState::Running) && snapshot.socket_present
     }
 
@@ -120,7 +128,7 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
         if !paths.launch_agent_url.exists() {
             return Err(RuntimeInstallerError::LaunchAgentMissing);
         }
-        if matches!(Diagnostics::new(&self.home).status().process, crate::diagnostics::DaemonProcessState::Running) {
+        if matches!(Diagnostics::new(&self.home).with_codex_paths(self.codex_paths.clone()).status().process, crate::diagnostics::DaemonProcessState::Running) {
             return Ok(ServiceStartResult::AlreadyRunning);
         }
         self.bootstrap_launch_agent(&paths)?;
@@ -162,8 +170,10 @@ impl<'a, M: RuntimeModelInstalling> RuntimeInstaller<'a, M> {
     pub fn uninstall(&self, hosts: &HashSet<HostSource>) -> Result<HostInstallResult, RuntimeInstallerError> {
         let paths = DebriefPaths::for_home(&self.home);
         let mut manifest = InstallManifest::load(&paths.install_manifest_url).map_err(|error| RuntimeInstallerError::Io(format!("manifest: {error:?}")))?;
-        let host_result =
-            HostInstaller::new(self.home.clone(), paths.executable_url.clone(), None).uninstall(hosts).map_err(|error| RuntimeInstallerError::Io(format!("hosts: {error:?}")))?;
+        let host_result = HostInstaller::new(self.home.clone(), paths.executable_url.clone(), None)
+            .with_codex_paths(self.codex_paths.clone())
+            .uninstall(hosts)
+            .map_err(|error| RuntimeInstallerError::Io(format!("hosts: {error:?}")))?;
         let mut preserved = host_result.preserved_modified_files;
         self.disable_and_bootout()?;
         let removable = [paths.launch_agent_url.clone(), paths.executable_url.clone()];

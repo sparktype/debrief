@@ -1,4 +1,5 @@
 pub mod audio_player;
+pub mod codex_paths;
 pub mod codex_trust;
 pub mod configuration;
 pub mod daemon_control;
@@ -45,6 +46,7 @@ pub mod unix_socket;
 pub mod voice_catalog;
 
 pub use audio_player::{AudioPlayerError, AudioPlaying};
+pub use codex_paths::CodexPaths;
 pub use configuration::{ConfigurationCommandError, ConfigurationCommands, DebriefConfiguration, DebriefMode};
 pub use daemon_control::{Control, Inbound};
 pub use debrief_command::{CliMessages, DebriefCommand};
