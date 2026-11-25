@@ -49,11 +49,62 @@ impl EmotionProsody {
 
     /// 합성할 텍스트: 에이전트가 넣은 `<` `>`는 지워 태그 주입을 막고, 감정 태그만 맨 앞에 붙인다.
     pub fn spoken_text(emotion: SpeechEmotion, text: &str) -> String {
+        Self::styled_text(emotion, text, false, false)
+    }
+
+    /// `spoken_text`에 청취 실험 옵션을 더한다. 둘 다 `<` `>`를 지운 뒤에 적용하므로 태그 주입 방어는 그대로다.
+    /// `punctuation`: relieved·warm 문장 끝 `.`→`!!`, `?`→`?!`. `whisper`: 문장마다 `<whisper>`를 감정 태그 앞에 붙인다.
+    pub fn styled_text(emotion: SpeechEmotion, text: &str, punctuation: bool, whisper: bool) -> String {
         let sanitized: String = text.chars().filter(|c| *c != '<' && *c != '>').collect();
-        match Self::expression_tag(emotion) {
-            Some(tag) => format!("{tag} {sanitized}"),
-            None => sanitized,
+        if !punctuation && !whisper {
+            return match Self::expression_tag(emotion) {
+                Some(tag) => format!("{tag} {sanitized}"),
+                None => sanitized,
+            };
         }
+        let livelier = punctuation && matches!(emotion, SpeechEmotion::Relieved | SpeechEmotion::Warm);
+        let mut sentences = Self::sentences(&sanitized);
+        if livelier {
+            for sentence in &mut sentences {
+                if let Some(stem) = sentence.strip_suffix('.').filter(|stem| !stem.ends_with('.')) {
+                    *sentence = format!("{stem}!!");
+                } else if let Some(stem) = sentence.strip_suffix('?').filter(|stem| !stem.ends_with('?')) {
+                    *sentence = format!("{stem}?!");
+                }
+            }
+        }
+        let tag = Self::expression_tag(emotion);
+        sentences
+            .iter()
+            .enumerate()
+            .map(|(index, sentence)| {
+                let mut parts: Vec<&str> = Vec::new();
+                if whisper {
+                    parts.push("<whisper>");
+                }
+                if let Some(tag) = tag.filter(|_| index == 0) {
+                    parts.push(tag);
+                }
+                parts.push(sentence);
+                parts.join(" ")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// `.` `!` `?` 뒤 공백에서 문장을 자른다(약어 예외 없음, 실험 옵션용).
+    fn sentences(text: &str) -> Vec<String> {
+        let mut sentences = vec![String::new()];
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            sentences.last_mut().unwrap().push(c);
+            if matches!(c, '.' | '!' | '?') && chars.peek().is_some_and(|n| n.is_whitespace()) {
+                while chars.next_if(|n| n.is_whitespace()).is_some() {}
+                sentences.push(String::new());
+            }
+        }
+        sentences.retain(|s| !s.trim().is_empty());
+        sentences
     }
 }
 
@@ -104,6 +155,26 @@ mod tests {
     fn spoken_text_strips_agent_angle_brackets_and_prepends_the_tag() {
         assert_eq!(EmotionProsody::spoken_text(SpeechEmotion::Neutral, "a <laugh> b"), "a laugh b");
         assert_eq!(EmotionProsody::spoken_text(SpeechEmotion::Relieved, "끝났습니다."), "<laugh> 끝났습니다.");
+    }
+
+    #[test]
+    fn prosody_punctuation_only_changes_relieved_and_warm_sentence_ends() {
+        let on = |emotion, text| EmotionProsody::styled_text(emotion, text, true, false);
+        assert_eq!(on(SpeechEmotion::Relieved, "끝났습니다. 괜찮을까요?"), "<laugh> 끝났습니다!! 괜찮을까요?!");
+        assert_eq!(on(SpeechEmotion::Warm, "Done. Ok?"), "<breath> Done!! Ok?!");
+        assert_eq!(on(SpeechEmotion::Warm, "Wow! Hmm..."), "<breath> Wow! Hmm...");
+        assert_eq!(on(SpeechEmotion::Neutral, "끝났습니다."), "끝났습니다.");
+        assert_eq!(on(SpeechEmotion::Tired, "끝났습니다."), "<sigh> 끝났습니다.");
+        assert_eq!(on(SpeechEmotion::Relieved, "a <b>."), "<laugh> a b!!");
+        assert_eq!(EmotionProsody::styled_text(SpeechEmotion::Relieved, "끝났습니다.", false, false), "<laugh> 끝났습니다.");
+    }
+
+    #[test]
+    fn night_whisper_prefixes_every_sentence_before_the_emotion_tag() {
+        let whisper = |emotion, text| EmotionProsody::styled_text(emotion, text, false, true);
+        assert_eq!(whisper(SpeechEmotion::Neutral, "하나. 둘."), "<whisper> 하나. <whisper> 둘.");
+        assert_eq!(whisper(SpeechEmotion::Warm, "하나. 둘."), "<whisper> <breath> 하나. <whisper> 둘.");
+        assert_eq!(whisper(SpeechEmotion::Neutral, "<whisper>x."), "<whisper> whisperx.");
     }
 
     #[test]

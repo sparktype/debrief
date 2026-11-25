@@ -1,6 +1,6 @@
 // 발화 요청 수신→큐→합성→재생을 묶는 상주 데몬 루프
 use crate::audio_player::AudioPlaying;
-use crate::configuration::DebriefConfiguration;
+use crate::configuration::{DebriefConfiguration, DebriefMode};
 use crate::daemon_control::{Control, Inbound};
 use crate::mode_policy::ModePolicy;
 use crate::pronunciation::Pronunciation;
@@ -269,7 +269,13 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 } else {
                     (Pronunciation::apply(&request.envelope.text, &current.pronunciations), request.envelope.speed)
                 };
-                let text = EmotionProsody::spoken_text(request.emotion, &spoken);
+                let text = EmotionProsody::styled_text(
+                    request.emotion,
+                    &spoken,
+                    current.prosody_punctuation,
+                    current.night_whisper && current.mode == DebriefMode::Night,
+                );
+                backend.set_synthesis_steps(current.valid_synthesis_steps());
                 let pause_seconds = EmotionProsody::pause_seconds(request.emotion);
                 let (sender, receiver) = std::sync::mpsc::channel::<PcmBuffer>();
                 // 재생 스레드가 앞 문장을 트는 동안 이 스레드는 다음 문장을 합성한다.
@@ -320,7 +326,6 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::configuration::DebriefMode;
     use crate::speech_emotion::SpeechEmotion;
     use crate::speech_envelope::SpeechEnvelope;
     use crate::speech_lane::SpeechLane;
@@ -550,6 +555,36 @@ mod tests {
         assert_eq!(daemon.backend.texts.lock().unwrap().clone(), vec!["<laugh> 끝났습니다.".to_string()]);
         wait_for_history(&daemon, 1);
         assert_eq!(daemon.history_texts(), vec!["끝<났>습니다.".to_string()]);
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn listening_experiments_reach_the_backend_per_utterance() {
+        let steps = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        struct StepBackend(Arc<std::sync::atomic::AtomicUsize>, RecordingBackend);
+        impl TtsBackend for StepBackend {
+            fn synthesize(&self, text: &str, voice: &str, speed: f64) -> Result<crate::tts_backend::PcmBuffer, crate::tts_backend::TtsBackendError> {
+                self.1.synthesize(text, voice, speed)
+            }
+            fn set_synthesis_steps(&self, steps: usize) {
+                self.0.store(steps, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let configuration = || DebriefConfiguration {
+            synthesis_steps: 12,
+            prosody_punctuation: true,
+            night_whisper: true,
+            mode: DebriefMode::Night,
+            ..DebriefConfiguration::default()
+        };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), StepBackend(steps.clone(), RecordingBackend::new(None)), RecordingAudio::new(None), configuration, None);
+        let mut warm = request(SpeechPriority::Main, "끝났습니다.", 0.8);
+        warm.emotion = SpeechEmotion::Warm;
+        warm.lane = SpeechLane::Work;
+        daemon.submit(warm);
+        daemon.backend.1.wait_until_count(1);
+        assert_eq!(steps.load(std::sync::atomic::Ordering::SeqCst), 12);
+        assert_eq!(daemon.backend.1.texts(), vec!["<whisper> <breath> 끝났습니다!!".to_string()]);
         daemon.shutdown();
     }
 

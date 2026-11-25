@@ -85,6 +85,19 @@ pub struct DebriefConfiguration {
     /// 영어 듣기 모드의 재생 빠르기(엔진 허용 범위 0.7–2.0).
     #[serde(default = "default_english_speed")]
     pub english_speed: f64,
+    /// 디노이징 단계 수(청취 실험용). 2–16 밖이면 기본 8.
+    #[serde(default = "default_synthesis_steps")]
+    pub synthesis_steps: i64,
+    /// relieved·warm 문장 끝을 `!!`·`?!`로 바꿔 억양을 살린다(청취 실험). 기본 꺼짐.
+    #[serde(default)]
+    pub prosody_punctuation: bool,
+    /// night 모드에서 문장마다 `<whisper>` 태그를 붙인다(청취 실험). 기본 꺼짐.
+    #[serde(default)]
+    pub night_whisper: bool,
+}
+
+fn default_synthesis_steps() -> i64 {
+    8
 }
 
 fn default_mode() -> DebriefMode {
@@ -158,11 +171,19 @@ impl Default for DebriefConfiguration {
             permission_relay: false,
             english: false,
             english_speed: default_english_speed(),
+            synthesis_steps: default_synthesis_steps(),
+            prosody_punctuation: false,
+            night_whisper: false,
         }
     }
 }
 
 impl DebriefConfiguration {
+    /// 2–16이면 그대로, 아니면 기본 8.
+    pub fn valid_synthesis_steps(&self) -> usize {
+        if (2..=16).contains(&self.synthesis_steps) { self.synthesis_steps as usize } else { default_synthesis_steps() as usize }
+    }
+
     pub fn default_volume_ceilings() -> HashMap<String, f64> {
         let mut ceilings = HashMap::new();
         ceilings.insert("normal".to_string(), 1.0);
@@ -370,6 +391,18 @@ impl ConfigurationCommands {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn listening_experiment_keys_default_to_todays_behavior_and_clamp() {
+        let default: DebriefConfiguration = serde_json::from_str("{}").unwrap();
+        assert_eq!(default.valid_synthesis_steps(), 8);
+        assert!(!default.prosody_punctuation && !default.night_whisper);
+        let parse = |json: &str| serde_json::from_str::<DebriefConfiguration>(json).unwrap().valid_synthesis_steps();
+        assert_eq!(parse(r#"{"synthesisSteps":2}"#), 2);
+        assert_eq!(parse(r#"{"synthesisSteps":16}"#), 16);
+        assert_eq!(parse(r#"{"synthesisSteps":1}"#), 8);
+        assert_eq!(parse(r#"{"synthesisSteps":17}"#), 8);
+    }
+
     use super::*;
     use std::fs;
     use std::path::PathBuf;

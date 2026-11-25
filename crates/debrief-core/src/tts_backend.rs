@@ -9,6 +9,9 @@ pub struct PcmBuffer {
 pub trait TtsBackend: Send + Sync {
     fn synthesize(&self, text: &str, voice: &str, speed: f64) -> Result<PcmBuffer, TtsBackendError>;
 
+    /// 다음 합성부터 쓸 디노이징 단계 수. 지원하지 않는 백엔드는 무시한다.
+    fn set_synthesis_steps(&self, _steps: usize) {}
+
     /// 문장마다 합성되는 대로 `sink`에 넘긴다(문장 사이 무음 없음). `sink`가 false면 남은 문장을 버린다.
     fn synthesize_sentences(
         &self,

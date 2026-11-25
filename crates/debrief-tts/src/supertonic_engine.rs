@@ -6,6 +6,7 @@ use ort::value::Tensor;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -173,10 +174,11 @@ pub struct SupertonicEngine {
     vector_estimator: Mutex<Session>,
     vocoder: Mutex<Session>,
     styles: Mutex<HashMap<String, SupertonicStyle>>,
+    denoising_steps: AtomicUsize,
 }
 
 impl SupertonicEngine {
-    const DENOISING_STEPS: usize = 8;
+    const DEFAULT_DENOISING_STEPS: usize = 8;
     const SAMPLE_RATE: i64 = 44_100;
 
     pub fn new(model_directory: &Path) -> Result<Self, SupertonicError> {
@@ -216,6 +218,7 @@ impl SupertonicEngine {
             vector_estimator: Mutex::new(vector_estimator),
             vocoder: Mutex::new(vocoder),
             styles: Mutex::new(HashMap::new()),
+            denoising_steps: AtomicUsize::new(Self::DEFAULT_DENOISING_STEPS),
         })
     }
 
@@ -343,10 +346,11 @@ impl SupertonicEngine {
         let text_emb_shape: Vec<i64> = text_embedding_data.0.clone();
         let text_emb_data = text_embedding_data.1.clone();
 
-        for step in 0..Self::DENOISING_STEPS {
+        let steps = self.denoising_steps.load(Ordering::Relaxed);
+        for step in 0..steps {
             let current_step = Tensor::from_array((vec![1i64], vec![step as f32])).map_err(|_| SupertonicError::OnnxRuntime)?;
             let total_step =
-                Tensor::from_array((vec![1i64], vec![Self::DENOISING_STEPS as f32])).map_err(|_| SupertonicError::OnnxRuntime)?;
+                Tensor::from_array((vec![1i64], vec![steps as f32])).map_err(|_| SupertonicError::OnnxRuntime)?;
             let noisy_value = Tensor::from_array((noise_shape.clone(), noise.clone())).map_err(|_| SupertonicError::OnnxRuntime)?;
             let text_emb_value =
                 Tensor::from_array((text_emb_shape.clone(), text_emb_data.clone())).map_err(|_| SupertonicError::OnnxRuntime)?;
@@ -437,6 +441,10 @@ fn rand_uniform(min: f32, max: f32) -> f32 {
 impl TtsBackend for SupertonicEngine {
     fn synthesize(&self, text: &str, voice: &str, speed: f64) -> Result<PcmBuffer, TtsBackendError> {
         self.synthesize_impl(text, voice, speed).map_err(|_| TtsBackendError::SynthesisFailed)
+    }
+
+    fn set_synthesis_steps(&self, steps: usize) {
+        self.denoising_steps.store(steps, Ordering::Relaxed);
     }
 
     fn synthesize_sentences(
