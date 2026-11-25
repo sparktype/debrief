@@ -85,8 +85,10 @@ impl EmbeddedTemplates {
             }
         }
     }
-    /// setup = 안내, install = MCP/셸 설치 동작, speak = MCP speak 계약.
-    pub const SKILL_NAMES: [&'static str; 3] = ["setup", "install", "speak"];
+    /// install = MCP/셸 설치 동작, speak = MCP speak 계약.
+    pub const SKILL_NAMES: [&'static str; 2] = ["install", "speak"];
+    /// 예전에 설치했던 스킬. 설치 기록에 있고 내용이 그대로면 설치·복구가 지운다.
+    pub const RETIRED_SKILL_NAMES: [&'static str; 1] = ["setup"];
 
     pub fn hook_entry(executable: &Path, source: HostSource) -> EmbeddedHookEntry {
         EmbeddedHookEntry {
@@ -116,22 +118,6 @@ impl EmbeddedTemplates {
         let command = Self::shell_quote(&executable.to_string_lossy());
         vec![
             (
-                "setup",
-                Self::skill(
-                    "debrief-setup",
-                    "Guide local debrief TTS setup for Grok Build. Prefer skill debrief-install / MCP debrief__install; then debrief-speak at turn end.",
-                    &format!(
-                        "Grok does **not** use SessionStart hook context for speech — durable skills + MCP tools carry the contract. Side-effect hooks in `~/.grok/hooks/debrief.json` only skip a stale briefing, speak fixed notices, and show a daemon-down `systemMessage` on SessionStart. They do not inject this briefing. Outside your home directory, run `/hooks-trust` or those hooks stay off.\n\n\
-1. Run skill **debrief-install** (or shell `{command} install --grok --repair`).\n\
-2. Refresh MCP with `/mcps` until `debrief__speak` and `debrief__install` appear.\n\
-3. At turn end, use skill **debrief-speak** → MCP `debrief__speak` once: what changed, then one next action.\n\
-4. Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. `debrief status --line` is one line for a Grok Build status line.\n\n\
-Config: `~/.grok/config.toml` section `[mcp_servers.debrief]`.\n\
-Skills dir: `~/.grok/skills/debrief-{{setup,install,speak}}/`."
-                    ),
-                ),
-            ),
-            (
                 "install",
                 Self::skill(
                     "debrief-install",
@@ -151,8 +137,10 @@ Or the installed executable:\n\n\
 ## After success\n\n\
 - LaunchAgent running `debrief daemon`\n\
 - `~/.grok/config.toml` has `# BEGIN debrief-mcp` … `[mcp_servers.debrief]`\n\
-- Skills: debrief-setup, debrief-install, debrief-speak\n\
-- Tools: `debrief__speak`, `debrief__install`"
+- Skills: debrief-install, debrief-speak (`~/.grok/skills/`)\n\
+- Tools: `debrief__speak`, `debrief__install`\n\n\
+## Grok notes\n\n\
+Grok gets **no** SessionStart speech context: the debrief-speak skill and the MCP tools are the contract. Side-effect hooks in `~/.grok/hooks/debrief.json` only skip a stale briefing, speak fixed notices, and show a daemon-down `systemMessage` on SessionStart. Outside your home directory, run `/hooks-trust` or those hooks stay off. `debrief status --line` is one line for a Grok Build status line."
                     ),
                 ),
             ),
@@ -186,32 +174,24 @@ Or the installed executable:\n\n\
         format!(
             "---\n\
 name: debrief-speak\n\
-description: 'Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Grok: debrief__speak). Use when a user-visible turn ends.'\n\
+description: 'Turn-end spoken briefing via MCP speak (Claude: mcp__debrief__speak; Codex: speak on server debrief; Grok: debrief__speak). Use when a user-visible turn ends.'\n\
 ---\n\n\
 # {title}\n\n\
 {tool_intro}\n\n\
-At the end of each user-visible turn, call speak **once**. Two short sentences in the user's language: **what changed**, then the one **next action** or wait. The agent writes the line. **Silence only** if nothing new and no next action.\n\n\
-## Code ownership\n\n\
-After writing, changing, or analyzing code, protect the user's code ownership and keep cognitive debt low. Make the **next action** the one thing they must verify themselves: a behavior change, a deletion, a security or data path, an assumption you made, or how to check or undo. Skip it for trivial changes; then brief as usual. Subagents never do this.\n\n\
-## Shape (`lane=companion`)\n\n\
-The server rotates the companion voice across F1–M5, one voice per session, and keeps it. Pass `session` when the hook names a host session id. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. No file lists, checklists, or chat paste.\n\n\
-## Args\n\n\
-```json\n\
-{{\n  \"text\": \"무엇이 바뀌었는지. 다음 행동은 이것.\",\n  \"voice\": \"F1\",\n  \"speed\": 0.93,\n  \"volume\": 0.85,\n  \"priority\": \"main\",\n  \"lane\": \"companion\",\n  \"emotion\": \"neutral\",\n  \"session\": \"host-session-id\"\n}}\n\
-```\n\n\
+At the end of each user-visible turn, call speak **once**. Two short sentences in the user's language: **what changed**, then the one **next action** or wait. The agent writes the line. **Silence only** if nothing new and no next action. No file lists, checklists, or chat paste. No HTML/JSON speech in the chat body.\n\n\
+**Code ownership:** after writing, changing, or analyzing code, the next action is the one thing the user must verify themselves (a behavior change, a deletion, a security or data path, an assumption you made, how to check or undo). Skip it for trivial changes.\n\n\
 | Field | Required | Notes |\n\
 |-------|----------|--------|\n\
-| text | yes | ≤ 800 chars. Sentence one: what changed. Sentence two: next action. |\n\
-| voice | yes | F1…M5. Companion playback uses the session rotation. Work lane uses this value. |\n\
-| session | no | Host session id. The same id keeps the same companion voice. |\n\
-| speed | yes | 0.7–2.0 |\n\
-| volume | yes | 0.0–1.0 |\n\
+| text | yes | ≤ 800 chars |\n\
+| voice | yes | F1…M5. On `lane=companion` the server uses the user's `companionVoice` if set, else one rotating voice per `session`. Work lane uses this value |\n\
+| speed / volume | yes | ~0.93 (0.7–2.0) / ~0.85 (0.0–1.0) |\n\
+| session | no | Host session id from the hook; keeps the companion voice |\n\
+| lane | no | `companion` (default) / `work` (facts only, prefer `neutral`) |\n\
 | priority | no | `main` / `subagent` |\n\
-| lane | no | `companion` (default) / `work` |\n\
-| emotion | no | `neutral` `warm` (long work done) `focused` (mid-task) `concerned` (blocked or failing) `relieved` (a blocker clears) `tired` (rarely). Sets sentence pauses, a softer volume for tired, and a soft cue: relieved laugh, warm breath, tired sigh. Speed is never changed |\n\
-| intent | no | `decision` only: the user must decide or approve before work can continue. Plays through quiet/night/companion-off with a chime; mute still silences it. Main priority only. |\n\n\
-Hooks append the effective mode: focus = one sentence, quiet = one short sentence or silence, night = speak only with intent=decision, muted = do not call speak. Grok hooks do not deliver this paragraph (an allowing UserPromptSubmit discards stdout). The speak reply includes `mode` (and `muted`, plus `reason` when the microphone or Do Not Disturb raised quiet) — follow it next turn.\n\n\
-Work lane: facts only, role voice, prefer `emotion=neutral`. Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
+| emotion | no | `neutral`, `warm` (long work done), `focused` (mid-task), `concerned` (blocked or failing), `relieved` (a blocker clears), `tired` (rarely). Pauses and a soft cue; speed never changes |\n\
+| intent | no | `decision`: the user must decide or approve before work continues. Plays through quiet/night/companion-off with a chime; mute still silences it. Main only |\n\n\
+Modes: focus = one sentence, quiet = one short sentence or silence, night = only `intent=decision`, muted = do not call speak. Claude/Codex hooks append the current mode; Grok gets it from the speak reply (`mode`, `muted`, `reason`) — follow it next turn.\n\n\
+Subagents **do not brief** the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.\n\n\
 Controls: `debrief mute`, `debrief mode`, `debrief companion`, `debrief skip [--all]`, `debrief replay [n]`, `debrief doctor`. Binary: `{executable}`.",
             title = title,
             tool_intro = tool_intro,
@@ -242,23 +222,12 @@ Then refresh the host (Claude: restart; Grok: `/mcps`).\n\n\
 Or: `{command} install --grok --repair`\n\n\
 ## After install\n\n\
 1. Host MCP registration for `debrief`\n\
-2. Skills: debrief-setup, debrief-install, debrief-speak\n\
-3. Tools: speak + install (Grok: `debrief__speak` / `debrief__install`)"
+2. Skills: debrief-install, debrief-speak\n\
+3. Tools: speak + install (Grok: `debrief__speak` / `debrief__install`)\n\
+4. Check with `debrief doctor`"
             ),
         );
         vec![
-            (
-                "setup",
-                Self::skill(
-                    "debrief-setup",
-                    "Guide debrief TTS setup for Claude Code / Codex / Grok (points to install skill and MCP install tool).",
-                    &format!(
-                        "Use skill **debrief-install** or MCP tool `install` (Claude: `mcp__debrief__install`, Grok: `debrief__install`) to install/repair. \
-After wiring, use **debrief-speak** at turn end: what changed, then one next action. \
-Grok: refresh with `/mcps`. Mute, mode, companion, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief doctor`. Binary: `{command}`."
-                    ),
-                ),
-            ),
             ("install", install_skill),
             ("speak", Self::claude_codex_speak_skill_markdown(executable)),
         ]
@@ -338,8 +307,8 @@ mod tests {
         assert_eq!(names(HostSource::Grok), grok.into_iter().collect());
         let skill_keys: std::collections::HashSet<_> =
             EmbeddedTemplates::skills(executable).into_iter().map(|(k, _)| k).collect();
-        assert_eq!(skill_keys, ["setup", "install", "speak"].into_iter().collect());
-        assert_eq!(EmbeddedTemplates::SKILL_NAMES, ["setup", "install", "speak"]);
+        assert_eq!(skill_keys, ["install", "speak"].into_iter().collect());
+        assert_eq!(EmbeddedTemplates::SKILL_NAMES, ["install", "speak"]);
 
         let (command, args) = EmbeddedTemplates::mcp_registration(executable);
         assert_eq!(command, executable.to_string_lossy());
@@ -362,9 +331,9 @@ mod tests {
 
         let grok_skills: std::collections::HashMap<_, _> = EmbeddedTemplates::grok_skills(executable).into_iter().collect();
         let grok_keys: std::collections::HashSet<_> = grok_skills.keys().copied().collect();
-        assert_eq!(grok_keys, ["setup", "install", "speak"].into_iter().collect());
+        assert_eq!(grok_keys, ["install", "speak"].into_iter().collect());
         assert!(grok_skills["install"].contains("debrief__install"));
-        assert!(grok_skills["setup"].contains("/mcps"));
+        assert!(grok_skills["install"].contains("/mcps") && grok_skills["install"].contains("/hooks-trust"), "Grok 고유 안내는 install 스킬로 옮긴다");
         assert!(grok_skills["speak"].contains("use_tool") || grok_skills["speak"].contains("debrief__speak"));
         assert!(grok_skills["speak"].contains("companion") || grok_skills["speak"].contains("emotion"));
 
@@ -412,6 +381,7 @@ mod tests {
             assert!(skill.contains("do not brief"));
             assert!(skill.contains("when their work is done"));
             assert!(skill.contains("ownership"));
+            assert!(skill.contains("companionVoice"), "고정 목소리 설정을 알려야 한다");
             assert!(!skill.to_lowercase().contains("debrief summarizes"));
         }
     }

@@ -176,12 +176,14 @@ impl VoiceCatalog {
         let companion = Self::persona_for_voice(session_voice.unwrap_or("F1"));
 
         match event.name {
+            // 프롬프트마다 들어가므로 짧게 둔다. 전체 계약은 SessionStart 지침과 도구 설명에 있다.
             HookEventName::UserPromptSubmit => format!(
-                "debrief: once at turn end, {tool}, lane=companion, voice {} ({}), \
-session={}. Two short sentences in the user's language: \
-what changed, then the one next action or wait. After code work, that action is what to verify to keep ownership. \
-Silence only if nothing new. No file lists or checklists. No HTML/JSON in the body.",
-                companion.voice, companion.name, event.session_id
+                "debrief: at turn end call {} once (lane=companion, voice {} ({}), session={}): two short sentences, \
+what changed then the next action; after code work, what to verify (ownership). Silence only if nothing new.",
+                Self::tool_name(source),
+                companion.voice,
+                companion.name,
+                event.session_id
             ),
             HookEventName::SubagentStart => format!(
                 "Subagent: do not brief the user. The main agent speaks what changed and the next action. \
@@ -195,22 +197,18 @@ in the user's language — what changed, then the one next action or wait. The a
 After writing, changing, or analyzing code, keep the user's code ownership and cut cognitive debt: \
 the next action names what they must verify themselves (behavior change, deletion, security or data path, \
 an assumption you made, how to check or undo). Skip it for trivial changes. \
-Silence only if nothing new and no next action. Voice {} ({}), \
-speed ~{}, volume ~0.85, lane=companion, session={}. \
-The server keeps that companion voice for this session. \
+Silence only if nothing new and no next action. Args: voice {} ({}), speed ~{}, volume ~0.85, \
+lane=companion, session={}, priority={}. \
 emotion: concerned when blocked or failing, relieved when a blocker clears, warm after long work, \
-focused mid-task, tired rarely, else neutral (relieved adds a light laugh, warm a breath, tired a sigh). \
-Optional work lane for pure facts with role voice {} ({}), speed ~{}. \
-Required args: text, voice, speed, volume. Optional: priority ({} default here), lane, emotion, session. \
-No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and companion: debrief mute, debrief mode, debrief companion.",
+focused mid-task, tired rarely, else neutral. lane=work (voice {} ({})) for pure facts. \
+No file lists, checklists, or HTML/JSON speech in the body. User controls: debrief mute, debrief mode, debrief companion.",
                 companion.voice,
                 companion.name,
                 Self::format(companion.baseline_speed),
                 event.session_id,
+                priority.as_str(),
                 assignment.voice,
-                assignment.name,
-                Self::format(assignment.baseline_speed),
-                priority.as_str()
+                assignment.name
             ),
         }
     }
@@ -228,6 +226,15 @@ No file lists or checklists. No HTML/JSON speech in the body. Mute, mode, and co
             stop_hook_active: false,
         };
         Self::context(&event, HostSource::Claude, None)
+    }
+
+    fn tool_name(source: HostSource) -> &'static str {
+        match source {
+            HostSource::Claude => "`mcp__debrief__speak`",
+            HostSource::Codex => "MCP `speak` (server `debrief`)",
+            HostSource::Grok => "`debrief__speak`",
+            HostSource::Gemini => "`mcp_debrief_speak`",
+        }
     }
 
     fn tool_reference(source: HostSource) -> &'static str {
@@ -417,7 +424,7 @@ mod tests {
             stop_hook_active: false,
         };
         let text = VoiceCatalog::context(&event, HostSource::Claude, None);
-        assert!(text.chars().count() < 400);
+        assert!(text.chars().count() < 260, "프롬프트마다 들어가므로 짧게: {}", text.chars().count());
         assert!(text.contains("companion") || text.contains("F1"));
         assert!(text.contains("Silence only"));
         assert!(text.contains("what changed"));

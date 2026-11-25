@@ -435,7 +435,7 @@ impl HostInstaller {
             let destination = self.skills_directory(HostSource::Grok).join(format!("debrief-{name}/SKILL.md"));
             self.install_skill_file(text, &destination, HostSource::Grok, previous_files, owned_files, preserved)?;
         }
-        Ok(())
+        self.retire_skills(HostSource::Grok, previous_files, preserved)
     }
 
     fn uninstall_grok_host(
@@ -540,6 +540,25 @@ impl HostInstaller {
             let Some(text) = templates.get(name) else { continue };
             let destination = self.skills_directory(host).join(format!("debrief-{name}/SKILL.md"));
             self.install_skill_file(text, &destination, host, previous_files, owned_files, preserved)?;
+        }
+        self.retire_skills(host, previous_files, preserved)
+    }
+
+    /// 물러난 스킬은 설치 기록에 있을 때만 다룬다. 우리가 쓴 그대로면 폴더째 지우고, 고친 파일은 남긴다.
+    fn retire_skills(
+        &self,
+        host: HostSource,
+        previous_files: &[OwnedInstalledFile],
+        preserved: &mut Vec<String>,
+    ) -> Result<(), HostInstallerError> {
+        for name in EmbeddedTemplates::RETIRED_SKILL_NAMES {
+            let destination = self.skills_directory(host).join(format!("debrief-{name}/SKILL.md"));
+            let destination_str = destination.to_string_lossy();
+            let Some(owned) = previous_files.iter().find(|f| f.path == destination_str) else { continue };
+            Self::remove_owned_file(owned, preserved)?;
+            if !destination.exists() {
+                let _ = fs::remove_dir(destination.parent().unwrap_or(&destination));
+            }
         }
         Ok(())
     }
@@ -974,11 +993,43 @@ mod tests {
     }
 
     #[test]
+    fn repair_removes_the_retired_setup_skill_only_when_unchanged() {
+        let home = temporary_home();
+        let installer = HostInstaller::new(home.clone(), DebriefPaths::for_home(&home).executable_url, None);
+        let ours = home.join(".claude/skills/debrief-setup/SKILL.md");
+        let edited = home.join(".agents/skills/debrief-setup/SKILL.md");
+        for path in [&ours, &edited] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "old setup skill").unwrap();
+        }
+        fs::write(&edited, "user edit").unwrap();
+        let owned = |host, path: &PathBuf| OwnedInstalledFile {
+            host,
+            path: path.to_string_lossy().to_string(),
+            sha256: InstallerDigest::data(b"old setup skill"),
+        };
+        InstallManifest {
+            hooks: Vec::new(),
+            files: vec![owned(HostSource::Claude, &ours), owned(HostSource::Codex, &edited)],
+            runtime_files: Vec::<OwnedRuntimeFile>::new(),
+        }
+        .save(&DebriefPaths::for_home(&home).install_manifest_url)
+        .unwrap();
+
+        let result = installer.install(&[HostSource::Claude, HostSource::Codex].into_iter().collect()).unwrap();
+
+        assert!(!ours.exists() && !ours.parent().unwrap().exists(), "우리가 쓴 그대로면 폴더까지 지운다");
+        assert!(edited.exists(), "사용자가 고친 파일은 남긴다");
+        assert!(result.preserved_modified_files.contains(&edited.to_string_lossy().to_string()));
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
     fn uninstall_removes_only_unchanged_owned_content() {
         let home = temporary_home();
         let installer = HostInstaller::new(home.clone(), DebriefPaths::for_home(&home).executable_url, None);
         installer.install(&all_hosts()).unwrap();
-        let modified = home.join(".agents/skills/debrief-setup/SKILL.md");
+        let modified = home.join(".agents/skills/debrief-install/SKILL.md");
         fs::write(&modified, "user edit").unwrap();
 
         let result = installer.uninstall(&all_hosts()).unwrap();
