@@ -89,7 +89,7 @@ debrief mcp
 | Claude | `~/.claude.json` → `mcpServers["debrief"]` | `~/.claude/skills/debrief-*` | start-family in `~/.claude/settings.json` |
 | Grok | `~/.grok/config.toml` → `[mcp_servers.debrief]` | `~/.grok/skills/debrief-*` | `~/.grok/hooks/debrief.json`, ten side-effect events. UserPromptSubmit stdout, including `additionalContext`, is discarded, so the briefing contract stays in skills and MCP. SessionStart may set `systemMessage` when the daemon is down. |
 
-Skills installed for every host: **`debrief-setup`**, **`debrief-install`**, **`debrief-speak`**. Grok skill bodies use Grok tool names (`debrief__speak` / `debrief__install`) and `/mcps`.
+Skills installed for every host: **`debrief-install`**, **`debrief-speak`**. The retired `debrief-setup` is removed on install/repair only when the manifest owns it and its content is unchanged (`EmbeddedTemplates::RETIRED_SKILL_NAMES`). Grok skill bodies use Grok tool names (`debrief__speak` / `debrief__install`) and `/mcps`.
 
 Claude Code reads user-scope MCP servers from `~/.claude.json` only — `mcpServers` in `~/.claude/settings.json` is ignored. `HostInstaller` strips a legacy debrief entry from `settings.json` on every install/repair and writes the registration to `~/.claude.json` instead.
 

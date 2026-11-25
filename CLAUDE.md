@@ -73,7 +73,7 @@ cargo build --release
 - 세션별 음소거(`debrief session off|on`): CLI가 대기 요청(5분 만료)을 쓰고, 다음 UserPromptSubmit 훅(모든 호스트)이 자기 session id를 `session-mutes.json`에 넣거나 뺍니다(최대 64). 그 세션의 speak(결정 대기 포함)·훅 알림은 `ModePolicy::admit_request`에서 버립니다. `session` 없는 speak는 영향 없음. Claude·Codex만 확인 `systemMessage`, Grok은 `{}` 유지
 - 진단·지연: `doctor`는 소켓에 실제 연결해 `socket.unreachable`을 알리고, pid는 실행 파일 이름(`proc_pidpath`)이 자신과 같을 때만 실행 중으로 봅니다(재부팅 뒤 pid 재사용). 데몬은 발화마다 대기·첫 문장 합성·첫 소리 ms를 `~/Library/Caches/debrief/latency.jsonl`(400줄 넘으면 200줄로)에 남기고 `status`가 p50/p95를 보여 줍니다
 - 청취 설정: `synthesisSteps`(디노이징 단계 2–16, 기본 5. 2026-11-25 청취로 8에서 낮춤, 4는 이상음), `prosodyPunctuation`(relieved·warm의 `.`→`!!`, `?`→`?!`, 2026-11-25 청취로 기본 켬), `nightWhisper`(night 모드 문장마다 `<whisper>`, 2026-11-25 청취 뒤 기본 꺼짐 유지)
-- Skills (모든 호스트): `debrief-setup` · `debrief-install` · `debrief-speak`
+- Skills (모든 호스트): `debrief-install` · `debrief-speak` (`debrief-setup`은 물러남: 설치 기록에 있고 내용이 그대로면 설치·복구가 지우고, 고친 파일은 남김)
 - Grok: `~/.grok/config.toml` MCP + `~/.grok/hooks/debrief.json` 부작용 훅 + 스킬. 턴 브리핑 문단은 훅이 넣지 않습니다. 도구 이름 `debrief__speak` · `debrief__install`
 - Gemini CLI(옵트인 `debrief install --gemini`, 이후 플래그 없는 repair·uninstall에 포함): `~/.gemini/settings.json`에 `mcpServers.debrief` + 훅. 네이티브 이름 매핑 BeforeAgent→UserPromptSubmit, AfterAgent→Stop, Notification(ToolPermission)→PermissionRequest, PreCompress→PreCompact(`HookEventName::native_name`). 훅 timeout은 밀리초(5000). 스킬은 따로 두지 않습니다(Gemini가 `~/.agents/skills` 별칭을 읽음). 도구 이름 `mcp_debrief_speak` · `mcp_debrief_install`
 - 제어: `debrief mute` · `debrief companion` · `debrief mode` · `debrief doctor` · `debrief start` · `debrief stop`

@@ -218,7 +218,7 @@ debrief status
 | --- | --- | --- |
 | Claude Code | `~/.claude.json` | `mcpServers.debrief`. Claude를 재시작 |
 | Claude Code | `~/.claude/settings.json` | 시작 훅 |
-| Claude Code | `~/.claude/skills/debrief-setup` `debrief-install` `debrief-speak` | 스킬 |
+| Claude Code | `~/.claude/skills/debrief-install` `debrief-speak` | 스킬 |
 | Codex | `~/.codex/config.toml` | MCP 서버 `debrief` |
 | Codex | `~/.codex/hooks.json` | 시작 훅 + PermissionRequest·Stop·SessionEnd·PreCompact·PostCompact·Interrupt. 해시가 없을 때만 `/hooks`에서 신뢰 |
 | Codex | `~/.agents/skills/` | 같은 세 스킬 |

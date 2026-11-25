@@ -5,6 +5,26 @@
 
 ## [Unreleased]
 
+### 추가
+
+- `debrief session off|on|list|clear`: 다음 프롬프트를 보낸 세션만 음소거합니다(5분 안, 결정 대기·훅 알림 포함).
+- `debrief status`에 첫 소리 지연 p50/p95를 보여 주고, 발화마다 `~/Library/Caches/debrief/latency.jsonl`에 남깁니다.
+- 설정 `companionVoice`(F1–M5): 도우미 목소리를 세션 순환 없이 하나로 고정합니다.
+- 설정 `synthesisSteps`(디노이징 단계 2–16)·`prosodyPunctuation`·`nightWhisper`.
+
+### 변경
+
+- 디노이징 단계 기본값 8 → 5. 같은 문장에서 첫 소리가 약 0.78초에서 0.52초로 줄었습니다.
+- `prosodyPunctuation` 기본 켬: relieved·warm 감정의 문장 끝을 `!!`·`?!`로 바꿔 억양을 살립니다.
+- 프롬프트마다 넣는 훅 지침을 437자에서 277자로, 세션 시작 지침을 1,295자에서 1,050자로 줄였습니다.
+- `debrief-speak` 스킬을 짧게 정리하고 `companionVoice`를 안내합니다. `debrief-setup` 스킬은 없앴고, 설치 기록에 있고 내용이 그대로면 설치·복구가 지웁니다.
+
+### 수정
+
+- 재부팅 뒤 낡은 `daemon.pid`의 번호를 다른 프로세스가 쓰면 데몬이 "이미 실행 중"으로 끝나며 재시작을 반복하던 문제.
+- `doctor`가 소켓 파일만 보고 정상이라 하던 문제: 이제 연결해 보고 `socket.unreachable`을 알립니다.
+- 설치 확인음과 `start`·`restart`가 데몬이 소켓을 열기 전에 끝나 `chime_unavailable`·`daemon.missing`이 나던 문제(최대 10초 기다림).
+
 ## [0.7.0] - 2026-11-13
 
 `brew upgrade sparktype/tap/debrief` 다음 `debrief install --repair`로 적용합니다. 영어 듣기 모드는 `debrief english on`으로 켜고, 새 세션부터 브리핑 지침이 들어갑니다.
