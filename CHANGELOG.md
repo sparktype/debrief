@@ -14,12 +14,15 @@
 
 ### 변경
 
+- 플러그인의 중복 생명주기 훅과 폐지된 setup 스킬을 제거했습니다. install/speak 스킬은 설치기 원본에서 생성하며 MCP·훅 등록은 `debrief install`이 맡습니다.
+- 설치 스킬에 Codex만 선택하는 예제와 명시적 호스트 선택 지침을 추가했습니다.
 - `prosodyPunctuation` 기본 켬: relieved·warm 감정의 문장 끝을 `!!`·`?!`로 바꿔 억양을 살립니다.
 - 프롬프트마다 넣는 훅 지침을 437자에서 277자로, 세션 시작 지침을 1,295자에서 1,050자로 줄였습니다.
 - `debrief-speak` 스킬을 짧게 정리하고 `companionVoice`를 안내합니다. `debrief-setup` 스킬은 없앴고, 설치 기록에 있고 내용이 그대로면 설치·복구가 지웁니다.
 
 ### 수정
 
+- Codex 설치·제거·훅 신뢰 검사·진단이 `CODEX_HOME`을 함께 사용합니다(미지정·빈 값은 `~/.codex`). 공용 스킬 위치는 `~/.agents/skills`를 유지합니다.
 - 재부팅 뒤 낡은 `daemon.pid`의 번호를 다른 프로세스가 쓰면 데몬이 "이미 실행 중"으로 끝나며 재시작을 반복하던 문제.
 - `doctor`가 소켓 파일만 보고 정상이라 하던 문제: 이제 연결해 보고 `socket.unreachable`을 알립니다.
 - 설치 확인음과 `start`·`restart`가 데몬이 소켓을 열기 전에 끝나 `chime_unavailable`·`daemon.missing`이 나던 문제(최대 10초 기다림).

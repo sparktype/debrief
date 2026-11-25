@@ -11,6 +11,7 @@ Version `0.7.0`. Install from Homebrew, then finish setup with `debrief install`
 ```sh
 brew install sparktype/tap/debrief
 debrief install
+# debrief install --codex --repair
 # debrief install --claude
 # debrief install --grok --repair
 ```
@@ -31,11 +32,11 @@ After `debrief install`:
 1. Wait for the pinned Supertonic 3 model download and checksum verification.
 2. LaunchAgent starts `debrief daemon` (or run `debrief start`).
 3. Confirm MCP server `debrief` is registered for your host(s).
-4. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{setup,install,speak}`.
-5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it. Side-effect hooks live in `~/.grok/hooks/debrief.json` (skip a stale briefing, fixed notices, a SessionStart `debrief restart` line when the daemon is down). They do not inject the turn-briefing paragraph — Grok discards an allowing hook’s stdout, so the contract stays on the skill and MCP. Outside your home directory, run `/hooks-trust` or those hooks stay debrief mute [on|off|toggle]
+4. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{install,speak}`.
+5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{install,speak}`. Use `search_tool` / `use_tool` when the host requires it. Side-effect hooks live in `~/.grok/hooks/debrief.json` (skip a stale briefing, fixed notices, a SessionStart `debrief restart` line when the daemon is down). They do not inject the turn-briefing paragraph — Grok discards an allowing hook’s stdout, so the contract stays on the skill and MCP. Outside your home directory, run `/hooks-trust` or those hooks stay debrief mute [on|off|toggle]
 debrief session off|on|list|clear   # mute only the chat whose next prompt arrives within 5 minutes
 debrief companion.
-6. **Codex:** MCP lives in `~/.codex/config.toml`. If install or `debrief doctor` says the hook hash is missing, open `/hooks` and trust the debrief hooks. A matching hash prints no review line.
+6. **Codex:** use `debrief install --codex --repair` for Codex only. MCP and hooks live in `$CODEX_HOME/config.toml` and `$CODEX_HOME/hooks.json` (default `~/.codex`); pass the same `CODEX_HOME` to install, doctor and uninstall. Shared skills remain in `~/.agents/skills`. If install or `debrief doctor` says the hook hash is missing, review debrief in `/hooks` (App: Review hooks). A matching hash prints no review line. One Codex profile per user is managed; uninstall using the previous profile before switching. The optional plugin contains skills only; update or disable older plugin copies to avoid duplicate hooks.
 7. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
 
 Repair without wiping unrelated host settings:

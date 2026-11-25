@@ -5,7 +5,7 @@
 debrief is a macOS 14+ Apple Silicon TTS service delivered as one Rust executable. Its responsibilities are deliberately narrow:
 
 1. install and verify the pinned Supertonic 3 model;
-2. install the executable, LaunchAgent, host MCP registration, skills (`setup` / `install` / `speak`), and start-family hooks (Claude/Codex only);
+2. install the executable, LaunchAgent, host MCP registration, skills (`install` / `speak`), and lifecycle hooks;
 3. accept agent MCP tools:
    - **`speak`**: `text`, `voice`, `speed`, `volume`; optional `priority`, `lane` (`companion`|`work`), `emotion`, `session`;
    - **`install`**: optional `hosts`, optional `repair` (default `true`);
@@ -182,3 +182,16 @@ Release verification should also inspect architecture (`arm64`) and run install 
 | `docs/superpowers/specs/2026-09-30-rust-rewrite-design.md` | Rust rewrite: crate boundaries, synchronous concurrency model, native-tls pin, deployment pipeline |
 
 Older material lives under `docs/archive/` and is not product truth.
+
+## Codex integration and plugin assets
+
+`CodexPaths` is the shared config-path source. CLI and the live MCP install runner resolve `CODEX_HOME` at the process boundary, then inject it into installers and diagnostics. Default constructors use the supplied home so test fixtures never inherit an unrelated real Codex profile. Shared skills stay in `~/.agents/skills`.
+
+`EmbeddedTemplates` owns install/speak skill content. Regenerate the optional skills-only plugin with:
+
+```sh
+cargo run -p debrief-core --example export_plugin_skills
+cargo test -p debrief-core --test codex_paths_contract
+```
+
+The parity test rejects stale skill copies, retired setup skills and duplicate plugin lifecycle hooks. Plugin installation alone does not register MCP or lifecycle hooks; run `debrief install` with explicit host flags. Codex trust approval stays in `/hooks` (App: Review hooks). The trust hash probe tracks the October 2026 format and is advisory, not a replacement for Codex's own review.

@@ -63,10 +63,14 @@ debrief status
 
 호스트를 제한하려면 `--codex`, `--claude`, `--grok`를 조합합니다. 플래그가 없으면 세 호스트 모두입니다. `--repair`는 소유한 파일을 다시 맞추고, 사용자가 고친 파일은 다이제스트가 다르면 덮어쓰지 않습니다.
 
+Codex만 사용하면 `debrief install --codex --repair`를 실행합니다. 별도 프로필은 `CODEX_HOME=/절대/경로 debrief install --codex --repair`로 선택하며, `doctor`와 `uninstall`에도 같은 환경변수를 전달합니다. 훅과 MCP는 해당 폴더의 `hooks.json`, `config.toml`에 두고, 스킬은 공용 `~/.agents/skills`에 둡니다. 기본값은 `~/.codex`이며 다른 프로필의 설정을 자동으로 옮기거나 삭제하지 않습니다. 설치 명세는 사용자당 Codex 프로필 하나를 관리하므로, 프로필을 옮길 때는 이전 `CODEX_HOME`으로 `uninstall --codex`한 다음 새 값으로 설치합니다.
+
+`plugins/debrief`는 스킬 진입점입니다. MCP·생명주기 훅 등록은 `debrief install`이 맡습니다. 예전 플러그인을 함께 사용했다면 갱신하거나 비활성화해 그 플러그인의 시작 훅이 설치기 훅과 중복 실행되지 않게 합니다. Codex의 `/hooks`(App: Review hooks) 검토·승인은 사용자가 수행합니다.
+
 | 호스트 | 설치 후 |
 | --- | --- |
 | Claude Code | `~/.claude.json`의 `mcpServers["debrief"]`. 스킬은 `~/.claude/skills`. Claude를 재시작하면 `mcp__debrief__speak`, `mcp__debrief__install`이 보입니다. |
-| Codex | MCP는 `~/.codex/config.toml`. 훅은 `~/.codex/hooks.json`. 지금 파일의 해시가 신뢰 기록과 다르거나 없으면 설치와 `debrief doctor`가 `/hooks` 검토를 안내합니다. 이미 맞으면 그 문장은 나오지 않습니다. 스킬은 `~/.agents/skills`. |
+| Codex | MCP는 `$CODEX_HOME/config.toml`, 훅은 `$CODEX_HOME/hooks.json` (미지정 시 `~/.codex`). 지금 파일의 해시가 신뢰 기록과 다르거나 없으면 설치와 `debrief doctor`가 `/hooks` 검토를 안내합니다. 이미 맞으면 그 문장은 나오지 않습니다. 스킬은 `~/.agents/skills`. |
 | Grok | MCP는 `~/.grok/config.toml`의 `[mcp_servers.debrief]`. 부작용 훅은 `~/.grok/hooks/debrief.json`입니다. 지난 브리핑을 끊고 고정 알림만 말하며, 턴 브리핑 문단은 넣지 않습니다. 집 밖 폴더는 `/hooks-trust`가 필요합니다. `/mcps`로 `debrief__speak`, `debrief__install`을 갱신합니다. 스킬은 `~/.grok/skills`. |
 
 로그인하면 LaunchAgent가 `debrief daemon`을 띄웁니다. 오디오는 GUI 세션에서 재생됩니다.
