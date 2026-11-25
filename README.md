@@ -204,7 +204,7 @@ debrief status
 | `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다. 45초를 넘긴 도우미 발화를 버릴 때도 완료음을 한 번 냅니다. 결정 대기·다시 듣기·작업 레인은 내지 않습니다 | 설정 파일에서 `"earcons": false` |
 | `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
 | `english` · `englishSpeed` | 영어 듣기 모드. 브리핑·고정 알림을 영어로 내고 모든 발화를 `englishSpeed`(0.7–2.0, 기본 0.9)로 재생합니다. 기본 꺼짐 | `debrief english on` · `debrief english speed 0.8` |
-| `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 8). 줄이면 첫 소리가 빨라지고 음질이 거칠어질 수 있습니다. 범위 밖 값은 8 | 설정 파일에서 `"synthesisSteps": 5` |
+| `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 4). 늘리면 음질이 조금 매끄러워질 수 있고 첫 소리가 늦어집니다(같은 47자 문장에서 4는 0.43초, 8은 0.78초). 범위 밖 값은 4 | 설정 파일에서 `"synthesisSteps": 8` |
 | `prosodyPunctuation` | 실험. relieved·warm 감정일 때 문장 끝 `.`을 `!!`, `?`를 `?!`로 바꿔 억양을 살립니다. 기본 꺼짐 | 설정 파일에서 `"prosodyPunctuation": true` |
 | `nightWhisper` | 실험. night 모드에서 문장마다 Supertonic `<whisper>` 표현 태그를 붙입니다. 기본 꺼짐 | 설정 파일에서 `"nightWhisper": true` |
 | `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude와 Grok은 `additionalContext`, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |

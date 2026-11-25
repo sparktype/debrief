@@ -99,8 +99,9 @@ pub struct DebriefConfiguration {
     pub night_whisper: bool,
 }
 
+/// 2026-11-25 청취: 4단계도 8단계와 음질 차이가 들리지 않았고 첫 소리는 0.78초→0.43초.
 fn default_synthesis_steps() -> i64 {
-    8
+    4
 }
 
 fn default_mode() -> DebriefMode {
@@ -398,15 +399,15 @@ impl ConfigurationCommands {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn listening_experiment_keys_default_to_todays_behavior_and_clamp() {
+    fn listening_experiment_keys_default_and_clamp() {
         let default: DebriefConfiguration = serde_json::from_str("{}").unwrap();
-        assert_eq!(default.valid_synthesis_steps(), 8);
+        assert_eq!(default.valid_synthesis_steps(), 4);
         assert!(!default.prosody_punctuation && !default.night_whisper);
         let parse = |json: &str| serde_json::from_str::<DebriefConfiguration>(json).unwrap().valid_synthesis_steps();
         assert_eq!(parse(r#"{"synthesisSteps":2}"#), 2);
         assert_eq!(parse(r#"{"synthesisSteps":16}"#), 16);
-        assert_eq!(parse(r#"{"synthesisSteps":1}"#), 8);
-        assert_eq!(parse(r#"{"synthesisSteps":17}"#), 8);
+        assert_eq!(parse(r#"{"synthesisSteps":1}"#), 4);
+        assert_eq!(parse(r#"{"synthesisSteps":17}"#), 4);
     }
 
     use super::*;
