@@ -32,7 +32,9 @@ After `debrief install`:
 2. LaunchAgent starts `debrief daemon` (or run `debrief start`).
 3. Confirm MCP server `debrief` is registered for your host(s).
 4. **Claude Code:** restart the app so `mcp__debrief__speak` and `mcp__debrief__install` appear. Skills: `~/.claude/skills/debrief-{setup,install,speak}`.
-5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it. Side-effect hooks live in `~/.grok/hooks/debrief.json` (skip a stale briefing, fixed notices, a SessionStart `debrief restart` line when the daemon is down). They do not inject the turn-briefing paragraph — Grok discards an allowing hook’s stdout, so the contract stays on the skill and MCP. Outside your home directory, run `/hooks-trust` or those hooks stay off.
+5. **Grok:** run **`/mcps`** so `debrief__speak` and `debrief__install` appear. Skills: `~/.grok/skills/debrief-{setup,install,speak}`. Use `search_tool` / `use_tool` when the host requires it. Side-effect hooks live in `~/.grok/hooks/debrief.json` (skip a stale briefing, fixed notices, a SessionStart `debrief restart` line when the daemon is down). They do not inject the turn-briefing paragraph — Grok discards an allowing hook’s stdout, so the contract stays on the skill and MCP. Outside your home directory, run `/hooks-trust` or those hooks stay debrief mute [on|off|toggle]
+debrief session off|on|list|clear   # mute only the chat whose next prompt arrives within 5 minutes
+debrief companion.
 6. **Codex:** MCP lives in `~/.codex/config.toml`. If install or `debrief doctor` says the hook hash is missing, open `/hooks` and trust the debrief hooks. A matching hash prints no review line.
 7. At the end of a user-visible turn the agent speaks once via MCP `speak`: what changed, then one next action. Silence only when the turn adds nothing new.
 
@@ -51,6 +53,7 @@ debrief install --repair
 debrief status
 debrief mode [normal|focus|quiet|verbose|night]
 debrief mute [on|off|toggle]
+debrief session off|on|list|clear   # mute only the chat that sends the next prompt within 5 minutes
 debrief companion [on|off|toggle]
 debrief skip [--all]
 debrief replay [n]
@@ -112,4 +115,4 @@ Limit a repair to one host with `--claude`, `--codex`, or `--grok`. When MCP alr
 - Follow the mode guidance Claude and Codex hooks append (focus: one sentence; quiet: short or silent, tagged `(mic)`, `(dnd)`, or `(dnd, mic)` when a restriction raised quiet; night: decisions only; muted: do not call speak). Grok hooks do not deliver that paragraph. Grok reads `mode`, `muted`, and `reason` (only when the microphone or Do Not Disturb raised the mode) from the speak reply.
 - Companion voice rotates across F1–M5, one voice per session. Pass `session` with the host session id so that chat keeps its voice. Speed ~0.93, volume ~0.85. Work lane keeps the voice you pass. Subagents do not brief the user, but speak once when their work is done: `priority=subagent`, `lane=work`, one fact.
 - Do not put speech JSON or HTML comments in the chat body.
-- Mute, mode, companion, replay, and diagnostics: `debrief mute`, `debrief mode`, `debrief companion`, `debrief skip`, `debrief replay`, `debrief doctor`.
+- Mute, mode, companion, replay, and diagnostics: `debrief mute`, `debrief session off`, `debrief mode`, `debrief companion`, `debrief skip`, `debrief replay`, `debrief doctor`.

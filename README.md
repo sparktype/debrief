@@ -12,7 +12,7 @@ Apple Silicon Mac에서 Codex, Claude Code, Grok이 고른 문장을 로컬에�
 
 포함되는 것:
 
-- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `mode`, `companion`, `dnd`, `mic`, `skip`, `replay`, `start`, `stop`)
+- 헤드리스 데몬과 CLI (`status`, `doctor`, `mute`, `session`, `mode`, `companion`, `dnd`, `mic`, `skip`, `replay`, `start`, `stop`)
 - MCP `speak`, `install`
 - Claude / Codex 훅 (SessionStart, UserPromptSubmit, SubagentStart 컨텍스트 + PermissionRequest, Stop 고정 문구 알림 + SessionEnd 정리. Claude에는 StopFailure, Notification, Elicitation, PermissionDenied, TeammateIdle, TaskCompleted 알림 추가)과 세 호스트용 스킬
 
@@ -116,6 +116,8 @@ debrief 0.7.0
   • 브리핑 리마인더: 꺼짐
 ```
 
+서비스 묶음의 `소켓`은 연결이 되면 `있음`, 파일만 남고 연결되지 않으면 `응답 없음`입니다. `첫 소리 지연: p50 1.2초 · p95 3.4초 (최근 37건)`은 발화를 받은 때부터 첫 문장이 들리기까지의 시간이며(효과음 포함), `~/Library/Caches/debrief/latency.jsonl`에 발화마다 한 줄씩 남습니다.
+
 `debrief status --line`은 상태 표시줄용 한 줄입니다. `debrief 꺼짐`(데몬 소켓 응답 없음), `debrief 음소거`, `debrief normal`, `debrief quiet · 도우미 꺼짐`처럼 지금 가장 중요한 상태 하나를 보여 줍니다. Claude Code `statusLine`이나 claude-hud, Grok Build 상태 표시줄에 넣어 씁니다.
 
 모델을 쓸 수 없으면 `revision (사용할 수 없음)`입니다. 방해금지·마이크 연동으로 모드가 올라가 있으면 `모드: normal (지금 quiet입니다. 다른 앱이 마이크를 사용 중입니다.)`처럼 저장된 모드와 이유가 함께 붙습니다. 방해금지뿐이면 `방해금지가 켜져 있습니다.`, 둘 다면 `다른 앱이 마이크를 사용 중이고 방해금지가 켜져 있습니다.`입니다. night은 올리지 않습니다.
@@ -128,7 +130,8 @@ debrief 0.7.0
 | `debrief skip` | 지금 재생 중인 발화만 끊고 다음 발화는 이어서 재생합니다. `--all`이면 대기열도 비웁니다. Claude·Codex·Grok에서 새 프롬프트를 보내면 그 세션의 지난 도우미 브리핑은 자동으로 끊깁니다(결정 대기·알림·다른 세션 발화는 그대로). Grok에서 사용자가 턴을 끊으면(`StopCancelled`의 `user_interrupt`) 그 세션 브리핑도 끊습니다. |
 | `debrief replay` | 최근 재생한 발화 n개(1–10, 기본 1)를 오래된 순서로 다시 들려줍니다. 기록은 데몬 메모리에만 있어 재시작하면 비워집니다. |
 | `debrief allow` / `debrief deny` | `permissionRelay`로 중계된 Claude Code 권한 요청에 답합니다. id 없이 실행하면 대기 요청이 하나일 때 도구·설명·입력 미리보기를 보여 주고 한 번 더 묻습니다. 여럿이면 id 목록을 보여 줍니다. 10분 넘은 요청은 버립니다. |
-| `debrief doctor` | 진단입니다. 정상이 아닌 항목이 있으면 종료 코드 1입니다. |
+| `debrief session` | 세션별 음소거입니다. `off`를 실행한 뒤 5분 안에 프롬프트를 보낸 세션이 음소거되고(그 세션의 speak·훅 알림·결정 대기 모두), `on`은 같은 방식으로 해제합니다. Claude·Codex는 “이 세션을 음소거했습니다.”를 보여 줍니다. `list`는 음소거된 세션과 대기 요청, `clear`는 모두 비웁니다. Claude Code 안에서는 `! debrief session off`. `session` 없이 보낸 speak는 막지 않습니다 |
+| `debrief doctor` | 진단입니다. 정상이 아닌 항목이 있으면 종료 코드 1입니다. 소켓 파일이 있어도 연결되지 않으면 `socket.unreachable`(복구 `debrief restart`)입니다. |
 | `debrief start` | 있는 plist만 부트스트랩합니다. plist가 없으면 `debrief install`을 안내하고 종료 코드 1입니다. 이미 실행 중이면 프로세스를 바꾸지 않습니다. |
 | `debrief stop` | 에이전트를 끄고 bootout 합니다. 실행 파일과 plist는 남습니다. |
 | `debrief restart` | 실행 중이어도 에이전트를 내렸다가 다시 올립니다. 실행 파일·plist·설정은 바꾸지 않고, 데몬 메모리의 다시 듣기 기록은 사라집니다. brew로 업그레이드한 새 바이너리는 `debrief install`이 복사합니다. |
@@ -201,6 +204,9 @@ debrief status
 | `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다. 45초를 넘긴 도우미 발화를 버릴 때도 완료음을 한 번 냅니다. 결정 대기·다시 듣기·작업 레인은 내지 않습니다 | 설정 파일에서 `"earcons": false` |
 | `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
 | `english` · `englishSpeed` | 영어 듣기 모드. 브리핑·고정 알림을 영어로 내고 모든 발화를 `englishSpeed`(0.7–2.0, 기본 0.9)로 재생합니다. 기본 꺼짐 | `debrief english on` · `debrief english speed 0.8` |
+| `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 8). 줄이면 첫 소리가 빨라지고 음질이 거칠어질 수 있습니다. 범위 밖 값은 8 | 설정 파일에서 `"synthesisSteps": 5` |
+| `prosodyPunctuation` | 실험. relieved·warm 감정일 때 문장 끝 `.`을 `!!`, `?`를 `?!`로 바꿔 억양을 살립니다. 기본 꺼짐 | 설정 파일에서 `"prosodyPunctuation": true` |
+| `nightWhisper` | 실험. night 모드에서 문장마다 Supertonic `<whisper>` 표현 태그를 붙입니다. 기본 꺼짐 | 설정 파일에서 `"nightWhisper": true` |
 | `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude와 Grok은 `additionalContext`, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |
 | `permissionRelay` | Claude Code 채널 권한 중계. 켜고 `claude --dangerously-load-development-channels server:debrief`로 실행하면 도구 승인 요청이 debrief로 중계되고 `debrief allow`·`debrief deny`로 답할 수 있습니다(터미널 대화상자도 그대로 열려 있고 먼저 온 답이 쓰입니다). Channels는 research preview이고, Team·Enterprise는 관리자가 `channelsEnabled`를 켜야 합니다. 기본 꺼짐 | 설정 파일에서 `"permissionRelay": true` |
 | `pronunciations` | 단어 → 읽을 표기. 합성 직전에 단어 단위로 대소문자를 무시하고 바꿉니다. 사용자 항목이 없으면 debrief·Codex·Grok·MCP를 디브리프·코덱스·그록·엠씨피로 읽습니다. 같은 단어를 적으면 그 표기가 이기고, 단어 그대로 적으면 기본 읽기를 끕니다. 파일의 기본 항목은 설치가 넣지 않습니다. 다시 듣기 기록은 원문을 유지합니다 | 설정 파일을 직접 고칩니다 |
