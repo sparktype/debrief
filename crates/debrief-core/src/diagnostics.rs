@@ -24,6 +24,8 @@ pub struct StatusSnapshot {
     pub companion_enabled: bool,
     pub process: DaemonProcessState,
     pub socket_present: bool,
+    /// 소켓 파일이 있고 실제로 연결도 되는지. 파일만 남은 죽은 소켓은 false.
+    pub socket_reachable: bool,
     pub model_revision: Option<String>,
     pub model_valid: bool,
     pub launch_agent_installed: bool,
@@ -67,6 +69,7 @@ impl CurrentError {
 pub struct Diagnostics<'a> {
     paths: DebriefPaths,
     process_exists: Box<dyn Fn(i32) -> bool + 'a>,
+    socket_probe: Box<dyn Fn(&Path) -> bool + 'a>,
 }
 
 /// `~/.grok/trusted_folders.toml`의 `[folders."/abs"] trusted = true`. 파일이 없으면 None.
@@ -116,11 +119,21 @@ fn installed_binary_finding(installed: &Path, running: &Path) -> Option<Diagnost
 
 impl<'a> Diagnostics<'a> {
     pub fn new(home: &Path) -> Self {
-        Self::with_process_check(home, Self::live_process_exists)
+        Self::with_checks(home, Self::live_process_exists, Self::live_socket_probe)
     }
 
+    /// 소켓 연결 검사는 파일이 있으면 응답하는 것으로 본다(검사 주입이 필요 없는 테스트용).
     pub fn with_process_check(home: &Path, process_exists: impl Fn(i32) -> bool + 'a) -> Self {
-        Diagnostics { paths: DebriefPaths::for_home(home), process_exists: Box::new(process_exists) }
+        Self::with_checks(home, process_exists, |_| true)
+    }
+
+    pub fn with_checks(home: &Path, process_exists: impl Fn(i32) -> bool + 'a, socket_probe: impl Fn(&Path) -> bool + 'a) -> Self {
+        Diagnostics { paths: DebriefPaths::for_home(home), process_exists: Box::new(process_exists), socket_probe: Box::new(socket_probe) }
+    }
+
+    /// 데몬 소켓에 실제로 연결해 본다. 연결만 되면 충분하다.
+    fn live_socket_probe(socket: &Path) -> bool {
+        std::os::unix::net::UnixStream::connect(socket).is_ok()
     }
 
     pub fn status(&self) -> StatusSnapshot {
@@ -139,12 +152,14 @@ impl<'a> Diagnostics<'a> {
         host_settings_readable.insert("grok", Self::settings_readable_toml(&self.paths.home.join(".grok/config.toml")));
         host_settings_readable.insert("gemini", Self::settings_readable(&self.paths.home.join(".gemini/settings.json")));
 
+        let socket_present = self.paths.socket_url.exists();
         StatusSnapshot {
             mode: configuration.mode,
             muted: configuration.muted,
             companion_enabled: configuration.companion_enabled,
             process,
-            socket_present: self.paths.socket_url.exists(),
+            socket_present,
+            socket_reachable: socket_present && (self.socket_probe)(&self.paths.socket_url),
             model_revision,
             model_valid,
             launch_agent_installed: self.paths.launch_agent_url.exists(),
@@ -190,9 +205,10 @@ impl<'a> Diagnostics<'a> {
         };
         let service = [
             ("프로세스", process.to_string()),
-            ("소켓", if snapshot.socket_present { "있음" } else { "없음" }.to_string()),
+            ("소켓", if !snapshot.socket_present { "없음" } else if snapshot.socket_reachable { "있음" } else { "응답 없음" }.to_string()),
             ("LaunchAgent", if snapshot.launch_agent_installed { "설치됨" } else { "없음" }.to_string()),
             ("모델", model),
+            ("첫 소리 지연", crate::latency_log::LatencyLog::status_value(&self.paths.latency_url)),
         ];
         let settings = [
             ("음소거", on_off(snapshot.muted).to_string()),
@@ -276,11 +292,19 @@ impl<'a> Diagnostics<'a> {
             findings.push(DiagnosticFinding { code: mcp.doctor_code(), ok: false, recovery: mcp.recovery() });
         }
 
-        findings.push(DiagnosticFinding {
-            code: if snapshot.socket_present { "socket.present".to_string() } else { "socket.missing".to_string() },
-            ok: snapshot.socket_present,
-            recovery: if snapshot.socket_present { None } else { Some(recovery.clone()) },
-        });
+        if snapshot.socket_present && !snapshot.socket_reachable {
+            findings.push(DiagnosticFinding {
+                code: "socket.unreachable".to_string(),
+                ok: false,
+                recovery: Some("debrief restart".to_string()),
+            });
+        } else {
+            findings.push(DiagnosticFinding {
+                code: if snapshot.socket_present { "socket.present".to_string() } else { "socket.missing".to_string() },
+                ok: snapshot.socket_present,
+                recovery: if snapshot.socket_present { None } else { Some(recovery.clone()) },
+            });
+        }
         findings.push(DiagnosticFinding {
             code: if snapshot.launch_agent_installed { "launch_agent.installed".to_string() } else { "launch_agent.missing".to_string() },
             ok: snapshot.launch_agent_installed,
@@ -689,6 +713,44 @@ mod tests {
 
         let same_file = installed_binary_finding(&installed, &installed).unwrap();
         assert!(same_file.ok);
+        fs::remove_dir_all(&home).ok();
+    }
+
+    /// 유닉스 소켓 경로 길이 제한(104바이트) 때문에 짧은 임시 홈을 쓴다.
+    fn short_home() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let url = PathBuf::from(format!("/tmp/dbf-{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)));
+        fs::create_dir_all(DebriefPaths::for_home(&url).socket_url.parent().unwrap()).unwrap();
+        url
+    }
+
+    #[test]
+    fn live_socket_probe_connects_to_listener_but_not_to_leftover_file() {
+        let home = short_home();
+        let socket = DebriefPaths::for_home(&home).socket_url;
+        {
+            let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+            assert!(Diagnostics::live_socket_probe(&socket));
+        }
+        // 리스너가 닫혀도 소켓 파일은 남는다. 이것이 죽은 데몬의 모습이다.
+        assert!(socket.exists());
+        assert!(!Diagnostics::live_socket_probe(&socket));
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn doctor_reports_unreachable_socket_with_restart_recovery() {
+        let home = temporary_home();
+        let paths = DebriefPaths::for_home(&home);
+        fs::create_dir_all(paths.socket_url.parent().unwrap()).unwrap();
+        fs::write(&paths.socket_url, []).unwrap();
+
+        let diagnostics = Diagnostics::with_checks(&home, |_| false, |_| false);
+        let finding = diagnostics.doctor().into_iter().find(|f| f.code == "socket.unreachable").unwrap();
+        assert!(!finding.ok);
+        assert_eq!(finding.recovery, Some("debrief restart".to_string()));
+        assert!(diagnostics.status_text().contains("  • 소켓: 응답 없음"));
         fs::remove_dir_all(&home).ok();
     }
 

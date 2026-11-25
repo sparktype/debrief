@@ -176,7 +176,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
             (self.audio_factory)(),
             move || DebriefConfiguration::load_effective(&config_url, &home_for_dnd),
             Some(record_error),
-        ));
+        ).with_latency_log(paths.latency_url.clone()));
 
         let pid = std::process::id().to_string();
         std::fs::write(&paths.pid_url, &pid).map_err(|_| ResidentServiceError::ModelUnavailable)?;

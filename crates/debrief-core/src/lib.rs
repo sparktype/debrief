@@ -16,6 +16,7 @@ pub mod host_installer;
 pub mod install_chime;
 pub mod host_mcp_status;
 pub mod install_manifest;
+pub mod latency_log;
 pub mod launch_agent_control;
 pub mod macos_dnd;
 pub mod macos_mic;

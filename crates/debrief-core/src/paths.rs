@@ -22,6 +22,8 @@ pub struct DebriefPaths {
     pub launch_agent_url: PathBuf,
     pub install_manifest_url: PathBuf,
     pub last_error_url: PathBuf,
+    /// 발화별 지연 기록(JSONL).
+    pub latency_url: PathBuf,
     pub session_voices_url: PathBuf,
     pub session_state_url: PathBuf,
     /// 채널 권한 중계의 대기 요청·판정. 캐시 정리에 지워지지 않게 데이터 디렉터리에 둔다.
@@ -45,6 +47,7 @@ impl DebriefPaths {
             launch_agent_url: home.join("Library/LaunchAgents/com.debrief.tts.plist"),
             install_manifest_url: data_directory.join("install-manifest.json"),
             last_error_url: cache_directory.join("last-error.json"),
+            latency_url: cache_directory.join("latency.jsonl"),
             session_voices_url: data_directory.join("session-voices.json"),
             session_state_url: data_directory.join("session-state.json"),
             permissions_directory: data_directory.join("permissions"),
@@ -69,6 +72,7 @@ mod tests {
         assert_eq!(paths.launch_agent_url, PathBuf::from("/Users/example/Library/LaunchAgents/com.debrief.tts.plist"));
         assert_eq!(paths.pid_url, PathBuf::from("/Users/example/Library/Caches/debrief/daemon.pid"));
         assert_eq!(paths.last_error_url, PathBuf::from("/Users/example/Library/Caches/debrief/last-error.json"));
+        assert_eq!(paths.latency_url, PathBuf::from("/Users/example/Library/Caches/debrief/latency.jsonl"));
         assert_eq!(paths.executable_url, PathBuf::from("/Users/example/.local/bin/debrief"));
         assert_eq!(paths.install_manifest_url, PathBuf::from("/Users/example/Library/Application Support/debrief/install-manifest.json"));
         assert_eq!(paths.models_directory, PathBuf::from("/Users/example/Library/Application Support/debrief/models"));

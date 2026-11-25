@@ -143,6 +143,11 @@ impl SpeechQueue {
     }
 
     pub fn next(&self) -> SpeechRequest {
+        self.next_timed().0
+    }
+
+    /// `next`와 같고, 그 발화가 큐에서 기다린 시간도 돌려준다.
+    pub fn next_timed(&self) -> (SpeechRequest, Duration) {
         let mut state = self.state.lock().unwrap();
         loop {
             let mut dropped_companion = false;
@@ -151,9 +156,9 @@ impl SpeechQueue {
                 if request.decision || request.replayed || pending.enqueued_at.elapsed() <= self.max_wait {
                     if dropped_companion {
                         state.pending.push_front(pending);
-                        return discarded_companion_cue();
+                        return (discarded_companion_cue(), Duration::ZERO);
                     }
-                    return pending.request;
+                    return (pending.request, pending.enqueued_at.elapsed());
                 }
                 // 결정 대기·다시 듣기·work 레인은 조용히 버린다. 도우미 문장만 완료음 한 번으로 구분한다.
                 if matches!(request.lane, SpeechLane::Companion) && !request.decision && !request.replayed {
@@ -161,7 +166,7 @@ impl SpeechQueue {
                 }
             }
             if dropped_companion {
-                return discarded_companion_cue();
+                return (discarded_companion_cue(), Duration::ZERO);
             }
             state = self.condvar.wait(state).unwrap();
         }
