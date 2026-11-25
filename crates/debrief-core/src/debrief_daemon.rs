@@ -4,11 +4,14 @@ use crate::configuration::DebriefConfiguration;
 use crate::daemon_control::{Control, Inbound};
 use crate::mode_policy::ModePolicy;
 use crate::pronunciation::Pronunciation;
+use crate::latency_log::{LatencyEntry, LatencyLog};
 use crate::speech_emotion::EmotionProsody;
+use crate::speech_lane::SpeechLane;
 use crate::speech_queue::{QueueDecision, SpeechQueue};
 use crate::speech_request::SpeechRequest;
 use crate::tts_backend::{PcmBuffer, TtsBackend};
 use crate::unix_socket::{is_recoverable_accept_error, UnixSocketError};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,6 +44,7 @@ pub struct DebriefDaemon<B: TtsBackend, A: AudioPlaying> {
     record_error: Option<Arc<ErrorRecorder>>,
     state: Arc<Mutex<DaemonState>>,
     history: Arc<Mutex<std::collections::VecDeque<SpeechRequest>>>,
+    latency_url: Option<std::path::PathBuf>,
 }
 
 impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
@@ -61,7 +65,14 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             record_error,
             state: Arc::new(Mutex::new(DaemonState { active: None, discard_active: false, shutting_down: false, worker: None })),
             history: Arc::new(Mutex::new(std::collections::VecDeque::new())),
+            latency_url: None,
         }
+    }
+
+    /// 재생된 발화마다 지연을 이 JSONL 파일에 남긴다.
+    pub fn with_latency_log(mut self, url: std::path::PathBuf) -> Self {
+        self.latency_url = Some(url);
+        self
     }
 
     pub const HISTORY_CAPACITY: usize = 10;
@@ -200,8 +211,9 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
         let record_error = self.record_error.clone();
         let shared_state = self.state.clone();
         let history = self.history.clone();
+        let latency_url = self.latency_url.clone();
         state.worker = Some(std::thread::spawn(move || {
-            Self::consume(queue, backend, audio, configuration, record_error, shared_state, history);
+            Self::consume(queue, backend, audio, configuration, record_error, shared_state, history, latency_url);
         }));
     }
 
@@ -222,6 +234,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
         state.worker = None;
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn consume(
         queue: Arc<SpeechQueue>,
         backend: Arc<B>,
@@ -230,12 +243,14 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
         record_error: Option<Arc<ErrorRecorder>>,
         state: Arc<Mutex<DaemonState>>,
         history: Arc<Mutex<std::collections::VecDeque<SpeechRequest>>>,
+        latency_url: Option<std::path::PathBuf>,
     ) {
         loop {
             if state.lock().unwrap().shutting_down {
                 break;
             }
-            let request = queue.next();
+            let (request, queue_wait) = queue.next_timed();
+            let dequeued_at = std::time::Instant::now();
             if state.lock().unwrap().shutting_down {
                 break;
             }
@@ -271,6 +286,9 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                 };
                 let text = EmotionProsody::spoken_text(request.emotion, &spoken);
                 let pause_seconds = EmotionProsody::pause_seconds(request.emotion);
+                // 첫 문장 합성 완료·첫 소리 시작 시각(dequeue 기준 µs). u64::MAX는 아직 없음.
+                let (synth_first_us, first_sound_us) = (AtomicU64::new(u64::MAX), AtomicU64::new(u64::MAX));
+                let micros = || dequeued_at.elapsed().as_micros() as u64;
                 let (sender, receiver) = std::sync::mpsc::channel::<PcmBuffer>();
                 // 재생 스레드가 앞 문장을 트는 동안 이 스레드는 다음 문장을 합성한다.
                 let (result, played) = std::thread::scope(|scope| {
@@ -284,12 +302,16 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                                 buffer.samples.splice(0..0, std::iter::repeat_n(0.0, silence));
                             }
                             let Some(gain) = gain.filter(|_| !discarded()) else { break };
+                            if index == 0 {
+                                first_sound_us.store(micros(), Ordering::Relaxed);
+                            }
                             let _ = audio.play(&buffer, gain);
                             played = true;
                         }
                         played
                     });
                     let result = backend.synthesize_sentences(&text, &request.envelope.voice, speed, &mut |buffer| {
+                        let _ = synth_first_us.compare_exchange(u64::MAX, micros(), Ordering::Relaxed, Ordering::Relaxed);
                         !discarded() && sender.send(buffer).is_ok()
                     });
                     drop(sender);
@@ -301,6 +323,19 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
                         let detail: String = format!("{error:?}").chars().take(80).collect();
                         record_error("tts", "synthesis_or_playback", &format!("합성 또는 재생에 실패했습니다: {detail}"));
                     }
+                }
+                let first_sound_us = first_sound_us.load(Ordering::Relaxed);
+                if let (true, Some(url)) = (played && first_sound_us != u64::MAX, &latency_url) {
+                    let queue_ms = queue_wait.as_millis() as u64;
+                    let entry = LatencyEntry {
+                        ts: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                        lane: if matches!(request.lane, SpeechLane::Companion) { "companion" } else { "work" }.to_string(),
+                        chars: request.envelope.text.chars().count(),
+                        queue_ms,
+                        synth_first_ms: synth_first_us.load(Ordering::Relaxed) / 1000,
+                        first_sound_ms: queue_ms + first_sound_us / 1000,
+                    };
+                    let _ = LatencyLog::append(url, &entry);
                 }
                 if played && !request.replayed {
                     let mut history = history.lock().unwrap();
@@ -593,6 +628,21 @@ mod tests {
         assert_eq!(daemon.audio.gains(), vec![0.4, 0.4]);
         assert!(entries.lock().unwrap().iter().any(|(c, code, _)| c == "tts" && code == "synthesis_or_playback"));
         daemon.shutdown();
+    }
+
+    #[test]
+    fn played_utterance_appends_one_latency_line() {
+        let url = std::env::temp_dir().join(format!("debrief-daemon-latency-{}/latency.jsonl", std::process::id()));
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), DebriefConfiguration::default, None)
+            .with_latency_log(url.clone());
+        daemon.submit(request(SpeechPriority::Main, "hello", 0.9));
+        wait_for_history(&daemon, 1);
+
+        let entry: LatencyEntry = serde_json::from_str(std::fs::read_to_string(&url).unwrap().trim()).unwrap();
+        assert_eq!(entry.chars, 5);
+        assert!(entry.first_sound_ms >= entry.synth_first_ms.min(entry.queue_ms));
+        daemon.shutdown();
+        std::fs::remove_dir_all(url.parent().unwrap()).ok();
     }
 
     #[test]

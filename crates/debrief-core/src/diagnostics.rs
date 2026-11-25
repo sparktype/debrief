@@ -208,6 +208,7 @@ impl<'a> Diagnostics<'a> {
             ("소켓", if !snapshot.socket_present { "없음" } else if snapshot.socket_reachable { "있음" } else { "응답 없음" }.to_string()),
             ("LaunchAgent", if snapshot.launch_agent_installed { "설치됨" } else { "없음" }.to_string()),
             ("모델", model),
+            ("첫 소리 지연", crate::latency_log::LatencyLog::status_value(&self.paths.latency_url)),
         ];
         let settings = [
             ("음소거", on_off(snapshot.muted).to_string()),
