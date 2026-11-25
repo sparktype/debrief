@@ -348,6 +348,7 @@ fn run_start(home: &std::path::Path) -> i32 {
             0
         }
         Ok(ServiceStartResult::Started) => {
+            wait_for_daemon(home);
             println!("{}", CliMessages::STARTED);
             0
         }
@@ -363,11 +364,18 @@ fn run_start(home: &std::path::Path) -> i32 {
     }
 }
 
+/// launchctl은 bootstrap 직후 돌아오지만 데몬은 1초 안팎 뒤에 소켓을 연다. 바로 이어지는 doctor·speak가 실패하지 않도록 기다린다.
+fn wait_for_daemon(home: &std::path::Path) {
+    let socket = debrief_core::DebriefPaths::for_home(home).socket_url;
+    let _ = debrief_core::UnixSocketClient::new(socket).wait_until_reachable(debrief_core::UnixSocketClient::STARTUP_WAIT);
+}
+
 fn run_restart(home: &std::path::Path) -> i32 {
     let launchctl = ProcessLaunchctlRunner::new();
     let runtime = make_runtime(home, current_executable_url(), &launchctl);
     match runtime.restart() {
         Ok(()) => {
+            wait_for_daemon(home);
             println!("{}", CliMessages::RESTARTED);
             0
         }

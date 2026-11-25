@@ -450,6 +450,23 @@ impl UnixSocketClient {
         true
     }
 
+    /// 데몬이 모델을 올리고 소켓을 열기까지 1초 안팎 걸린다. 그동안 짧게 되풀이해 확인한다.
+    pub fn wait_until_reachable(&self, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if self.is_reachable() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    /// 설치·시작·재시작 뒤 데몬이 응답하길 기다리는 상한.
+    pub const STARTUP_WAIT: Duration = Duration::from_secs(10);
+
     pub fn submit(&self, request: &SpeechRequest) -> Result<(), UnixSocketError> {
         self.send_payload(&UnixSocketServer::encode_speech_request(request))
     }
@@ -574,6 +591,28 @@ mod tests {
         let url = PathBuf::from("/tmp").join(format!("cs-{nanos}-{counter}"));
         fs::create_dir_all(&url).unwrap();
         url
+    }
+
+    #[test]
+    fn wait_until_reachable_waits_for_a_daemon_that_opens_its_socket_late() {
+        let socket = temporary_directory().join("late.sock");
+        let path = socket.clone();
+        let opener = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            std::os::unix::net::UnixListener::bind(&path).unwrap()
+        });
+        assert!(UnixSocketClient::new(socket.clone()).wait_until_reachable(Duration::from_secs(3)));
+        drop(opener.join());
+        fs::remove_dir_all(socket.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn wait_until_reachable_gives_up_after_the_timeout() {
+        let socket = temporary_directory().join("never.sock");
+        let started = std::time::Instant::now();
+        assert!(!UnixSocketClient::new(socket.clone()).wait_until_reachable(Duration::from_millis(300)));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        fs::remove_dir_all(socket.parent().unwrap()).ok();
     }
 
     fn permissions(path: &Path) -> u32 {

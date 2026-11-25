@@ -10,7 +10,6 @@ use crate::speech_lane::SpeechLane;
 use crate::speech_request::{SpeechPriority, SpeechRequest};
 use crate::unix_socket::UnixSocketClient;
 use std::path::Path;
-use std::thread;
 use std::time::Duration;
 
 pub struct InstallChime;
@@ -40,18 +39,17 @@ impl InstallChime {
         }
     }
 
-    /// 소켓이 곧 열릴 수 있어 짧게 몇 번만 시도한다. 실패해도 호출자는 설치 성공으로 끝낸다.
+    /// 방금 올린 데몬이 소켓을 열 때까지 기다린 뒤 보낸다. 실패해도 호출자는 설치 성공으로 끝낸다.
     pub fn try_play(home: &Path) {
+        Self::try_play_within(home, UnixSocketClient::STARTUP_WAIT);
+    }
+
+    fn try_play_within(home: &Path, wait: Duration) {
         let socket = DebriefPaths::for_home(home).socket_url;
         let client = UnixSocketClient::new(socket);
         let request = Self::request(DebriefConfiguration::load(&DebriefPaths::for_home(home).config_url).english);
-        for attempt in 0..4 {
-            if client.is_reachable() && client.submit(&request).is_ok() {
-                return;
-            }
-            if attempt + 1 < 4 {
-                thread::sleep(Duration::from_millis(40));
-            }
+        if client.wait_until_reachable(wait) && client.submit(&request).is_ok() {
+            return;
         }
         let _ = Diagnostics::new(home).record_error(
             "install",
@@ -93,7 +91,7 @@ mod tests {
     #[test]
     fn missing_daemon_records_a_doctor_error_and_does_not_panic() {
         let home = home();
-        InstallChime::try_play(&home);
+        InstallChime::try_play_within(&home, Duration::from_millis(200));
         let error = Diagnostics::new(&home).current_error().expect("doctor 기록");
         assert_eq!(error.code, "chime_unavailable");
         assert!(error.message.contains("확인해 주세요"));
