@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-25
+
+`brew upgrade sparktype/tap/debrief` 다음 `debrief install --repair`로 적용합니다. 설치·복구가 물러난 `debrief-setup` 스킬을 지우고 줄어든 훅 지침을 넣으며, 새 세션부터 반영됩니다. 도우미 목소리를 고정하려면 설정에 `"companionVoice": "F1"`처럼 넣습니다.
+
 ### 추가
 
 - `debrief session off|on|list|clear`: 다음 프롬프트를 보낸 세션만 음소거합니다(5분 안, 결정 대기·훅 알림 포함).
