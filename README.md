@@ -204,7 +204,7 @@ debrief status
 | `earcons` | 결정 대기·주의·실패·완료 알림 앞의 짧은 효과음. 기본 켜짐, 음소거면 나지 않습니다. 45초를 넘긴 도우미 발화를 버릴 때도 완료음을 한 번 냅니다. 결정 대기·다시 듣기·작업 레인은 내지 않습니다 | 설정 파일에서 `"earcons": false` |
 | `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
 | `english` · `englishSpeed` | 영어 듣기 모드. 브리핑·고정 알림을 영어로 내고 모든 발화를 `englishSpeed`(0.7–2.0, 기본 0.9)로 재생합니다. 기본 꺼짐 | `debrief english on` · `debrief english speed 0.8` |
-| `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 5). 낮추면 첫 소리가 빨라지지만 4에서는 이상한 소리가 섞였습니다(같은 47자 문장에서 4는 0.43초, 5는 0.52초, 8은 0.78초). 범위 밖 값은 5 | 설정 파일에서 `"synthesisSteps": 8` |
+| `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 8). 낮추면 첫 소리가 빨라지지만 4에서는 이상한 소리가 섞였습니다(같은 47자 문장에서 4는 0.43초, 5는 0.52초, 8은 0.78초). 범위 밖 값은 8 | 설정 파일에서 `"synthesisSteps": 5` |
 | `prosodyPunctuation` | relieved·warm 감정일 때 문장 끝 `.`을 `!!`, `?`를 `?!`로 바꿔 억양을 살립니다. 기본 켜짐(2026-11-25 청취) | 설정 파일에서 `"prosodyPunctuation": false` |
 | `companionVoice` | 도우미 목소리를 하나로 고정합니다(`F1`–`M5`). 고정하면 세션마다 돌지 않고 훅 알림도 같은 목소리입니다. 비어 있거나 모르는 이름이면 지금처럼 세션마다 순환합니다 | 설정 파일에서 `"companionVoice": "M4"` |
 | `nightWhisper` | night 모드에서 문장마다 Supertonic `<whisper>` 표현 태그를 붙입니다. 2026-11-25 청취 뒤 기본 꺼짐 유지 | 설정 파일에서 `"nightWhisper": true` |

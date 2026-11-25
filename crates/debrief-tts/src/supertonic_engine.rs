@@ -178,7 +178,7 @@ pub struct SupertonicEngine {
 }
 
 impl SupertonicEngine {
-    const DEFAULT_DENOISING_STEPS: usize = 5;
+    const DEFAULT_DENOISING_STEPS: usize = 8;
     const SAMPLE_RATE: i64 = 44_100;
 
     pub fn new(model_directory: &Path) -> Result<Self, SupertonicError> {

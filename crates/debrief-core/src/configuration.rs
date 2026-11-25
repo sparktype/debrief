@@ -102,9 +102,9 @@ pub struct DebriefConfiguration {
     pub companion_voice: Option<String>,
 }
 
-/// 2026-11-25 청취: 4단계는 이상한 소리가 섞여 5로 정함(첫 소리 0.52초, 8단계 0.78초).
+/// 2026-11-25 청취: 4는 이상한 소리, 5를 거쳐 사용자가 8(원래 값)로 되돌림. 첫 소리는 5보다 약 0.26초 늦다.
 fn default_synthesis_steps() -> i64 {
-    5
+    8
 }
 
 fn default_prosody_punctuation() -> bool {
@@ -422,14 +422,14 @@ mod tests {
     #[test]
     fn listening_experiment_keys_default_and_clamp() {
         let default: DebriefConfiguration = serde_json::from_str("{}").unwrap();
-        assert_eq!(default.valid_synthesis_steps(), 5);
+        assert_eq!(default.valid_synthesis_steps(), 8);
         assert!(default.prosody_punctuation, "2026-11-25 청취로 기본 켬");
         assert!(!default.night_whisper);
         let parse = |json: &str| serde_json::from_str::<DebriefConfiguration>(json).unwrap().valid_synthesis_steps();
         assert_eq!(parse(r#"{"synthesisSteps":2}"#), 2);
         assert_eq!(parse(r#"{"synthesisSteps":16}"#), 16);
-        assert_eq!(parse(r#"{"synthesisSteps":1}"#), 5);
-        assert_eq!(parse(r#"{"synthesisSteps":17}"#), 5);
+        assert_eq!(parse(r#"{"synthesisSteps":1}"#), 8);
+        assert_eq!(parse(r#"{"synthesisSteps":17}"#), 8);
     }
 
     use super::*;
