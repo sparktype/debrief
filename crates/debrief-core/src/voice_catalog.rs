@@ -82,7 +82,7 @@ static AGENT_CATEGORIES: LazyLock<HashMap<&'static str, &'static str>> = LazyLoc
         (
             "explorer",
             &[
-                "Explore", "code-explorer", "general-purpose", "gitnexus-exploring",
+                "Explore", "code-explorer", "general-purpose",
                 "claude-code-guide", "Task",
             ],
         ),
@@ -336,7 +336,7 @@ mod tests {
             (
                 "explorer",
                 &[
-                    "Explore", "code-explorer", "general-purpose", "gitnexus-exploring",
+                    "Explore", "code-explorer", "general-purpose",
                     "claude-code-guide", "Task",
                 ],
             ),
@@ -354,7 +354,7 @@ mod tests {
         ];
 
         let total: usize = expected.iter().map(|(_, types)| types.len()).sum();
-        assert_eq!(total, 69);
+        assert_eq!(total, 68);
         for (category, agent_types) in expected {
             for agent_type in *agent_types {
                 assert_eq!(VoiceCatalog::assignment(Some(agent_type)).category, *category, "{agent_type}");
