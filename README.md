@@ -205,7 +205,8 @@ debrief status
 | `micSync` | 다른 앱이 마이크를 쓰는 동안(통화·회의) 유효 모드를 최소 quiet로 올립니다. 녹음하지 않고 사용 여부만 읽습니다(macOS 14.2+). 기본 꺼짐 | `debrief mic on` |
 | `english` · `englishSpeed` | 영어 듣기 모드. 브리핑·고정 알림을 영어로 내고 모든 발화를 `englishSpeed`(0.7–2.0, 기본 0.9)로 재생합니다. 기본 꺼짐 | `debrief english on` · `debrief english speed 0.8` |
 | `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 5). 낮추면 첫 소리가 빨라지지만 4에서는 이상한 소리가 섞였습니다(같은 47자 문장에서 4는 0.43초, 5는 0.52초, 8은 0.78초). 범위 밖 값은 5 | 설정 파일에서 `"synthesisSteps": 8` |
-| `prosodyPunctuation` | 실험. relieved·warm 감정일 때 문장 끝 `.`을 `!!`, `?`를 `?!`로 바꿔 억양을 살립니다. 기본 꺼짐 | 설정 파일에서 `"prosodyPunctuation": true` |
+| `prosodyPunctuation` | relieved·warm 감정일 때 문장 끝 `.`을 `!!`, `?`를 `?!`로 바꿔 억양을 살립니다. 기본 켜짐(2026-11-25 청취) | 설정 파일에서 `"prosodyPunctuation": false` |
+| `companionVoice` | 도우미 목소리를 하나로 고정합니다(`F1`–`M5`). 고정하면 세션마다 돌지 않고 훅 알림도 같은 목소리입니다. 비어 있거나 모르는 이름이면 지금처럼 세션마다 순환합니다 | 설정 파일에서 `"companionVoice": "M4"` |
 | `nightWhisper` | 실험. night 모드에서 문장마다 Supertonic `<whisper>` 표현 태그를 붙입니다. 기본 꺼짐 | 설정 파일에서 `"nightWhisper": true` |
 | `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude와 Grok은 `additionalContext`, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |
 | `permissionRelay` | Claude Code 채널 권한 중계. 켜고 `claude --dangerously-load-development-channels server:debrief`로 실행하면 도구 승인 요청이 debrief로 중계되고 `debrief allow`·`debrief deny`로 답할 수 있습니다(터미널 대화상자도 그대로 열려 있고 먼저 온 답이 쓰입니다). Channels는 research preview이고, Team·Enterprise는 관리자가 `channelsEnabled`를 켜야 합니다. 기본 꺼짐 | 설정 파일에서 `"permissionRelay": true` |
