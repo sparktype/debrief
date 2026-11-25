@@ -1,7 +1,7 @@
 {
   "name": "debrief",
   "version": "2.0.0",
-  "description": "Local TTS-only for Claude Code via MCP speak + start-family hooks on Apple Silicon.",
+  "description": "Local TTS skills for coding agents. Run debrief install for MCP and lifecycle hook wiring.",
   "author": {
     "name": "debrief contributors"
   },

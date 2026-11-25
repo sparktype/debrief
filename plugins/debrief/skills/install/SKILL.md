@@ -1,37 +1,44 @@
 ---
 name: debrief-install
-description: 'Install or repair the debrief daemon and host MCP registration. Prefer MCP install (Claude: mcp__debrief__install; Grok: debrief__install).'
+description: 'Install or repair the debrief daemon, MCP tools (speak/install), and Claude/Codex/Grok host wiring. Prefer MCP install tool when available.'
 ---
 
 # debrief-install
 
-## Preferred — MCP tool
+## Preferred (when MCP already works)
 
-| Host | Tool name |
-| --- | --- |
-| Claude Code | `mcp__debrief__install` |
-| Grok | `debrief__install` (`search_tool` → `use_tool`) |
-| Codex | `install` on server `debrief` |
+Call MCP tool `install` on server `debrief`:
 
-```json
-{ "hosts": ["claude"], "repair": true }
-```
+- Claude: `mcp__debrief__install`
+- Grok: `debrief__install` (`search_tool` / `use_tool`)
+- Codex: tool `install` on server `debrief`
 
-- `hosts`: optional `claude` / `codex` / `grok` (omit = all)
-- `repair`: default `true`
+Arguments:
 
-Then refresh: **Claude** restart · **Grok** `/mcps`.
+- `hosts`: optional array — `"claude"`, `"codex"`, `"grok"` (omit = all)
+- `repair`: boolean, default **true**
 
-## Shell — first install or timeout
+Examples:
+- Codex only: `{ "hosts": ["codex"], "repair": true }`
+- Claude only: `{ "hosts": ["claude"], "repair": true }`
+- Grok only: `{ "hosts": ["grok"], "repair": true }`
+
+Select the current host explicitly; omit `hosts` only when all hosts are intended.
+
+Then refresh the host (Codex/Claude: restart; Grok: `/mcps`). In Codex, review debrief in `/hooks` (App: Review hooks); never write trust hashes on the user's behalf.
+
+## Shell (first install or MCP timeout)
 
 ```bash
-debrief install --repair
-# or --claude / --codex / --grok
+debrief install --codex --repair
+# other hosts: --claude | --grok; omit flags only for all hosts
 ```
 
-## After success
+Or use the installed binary: `'debrief' install --codex --repair`. Keep the same `CODEX_HOME` for install, doctor and uninstall; default is `~/.codex`. Shared skills remain in `~/.agents/skills`.
 
-- `debrief status` shows the process running
-- MCP server `debrief` registered
-- Skills: setup, install, speak
-- Turn-end speech: skill **debrief-speak** — what changed, then one next action.
+## After install
+
+1. Host MCP registration for `debrief`
+2. Skills: debrief-install, debrief-speak
+3. Tools: speak + install (Grok: `debrief__speak` / `debrief__install`)
+4. Check with `debrief doctor`

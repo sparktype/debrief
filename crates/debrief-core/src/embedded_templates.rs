@@ -214,12 +214,14 @@ Arguments:\n\n\
 - `hosts`: optional array — `\"claude\"`, `\"codex\"`, `\"grok\"` (omit = all)\n\
 - `repair`: boolean, default **true**\n\n\
 Examples:\n\
+- Codex only: `{{ \"hosts\": [\"codex\"], \"repair\": true }}`\n\
 - Claude only: `{{ \"hosts\": [\"claude\"], \"repair\": true }}`\n\
 - Grok only: `{{ \"hosts\": [\"grok\"], \"repair\": true }}`\n\n\
-Then refresh the host (Claude: restart; Grok: `/mcps`).\n\n\
+Select the current host explicitly; omit `hosts` only when all hosts are intended.\n\n\
+Then refresh the host (Codex/Claude: restart; Grok: `/mcps`). In Codex, review debrief in `/hooks` (App: Review hooks); never write trust hashes on the user's behalf.\n\n\
 ## Shell (first install or MCP timeout)\n\n\
-```bash\ndebrief install --repair\n# single host: --claude | --codex | --grok\n```\n\n\
-Or: `{command} install --grok --repair`\n\n\
+```bash\ndebrief install --codex --repair\n# other hosts: --claude | --grok; omit flags only for all hosts\n```\n\n\
+Or use the installed binary: `{command} install --codex --repair`. Keep the same `CODEX_HOME` for install, doctor and uninstall; default is `~/.codex`. Shared skills remain in `~/.agents/skills`.\n\n\
 ## After install\n\n\
 1. Host MCP registration for `debrief`\n\
 2. Skills: debrief-install, debrief-speak\n\

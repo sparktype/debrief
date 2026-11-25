@@ -2,7 +2,7 @@
   "id": "debrief",
   "name": "debrief",
   "version": "1.0.0+codex.20260716070111",
-  "description": "Single-binary local TTS for Codex and Claude Code on Apple Silicon.",
+  "description": "Local TTS skills for coding agents. Run debrief install for MCP and lifecycle hook wiring.",
   "author": {
     "name": "debrief contributors"
   },
@@ -26,7 +26,7 @@
       "Agent-selected voice, speed, and volume"
     ],
     "defaultPrompt": [
-      "Run debrief install",
+      "Run debrief install --codex",
       "Use skill debrief-speak at turn end"
     ],
     "brandColor": "#6D5BD0",
