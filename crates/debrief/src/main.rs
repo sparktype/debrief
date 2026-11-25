@@ -3,7 +3,7 @@ use debrief_core::{
     current_executable_url, CliMessages, ConfigurationCommands, Control, DebriefCommand, DebriefPaths,
     Diagnostics, HookCommandRunner, HostSource, LiveMcpInstallRunner, McpServer,
     ModelInstaller, ModelManifest, ProcessLaunchctlRunner, ResidentService, ResidentServiceError,
-    PermissionRelay, PermissionRelayError, RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UnixSocketError, UreqModelDownloader,
+    PermissionRelay, PermissionRelayError, session_mute::SessionMuteStore, RuntimeInstaller, RuntimeInstallerError, ServiceStartResult, UnixSocketClient, UnixSocketError, UreqModelDownloader,
 };
 use debrief_tts::{AudioPlayer, SupertonicEngine};
 use std::collections::HashSet;
@@ -249,6 +249,7 @@ fn run_command(command: DebriefCommand, home: &std::path::Path) -> i32 {
             println!("{}", if updated.muted { CliMessages::MUTED } else { CliMessages::UNMUTED });
             Ok(())
         }),
+        DebriefCommand::Session(action) => run_session(home, &action),
         DebriefCommand::Mode(action) => print_configuration_result(|| {
             let updated = ConfigurationCommands::apply_mode(action.as_deref(), home)?;
             if action.is_none() {
@@ -394,6 +395,33 @@ fn run_stop(home: &std::path::Path) -> i32 {
         Err(error) => {
             let _ = Diagnostics::new(home).record_error("daemon", "stop_failed", &format!("{error:?}"));
             eprintln!("{}", CliMessages::stop_failed("daemon/stop_failed"));
+            1
+        }
+    }
+}
+
+fn run_session(home: &std::path::Path, action: &str) -> i32 {
+    let store = SessionMuteStore::new(DebriefPaths::for_home(home).session_mute_url);
+    let now = debrief_core::session_state::now_seconds();
+    let result = match action {
+        "off" => store.update(|mutes| mutes.request(true, now)).map(|_| println!("{}", CliMessages::SESSION_OFF_PENDING)),
+        "on" => store.update(|mutes| mutes.request(false, now)).map(|_| println!("{}", CliMessages::SESSION_ON_PENDING)),
+        "clear" => store.update(|mutes| *mutes = Default::default()).map(|_| println!("{}", CliMessages::SESSION_CLEARED)),
+        _ => {
+            let mutes = store.load();
+            println!("muted sessions: {}", if mutes.muted.is_empty() { "none".to_string() } else { mutes.muted.join(", ") });
+            match mutes.pending {
+                Some(pending) => println!("pending: {} (requested {}s ago)", if pending.mute { "off" } else { "on" }, now.saturating_sub(pending.at)),
+                None => println!("pending: none"),
+            }
+            Ok(())
+        }
+    };
+    match result {
+        Ok(()) => 0,
+        Err(error) => {
+            let _ = Diagnostics::new(home).record_error("app", "command_failed", &format!("{error:?}"));
+            eprintln!("{}", CliMessages::command_failed("app/command_failed"));
             1
         }
     }
