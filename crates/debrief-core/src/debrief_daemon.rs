@@ -129,7 +129,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             return None;
         }
         let configuration = (self.configuration)();
-        ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration, request.decision)?;
+        ModePolicy::admit_request(&request, &configuration)?;
 
         {
             let mut state = self.state.lock().unwrap();
@@ -265,7 +265,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
             // 재생 직전 모드로 판정한다(합성 중 mute·mode가 바뀔 수 있다). 효과음 도중 skip되면 발화도 버린다.
             let admit_and_cue = || -> Option<f64> {
                 let current = configuration();
-                let gain = ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &current, request.decision)
+                let gain = ModePolicy::admit_request(&request, &current)
                     .filter(|_| !discarded())?;
                 if let (Some(cue), true) = (request.cue, current.earcons) {
                     let _ = audio.play(&cue.buffer(), gain * Self::CUE_GAIN_RATIO);
@@ -275,7 +275,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> DebriefDaemon<B, A> {
 
             if request.is_cue_only() {
                 admit_and_cue();
-            } else if ModePolicy::admit(request.priority, request.lane, request.envelope.volume, &configuration(), request.decision).is_some() {
+            } else if ModePolicy::admit_request(&request, &configuration()).is_some() {
                 // 대기 중에 mute·mode가 바뀌어 이미 거부될 발화는 합성하지 않는다(재생 직전 판정은 그대로 한 번 더 한다).
                 // 영어 모드는 한글 기본 발음 사전이 영어 줄을 한국어로 오인시키므로 적용하지 않고, 속도도 english_speed를 쓴다.
                 let current = configuration();
@@ -1078,6 +1078,21 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(daemon.audio.markers(), vec![4]);
         assert_eq!(daemon.backend.texts.lock().unwrap().len(), 1, "재생 시점에 이미 거부될 발화는 합성하지 않는다");
+        daemon.shutdown();
+    }
+
+    #[test]
+    fn muted_session_is_dropped_while_other_sessions_play() {
+        let config = DebriefConfiguration { muted_sessions: vec!["a".to_string()], ..Default::default() };
+        let daemon = DebriefDaemon::new(None, SpeechQueue::new(8, Duration::ZERO), RecordingBackend::new(None), RecordingAudio::new(None), move || config.clone(), None);
+        let in_session = |text: &str, session: Option<&str>| SpeechRequest { session: session.map(str::to_string), ..request(SpeechPriority::Main, text, 0.5) };
+        assert!(daemon.submit(in_session("muted", Some("a"))).is_none());
+        assert!(daemon.submit(SpeechRequest { decision: true, ..in_session("decide", Some("a")) }).is_none());
+        daemon.submit(in_session("other", Some("b")));
+        daemon.submit(in_session("global", None));
+        daemon.audio.wait_until_count(2);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(daemon.audio.markers(), vec![5, 6]);
         daemon.shutdown();
     }
 }

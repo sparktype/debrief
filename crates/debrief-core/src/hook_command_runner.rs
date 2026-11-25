@@ -4,6 +4,7 @@ use crate::hook_adapter::HookAdapter;
 use crate::hook_engine::HookEngine;
 use crate::hook_event::{HookEventName, HostSource};
 use crate::paths::DebriefPaths;
+use crate::session_mute::SessionMuteStore;
 use crate::session_state::SessionStateStore;
 use crate::session_voice_rotation::SessionVoiceStore;
 use crate::unix_socket::UnixSocketClient;
@@ -24,6 +25,9 @@ impl HookCommandRunner {
         }
     }
 
+    const SESSION_MUTED_MESSAGE: &'static str = "이 세션을 음소거했습니다.";
+    const SESSION_UNMUTED_MESSAGE: &'static str = "이 세션의 음소거를 해제했습니다.";
+
     pub fn run(input: &[u8], source: HostSource, home: &std::path::Path) -> Vec<u8> {
         Self::run_with(input, source, home, false)
     }
@@ -38,9 +42,19 @@ impl HookCommandRunner {
             return b"{}".to_vec();
         };
         let paths = DebriefPaths::for_home(home);
+        // 새 프롬프트가 `debrief session on|off`의 대기 요청을 이 세션에 적용한다. 설정을 읽기 전에 해야 바로 반영된다.
+        let now = crate::session_state::now_seconds();
+        let session_mute_change = (event.name == HookEventName::UserPromptSubmit)
+            .then(|| {
+                SessionMuteStore::new(paths.session_mute_url.clone()).update(|mutes| mutes.consume(&event.session_id, now)).ok().flatten()
+            })
+            .flatten();
         let session_voices = SessionVoiceStore::new(paths.session_voices_url.clone());
         let (configuration, restriction) = DebriefConfiguration::load_effective_detail(&paths.config_url, home);
         let session_state = SessionStateStore::new(paths.session_state_url.clone());
+        let mut configuration = configuration;
+        // 이 세션이 음소거면 훅 쪽에서는 전역 음소거와 같게 다룬다(브리핑 금지 지침, 데몬 다운 안내·알림 생략).
+        configuration.muted |= configuration.muted_sessions.contains(&event.session_id);
         let muted = configuration.muted;
         let engine = HookEngine::new(Some(&session_voices)).with_state(&session_state, configuration).with_restriction(restriction);
         let mut result = engine.handle(&event, source);
@@ -85,6 +99,11 @@ impl HookCommandRunner {
                     Self::terminal_notification(&notice.envelope.text, std::env::var("TERM_PROGRAM").ok().as_deref());
                 result.stdout = HookAdapter::with_output_field(&result.stdout, "terminalSequence", &sequence);
             }
+        }
+        // Grok은 UserPromptSubmit stdout을 버리고(`{}` 계약), Gemini는 systemMessage를 쓰지 않으므로 Claude·Codex만 확인 문구를 받는다.
+        if let (Some(mute), true) = (session_mute_change, matches!(source, HostSource::Claude | HostSource::Codex)) {
+            let message = if mute { Self::SESSION_MUTED_MESSAGE } else { Self::SESSION_UNMUTED_MESSAGE };
+            result.stdout = HookAdapter::with_output_field(&result.stdout, "systemMessage", message);
         }
         let diagnostics = crate::diagnostics::Diagnostics::new(home);
         if result.submitted {
@@ -254,6 +273,62 @@ mod tests {
         let probed = probe.join().unwrap().unwrap_err();
         assert!(crate::unix_socket::is_recoverable_accept_error(&probed), "빈 연결은 데몬을 멈추지 않는다: {probed:?}");
 
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn prompt_hook_consumes_the_pending_session_mute_once() {
+        let home = temporary_home();
+        let store = SessionMuteStore::new(DebriefPaths::for_home(&home).session_mute_url);
+        let prompt = |id: &str| format!(r#"{{"hook_event_name":"UserPromptSubmit","session_id":"{id}"}}"#);
+        let now = crate::session_state::now_seconds();
+
+        store.update(|m| m.request(true, now)).unwrap();
+        let output = HookCommandRunner::run(prompt("a").as_bytes(), HostSource::Claude, &home);
+        assert_eq!(system_message(&output).as_deref(), Some("이 세션을 음소거했습니다."));
+        assert!(String::from_utf8_lossy(&output).contains("debrief muted: do not call speak."));
+        assert_eq!(store.load().muted, vec!["a".to_string()]);
+
+        let other = HookCommandRunner::run(prompt("b").as_bytes(), HostSource::Claude, &home);
+        assert!(!String::from_utf8_lossy(&other).contains("debrief muted"), "다른 세션은 그대로");
+        assert_eq!(store.load().muted, vec!["a".to_string()]);
+
+        store.update(|m| m.request(false, now)).unwrap();
+        let output = HookCommandRunner::run(prompt("a").as_bytes(), HostSource::Codex, &home);
+        assert_eq!(system_message(&output).as_deref(), Some("이 세션의 음소거를 해제했습니다."));
+        assert!(store.load().muted.is_empty());
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn grok_prompt_hook_consumes_pending_but_keeps_empty_stdout_and_other_events_do_not_consume() {
+        let home = temporary_home();
+        let store = SessionMuteStore::new(DebriefPaths::for_home(&home).session_mute_url);
+        let now = crate::session_state::now_seconds();
+        store.update(|m| m.request(true, now)).unwrap();
+
+        let start = br#"{"hook_event_name":"SessionStart","session_id":"g"}"#;
+        HookCommandRunner::run(start, HostSource::Grok, &home);
+        assert!(store.load().muted.is_empty(), "UserPromptSubmit만 소비한다");
+
+        let prompt = br#"{"hook_event_name":"UserPromptSubmit","session_id":"g"}"#;
+        let output = HookCommandRunner::run(prompt, HostSource::Grok, &home);
+        assert_eq!(String::from_utf8(output).unwrap(), "{}");
+        assert_eq!(store.load().muted, vec!["g".to_string()]);
+        fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn notices_carry_the_session_id_for_the_daemon_to_filter() {
+        let home = temporary_home();
+        let socket_url = DebriefPaths::for_home(&home).socket_url;
+        let server = std::sync::Arc::new(crate::unix_socket::UnixSocketServer::new(socket_url).unwrap());
+        let accepting = server.clone();
+        let received = std::thread::spawn(move || accepting.accept());
+        let payload = br#"{"hook_event_name":"PermissionRequest","session_id":"sess-1","cwd":"/w/debrief"}"#;
+        HookCommandRunner::run(payload, HostSource::Claude, &home);
+        let crate::daemon_control::Inbound::Speech(request) = received.join().unwrap().unwrap() else { panic!("발화가 아님") };
+        assert_eq!(request.session.as_deref(), Some("sess-1"));
         fs::remove_dir_all(&home).ok();
     }
 

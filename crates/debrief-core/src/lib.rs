@@ -32,6 +32,7 @@ pub mod permission_relay;
 pub mod pronunciation;
 pub mod resident_service;
 pub mod runtime_installer;
+pub mod session_mute;
 pub mod session_state;
 pub mod session_voice_rotation;
 pub mod speech_emotion;

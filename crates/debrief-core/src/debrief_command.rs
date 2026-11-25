@@ -14,6 +14,8 @@ pub enum DebriefCommand {
     Restart,
     Status { line: bool },
     Mute(Option<String>),
+    /// `off`·`on`·`list`·`clear` 중 하나.
+    Session(String),
     Mode(Option<String>),
     Companion(Option<String>),
     Dnd(Option<String>),
@@ -48,6 +50,7 @@ impl DebriefCommand {
                 "  debrief doctor\n\n",
                 "Controls (written to config.json; applied on the next utterance):\n",
                 "  debrief mute [on|off|toggle]\n",
+                "  debrief session off|on|list|clear   (silence only one chat: the next prompt in any agent session applies it within 5 minutes; inside Claude Code run `! debrief session off`)\n",
                 "  debrief mode [normal|focus|quiet|verbose|night]\n",
                 "  debrief companion [on|off|toggle]\n",
                 "  debrief dnd [on|off|toggle]   (follow macOS Do Not Disturb: at least quiet while it is on)\n",
@@ -120,6 +123,10 @@ impl DebriefCommand {
                 Ok(DebriefCommand::Doctor)
             }
             "mute" => Ok(DebriefCommand::Mute(Self::optional_choice(tail, &["on", "off", "toggle"], name)?)),
+            "session" => match tail {
+                [action] if ["off", "on", "list", "clear"].contains(&action.as_str()) => Ok(DebriefCommand::Session(action.clone())),
+                _ => Err(CommandError::Usage("session requires one of off, on, list, clear".to_string())),
+            },
             "mode" => {
                 let allowed: HashSet<&str> = ["normal", "focus", "quiet", "verbose", "night"].into_iter().collect();
                 Ok(DebriefCommand::Mode(Self::optional_choice_set(tail, &allowed, name)?))
@@ -238,6 +245,9 @@ pub struct CliMessages;
 impl CliMessages {
     pub const MUTED: &'static str = "음소거했습니다.";
     pub const UNMUTED: &'static str = "음소거를 해제했습니다.";
+    pub const SESSION_OFF_PENDING: &'static str = "다음 프롬프트를 보낸 세션을 음소거합니다. (5분 안에 보내세요)";
+    pub const SESSION_ON_PENDING: &'static str = "다음 프롬프트를 보낸 세션의 음소거를 해제합니다. (5분 안에 보내세요)";
+    pub const SESSION_CLEARED: &'static str = "세션 음소거를 모두 해제했습니다.";
     pub const COMPANION_ON: &'static str = "도우미 음성을 켰습니다.";
     pub const COMPANION_OFF: &'static str = "도우미 음성을 껐습니다.";
     pub const DND_ON: &'static str = "방해금지 연동을 켰습니다.";
@@ -380,6 +390,11 @@ mod tests {
     fn rejects_invalid_control_arguments() {
         assert!(parse(&["daemon", "--extra"]).is_err());
         assert!(parse(&["mute", "maybe"]).is_err());
+        assert_eq!(parse(&["session", "off"]), Ok(DebriefCommand::Session("off".to_string())));
+        assert_eq!(parse(&["session", "clear"]), Ok(DebriefCommand::Session("clear".to_string())));
+        assert!(parse(&["session"]).is_err());
+        assert!(parse(&["session", "maybe"]).is_err());
+        assert!(parse(&["session", "off", "on"]).is_err());
         assert!(parse(&["mode", "loud"]).is_err());
         assert!(parse(&["companion", "maybe"]).is_err());
     }
