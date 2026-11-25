@@ -320,6 +320,10 @@ where
         if !matches!(arguments.lane, crate::speech_lane::SpeechLane::Companion) {
             return None;
         }
+        let paths = crate::paths::DebriefPaths::for_home(&self.home);
+        if let Some(voice) = crate::configuration::DebriefConfiguration::load(&paths.config_url).fixed_companion_voice() {
+            return Some(voice);
+        }
         let key = arguments.session.clone().unwrap_or_else(|| format!("mcp:{}", std::process::id()));
         let store = crate::session_voice_rotation::SessionVoiceStore::new(
             crate::paths::DebriefPaths::for_home(&self.home).session_voices_url,

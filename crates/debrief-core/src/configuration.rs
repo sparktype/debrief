@@ -91,17 +91,24 @@ pub struct DebriefConfiguration {
     /// 디노이징 단계 수(청취 실험용). 2–16 밖이면 기본 8.
     #[serde(default = "default_synthesis_steps")]
     pub synthesis_steps: i64,
-    /// relieved·warm 문장 끝을 `!!`·`?!`로 바꿔 억양을 살린다(청취 실험). 기본 꺼짐.
-    #[serde(default)]
+    /// relieved·warm 문장 끝을 `!!`·`?!`로 바꿔 억양을 살린다. 2026-11-25 청취로 기본 켬.
+    #[serde(default = "default_prosody_punctuation")]
     pub prosody_punctuation: bool,
     /// night 모드에서 문장마다 `<whisper>` 태그를 붙인다(청취 실험). 기본 꺼짐.
     #[serde(default)]
     pub night_whisper: bool,
+    /// 도우미 목소리를 하나로 고정한다(F1–M5). 비어 있거나 모르는 이름이면 세션마다 순환한다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub companion_voice: Option<String>,
 }
 
 /// 2026-11-25 청취: 4단계는 이상한 소리가 섞여 5로 정함(첫 소리 0.52초, 8단계 0.78초).
 fn default_synthesis_steps() -> i64 {
     5
+}
+
+fn default_prosody_punctuation() -> bool {
+    true
 }
 
 fn default_mode() -> DebriefMode {
@@ -177,14 +184,19 @@ impl Default for DebriefConfiguration {
             english: false,
             english_speed: default_english_speed(),
             synthesis_steps: default_synthesis_steps(),
-            prosody_punctuation: false,
+            prosody_punctuation: true,
             night_whisper: false,
+            companion_voice: None,
         }
     }
 }
 
 impl DebriefConfiguration {
     /// 2–16이면 그대로, 아니면 기본 8.
+    pub fn fixed_companion_voice(&self) -> Option<String> {
+        self.companion_voice.clone().filter(|voice| crate::voice_catalog::VoiceCatalog::allowed_voice_ids().contains(voice.as_str()))
+    }
+
     pub fn valid_synthesis_steps(&self) -> usize {
         if (2..=16).contains(&self.synthesis_steps) { self.synthesis_steps as usize } else { default_synthesis_steps() as usize }
     }
@@ -399,10 +411,20 @@ impl ConfigurationCommands {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn companion_voice_is_fixed_only_for_a_known_voice() {
+        let parse = |json: &str| serde_json::from_str::<DebriefConfiguration>(json).unwrap().fixed_companion_voice();
+        assert_eq!(parse("{}"), None);
+        assert_eq!(parse(r#"{"companionVoice":"F3"}"#), Some("F3".to_string()));
+        assert_eq!(parse(r#"{"companionVoice":"X9"}"#), None);
+        assert_eq!(parse(r#"{"companionVoice":""}"#), None);
+    }
+
+    #[test]
     fn listening_experiment_keys_default_and_clamp() {
         let default: DebriefConfiguration = serde_json::from_str("{}").unwrap();
         assert_eq!(default.valid_synthesis_steps(), 5);
-        assert!(!default.prosody_punctuation && !default.night_whisper);
+        assert!(default.prosody_punctuation, "2026-11-25 청취로 기본 켬");
+        assert!(!default.night_whisper);
         let parse = |json: &str| serde_json::from_str::<DebriefConfiguration>(json).unwrap().valid_synthesis_steps();
         assert_eq!(parse(r#"{"synthesisSteps":2}"#), 2);
         assert_eq!(parse(r#"{"synthesisSteps":16}"#), 16);

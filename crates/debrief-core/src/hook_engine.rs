@@ -109,7 +109,9 @@ impl<'a> HookEngine<'a> {
                 let session_voice = if matches!(event.name, HookEventName::SubagentStart) {
                     None
                 } else {
-                    self.session_voices.and_then(|store| store.claim(&event.session_id).ok())
+                    self.configuration
+                        .fixed_companion_voice()
+                        .or_else(|| self.session_voices.and_then(|store| store.claim(&event.session_id).ok()))
                 };
                 let context = VoiceCatalog::context_with_voices(
                     event,
@@ -308,8 +310,9 @@ impl<'a> HookEngine<'a> {
             _ => body,
         };
         let voice = self
-            .session_voices
-            .and_then(|store| store.claim(&event.session_id).ok())
+            .configuration
+            .fixed_companion_voice()
+            .or_else(|| self.session_voices.and_then(|store| store.claim(&event.session_id).ok()))
             .unwrap_or_else(|| "F1".to_string());
         let notice = SpeechRequest {
             envelope: SpeechEnvelope { v: 1, text, voice, speed: Self::NOTICE_SPEED, volume: Self::NOTICE_VOLUME },
@@ -534,6 +537,23 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("debrief-engine-{}-{tag}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         dir
+    }
+
+    #[test]
+    fn fixed_companion_voice_skips_rotation_for_briefings_and_notices() {
+        let dir = state_dir("fixed-voice");
+        let voices = SessionVoiceStore::new(dir.join("voices.json"));
+        let state = SessionStateStore::new(dir.join("state.json"));
+        let configuration = DebriefConfiguration { companion_voice: Some("F3".to_string()), ..Default::default() };
+        let engine = HookEngine::new(Some(&voices)).with_state(&state, configuration);
+
+        for session in ["alpha", "beta"] {
+            let result = engine.handle(&event(HookEventName::SessionStart, session, None, None, None), HostSource::Claude);
+            assert!(String::from_utf8(result.stdout).unwrap().contains("F3 (제인)"));
+        }
+        let notice = engine.handle_at(&event_in(HookEventName::PermissionRequest, "gamma", "/w/debrief"), HostSource::Claude, 100);
+        assert_eq!(notice.notice.expect("알림").envelope.voice, "F3");
+        assert_eq!(voices.claim("delta").unwrap(), "F1", "고정 목소리는 순환 슬롯을 쓰지 않는다");
     }
 
     #[test]

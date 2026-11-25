@@ -587,7 +587,7 @@ mod tests {
         daemon.submit(relieved);
         audio.wait_until_count(2);
 
-        assert_eq!(daemon.backend.texts.lock().unwrap().clone(), vec!["<laugh> 끝났습니다.".to_string()]);
+        assert_eq!(daemon.backend.texts.lock().unwrap().clone(), vec!["<laugh> 끝났습니다!!".to_string()], "prosodyPunctuation 기본 켬");
         wait_for_history(&daemon, 1);
         assert_eq!(daemon.history_texts(), vec!["끝<났>습니다.".to_string()]);
         daemon.shutdown();
