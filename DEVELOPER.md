@@ -162,8 +162,8 @@ Release verification should also inspect architecture (`arm64`) and run install 
 ## Change rules
 
 - Add a focused failing test before behavior changes.
-- Run impact analysis before editing an existing symbol (`graft`/GitNexus when available).
-- Keep each host’s hook set exact. Claude and Codex keep start-family plus their host-only events. Grok’s owned file is `GROK_HOOK_EVENTS` (side effects only; do not put the turn-briefing paragraph there). Skills are `setup` + `install` + `speak` (Grok via `grok_skills`). MCP tools are `speak` + `install`.
+- Run impact analysis before editing an existing symbol (`graft` when available).
+- Keep each host’s hook set exact. Claude and Codex keep start-family plus their host-only events. Grok’s owned file is `GROK_HOOK_EVENTS` (side effects only; do not put the turn-briefing paragraph there). Skills are `install` + `speak` (Grok via `grok_skills`; retired names in `RETIRED_SKILL_NAMES`). MCP tools are `speak` + `install`.
 - Codex hook trust (`codex_trust.rs`) hashes the normalized command identity the way Codex main did in 2026-10, including `async: false`. SessionEnd and Interrupt clamp timeout to 1–3. Look up the current group and handler index only. Do not recommend `--dangerously-bypass-hook-trust`.
 - Do not persist hook payload text or synthesized audio.
 - Preserve unrelated host settings and modified installed files.

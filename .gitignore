@@ -27,8 +27,6 @@ xcuserdata/
 # Serena MCP 로컬 상태
 .serena/
 
-# gitnexus 로컬 인덱스
-.gitnexus/
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
