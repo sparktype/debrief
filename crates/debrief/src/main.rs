@@ -34,7 +34,7 @@ fn main() {
 
 /// 상주형 헤드리스 데몬. 신호(SIGTERM/SIGINT)는 서비스를 멈추고 소켓·pid를 지운 뒤 0으로 종료한다.
 fn run_daemon(home: &std::path::Path) -> ! {
-    if debrief_core::is_foreign_host_running(home, &|pid| unsafe { libc::kill(pid, 0) == 0 }) {
+    if debrief_core::is_foreign_host_running(home, &|pid| unsafe { libc::kill(pid, 0) == 0 } && Diagnostics::is_debrief_process(pid)) {
         println!("{}", CliMessages::ALREADY_RUNNING);
         std::process::exit(0);
     }

@@ -395,7 +395,27 @@ impl<'a> Diagnostics<'a> {
     pub fn live_process_exists(pid: i32) -> bool {
         // SAFETY: kill(pid, 0) sends no signal — it only probes whether the pid exists
         // and is reachable, which is why its errno (EPERM) also counts as "exists".
-        unsafe { libc::kill(pid, 0) == 0 || *libc::__error() == libc::EPERM }
+        let alive = unsafe { libc::kill(pid, 0) == 0 || *libc::__error() == libc::EPERM };
+        alive && Self::is_debrief_process(pid)
+    }
+
+    /// 재부팅 뒤 낡은 daemon.pid의 번호가 다른 프로세스에 재사용될 수 있어, 살아 있음만으로는 데몬이라 볼 수 없다.
+    /// 판정하는 쪽은 늘 debrief 바이너리이므로 "나와 같은 실행 파일 이름"으로 비교한다.
+    pub fn is_debrief_process(pid: i32) -> bool {
+        let own = Self::process_executable_name(std::process::id() as i32);
+        own.is_some() && Self::process_executable_name(pid) == own
+    }
+
+    pub fn process_executable_name(pid: i32) -> Option<String> {
+        let mut buffer = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+        // SAFETY: the buffer is valid for its full length; proc_pidpath writes at most that many bytes.
+        let length = unsafe { libc::proc_pidpath(pid, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+        if length <= 0 {
+            return None;
+        }
+        buffer.truncate(length as usize);
+        let path = std::path::PathBuf::from(String::from_utf8_lossy(&buffer).into_owned());
+        path.file_name().map(|name| name.to_string_lossy().into_owned())
     }
 
     fn process_state(&self) -> DaemonProcessState {
@@ -617,6 +637,19 @@ mod tests {
         let url = std::env::temp_dir().join(format!("debrief-diagnostics-tests-{nanos}-{counter}"));
         fs::create_dir_all(&url).unwrap();
         url
+    }
+
+    #[test]
+    fn reused_pid_of_another_live_process_is_not_the_daemon() {
+        // 재부팅 뒤 낡은 daemon.pid가 다른 프로세스(여기선 launchd, pid 1)를 가리키는 경우.
+        assert!(!Diagnostics::is_debrief_process(1));
+        assert!(!Diagnostics::live_process_exists(1));
+    }
+
+    #[test]
+    fn executable_name_of_own_process_matches_current_exe() {
+        let expected = std::env::current_exe().unwrap().file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(Diagnostics::process_executable_name(std::process::id() as i32), Some(expected));
     }
 
     fn write_json(value: &serde_json::Value, url: &Path) {

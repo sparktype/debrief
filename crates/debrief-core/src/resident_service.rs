@@ -102,7 +102,7 @@ impl<B: TtsBackend + 'static, A: AudioPlaying + 'static> ResidentService<B, A> {
 
     fn live_process_exists(pid: i32) -> bool {
         // SAFETY: kill(pid, 0) sends no signal and only probes liveness/visibility.
-        unsafe { libc::kill(pid, 0) == 0 }
+        unsafe { libc::kill(pid, 0) == 0 && crate::Diagnostics::is_debrief_process(pid) }
     }
 
     pub fn default_model_directory_provider(paths: &DebriefPaths) -> Result<PathBuf, ProvisioningFailed> {
