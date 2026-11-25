@@ -24,6 +24,8 @@ pub struct DebriefPaths {
     pub last_error_url: PathBuf,
     pub session_voices_url: PathBuf,
     pub session_state_url: PathBuf,
+    /// 세션별 음소거 집합과 CLI가 남긴 대기 요청.
+    pub session_mute_url: PathBuf,
     /// 채널 권한 중계의 대기 요청·판정. 캐시 정리에 지워지지 않게 데이터 디렉터리에 둔다.
     pub permissions_directory: PathBuf,
 }
@@ -47,6 +49,7 @@ impl DebriefPaths {
             last_error_url: cache_directory.join("last-error.json"),
             session_voices_url: data_directory.join("session-voices.json"),
             session_state_url: data_directory.join("session-state.json"),
+            session_mute_url: data_directory.join("session-mutes.json"),
             permissions_directory: data_directory.join("permissions"),
         }
     }

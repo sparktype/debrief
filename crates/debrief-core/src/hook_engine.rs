@@ -320,7 +320,8 @@ impl<'a> HookEngine<'a> {
             decision: false,
             cue: Self::cue_for(event.name),
             replayed: false,
-            session: None,
+            // 데몬이 세션별 음소거를 판정한다.
+            session: Some(event.session_id.clone()),
         };
         (Some(notice), false)
     }

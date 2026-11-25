@@ -44,6 +44,9 @@ pub struct DebriefConfiguration {
     pub mode: DebriefMode,
     #[serde(default)]
     pub muted: bool,
+    /// 세션별 음소거(`debrief session off`). 파일에 저장하지 않고 `load_effective_detail`이 채운다.
+    #[serde(skip)]
+    pub muted_sessions: Vec<String>,
     #[serde(default = "default_companion_enabled")]
     pub companion_enabled: bool,
     #[serde(default = "DebriefConfiguration::default_volume_ceilings")]
@@ -143,6 +146,7 @@ impl Default for DebriefConfiguration {
         DebriefConfiguration {
             mode: DebriefMode::Normal,
             muted: false,
+            muted_sessions: Vec::new(),
             companion_enabled: true,
             volume_ceilings: DebriefConfiguration::default_volume_ceilings(),
             category_voices: HashMap::new(),
@@ -217,7 +221,9 @@ impl DebriefConfiguration {
 
     /// 유효 설정과, 모드가 올라갔다면 그 이유. status와 speak가 같은 문장을 쓴다.
     pub fn load_effective_detail(url: &Path, home: &Path) -> (Self, Option<ModeRestriction>) {
-        let stored = Self::load(url);
+        let mut stored = Self::load(url);
+        stored.muted_sessions =
+            crate::session_mute::SessionMuteStore::new(crate::paths::DebriefPaths::for_home(home).session_mute_url).load().muted;
         let dnd_active = stored.dnd_sync && crate::macos_dnd::MacosDnd::is_active(home).unwrap_or(false);
         let mic_in_use = stored.mic_sync && crate::macos_mic::MacosMic::is_in_use().unwrap_or(false);
         stored.effective_with_reason(dnd_active, mic_in_use)

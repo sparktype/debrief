@@ -6,6 +6,14 @@ use crate::speech_request::SpeechPriority;
 pub struct ModePolicy;
 
 impl ModePolicy {
+    /// 요청 단위 판정. 세션별 음소거에 걸린 세션의 발화는 모든 레인·결정 대기까지 버린다.
+    pub fn admit_request(request: &crate::speech_request::SpeechRequest, configuration: &DebriefConfiguration) -> Option<f64> {
+        if request.session.as_ref().is_some_and(|id| configuration.muted_sessions.contains(id)) {
+            return None;
+        }
+        Self::admit(request.priority, request.lane, request.envelope.volume, configuration, request.decision)
+    }
+
     /// 재생 가능한 게인을 돌려주거나, 요청을 버려야 하면 `None`을 돌려준다.
     pub fn admit(
         priority: SpeechPriority,
@@ -121,5 +129,28 @@ mod tests {
     fn decision_on_subagent_is_ignored() {
         let focus = config(DebriefMode::Focus, false);
         assert_eq!(ModePolicy::admit(SpeechPriority::Subagent, SpeechLane::Work, 0.9, &focus, true), None);
+    }
+
+    #[test]
+    fn session_mute_drops_only_that_sessions_requests() {
+        use crate::speech_emotion::SpeechEmotion;
+        use crate::speech_envelope::SpeechEnvelope;
+        use crate::speech_request::SpeechRequest;
+        let request = |session: Option<&str>, decision: bool| SpeechRequest {
+            envelope: SpeechEnvelope { v: 1, text: "t".into(), voice: "F1".into(), speed: 1.0, volume: 0.5 },
+            priority: SpeechPriority::Main,
+            lane: SpeechLane::Companion,
+            emotion: SpeechEmotion::Neutral,
+            agent_type: None,
+            decision,
+            cue: None,
+            replayed: false,
+            session: session.map(str::to_string),
+        };
+        let configuration = DebriefConfiguration { muted_sessions: vec!["a".to_string()], ..Default::default() };
+        assert_eq!(ModePolicy::admit_request(&request(Some("a"), false), &configuration), None);
+        assert_eq!(ModePolicy::admit_request(&request(Some("a"), true), &configuration), None, "결정 대기도 막는다");
+        assert_eq!(ModePolicy::admit_request(&request(Some("b"), false), &configuration), Some(0.5));
+        assert_eq!(ModePolicy::admit_request(&request(None, false), &configuration), Some(0.5), "세션 없는 발화는 그대로");
     }
 }
