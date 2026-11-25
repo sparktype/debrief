@@ -11,4 +11,4 @@
 - [x] 병합: A·B·C 브랜치를 main에 병합, 충돌 해결
 - [x] 문서: CLAUDE.md 제품 경계·README·ONBOARDING 갱신
 - [x] 마무리: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --release`
-- [ ] 사용자 청취·수동 검증 가이드 전달
+- [x] 사용자 청취·수동 검증 가이드 전달 (단계 5, 문장부호 켬, 목소리 F1 고정, 속삭임 끔)

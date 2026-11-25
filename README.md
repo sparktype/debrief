@@ -207,7 +207,7 @@ debrief status
 | `synthesisSteps` | Supertonic 디노이징 단계 수(2–16, 기본 5). 낮추면 첫 소리가 빨라지지만 4에서는 이상한 소리가 섞였습니다(같은 47자 문장에서 4는 0.43초, 5는 0.52초, 8은 0.78초). 범위 밖 값은 5 | 설정 파일에서 `"synthesisSteps": 8` |
 | `prosodyPunctuation` | relieved·warm 감정일 때 문장 끝 `.`을 `!!`, `?`를 `?!`로 바꿔 억양을 살립니다. 기본 켜짐(2026-11-25 청취) | 설정 파일에서 `"prosodyPunctuation": false` |
 | `companionVoice` | 도우미 목소리를 하나로 고정합니다(`F1`–`M5`). 고정하면 세션마다 돌지 않고 훅 알림도 같은 목소리입니다. 비어 있거나 모르는 이름이면 지금처럼 세션마다 순환합니다 | 설정 파일에서 `"companionVoice": "M4"` |
-| `nightWhisper` | 실험. night 모드에서 문장마다 Supertonic `<whisper>` 표현 태그를 붙입니다. 기본 꺼짐 | 설정 파일에서 `"nightWhisper": true` |
+| `nightWhisper` | night 모드에서 문장마다 Supertonic `<whisper>` 표현 태그를 붙입니다. 2026-11-25 청취 뒤 기본 꺼짐 유지 | 설정 파일에서 `"nightWhisper": true` |
 | `briefingReminder` | 에이전트가 말없이 `longTurnSeconds` 넘게 걸린 턴을 끝내려 하면 Stop 훅이 한 번 되돌려 `speak` 브리핑을 요청합니다(Claude와 Grok은 `additionalContext`, Codex는 `decision: block`). 되돌린 뒤에도 말하지 않으면 기존 완료 알림이 나옵니다. quiet·night·음소거에서는 되돌리지 않습니다. 모델 호출이 한 번 늘어서 기본 꺼짐 | 설정 파일에서 `"briefingReminder": true` |
 | `permissionRelay` | Claude Code 채널 권한 중계. 켜고 `claude --dangerously-load-development-channels server:debrief`로 실행하면 도구 승인 요청이 debrief로 중계되고 `debrief allow`·`debrief deny`로 답할 수 있습니다(터미널 대화상자도 그대로 열려 있고 먼저 온 답이 쓰입니다). Channels는 research preview이고, Team·Enterprise는 관리자가 `channelsEnabled`를 켜야 합니다. 기본 꺼짐 | 설정 파일에서 `"permissionRelay": true` |
 | `pronunciations` | 단어 → 읽을 표기. 합성 직전에 단어 단위로 대소문자를 무시하고 바꿉니다. 사용자 항목이 없으면 debrief·Codex·Grok·MCP를 디브리프·코덱스·그록·엠씨피로 읽습니다. 같은 단어를 적으면 그 표기가 이기고, 단어 그대로 적으면 기본 읽기를 끕니다. 파일의 기본 항목은 설치가 넣지 않습니다. 다시 듣기 기록은 원문을 유지합니다 | 설정 파일을 직접 고칩니다 |
